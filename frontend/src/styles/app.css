@@ -1,0 +1,50 @@
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+  background: #f4f7f9;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  min-height: 100svh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100svh;
+}
+
+.app-shell {
+  width: min(100%, 48rem);
+  min-height: 100vh;
+  min-height: 100svh;
+  margin: 0 auto;
+  padding:
+    max(var(--space-6), env(safe-area-inset-top))
+    var(--space-4)
+    max(var(--space-6), env(safe-area-inset-bottom));
+}
+
+.app-shell h1 {
+  margin: 0 0 var(--space-3);
+  color: var(--alertam-blue-900);
+  font-size: clamp(1.5rem, 6vw, 2rem);
+  line-height: 1.15;
+}
+
+.app-shell p {
+  color: var(--alertam-muted);
+}

@@ -20,3 +20,9 @@ build/
 # Frontend (future)
 node_modules/
 frontend/dist/
+
+# Superpowers execution scratch
+.superpowers/
+*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
