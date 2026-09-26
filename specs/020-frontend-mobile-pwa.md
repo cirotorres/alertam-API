@@ -2,10 +2,10 @@
 
 | Campo | Valor |
 |---|---|
-| Status | Proposto |
+| Status | Em validação final |
 | Criado em | 2026-09-26 |
 | Atualizado em | 2026-09-26 |
-| Evidência de conclusão | — |
+| Evidência de conclusão | Gate local 2026-09-26: frontend 65/65 testes; Playwright 21 passed + 3 skips intencionais em 4 viewports; API Docker 147/147; build PWA, service worker, Compose e smoke same-origin verdes. Restam deploy Vercel e smoke real QR → PWA → API. |
 
 ## Objetivo
 
@@ -995,36 +995,37 @@ relevante.
 
 ## Critérios de aceite
 
-- [ ] React + TypeScript + Vite substituem o placeholder atual.
-- [ ] Frontend é mobile-first e responsivo nos viewports definidos.
-- [ ] Pareamento v1 é consumido sem enviar token ao servidor na URL.
-- [ ] Token é removido da barra de endereço imediatamente.
-- [ ] Pareamento válido é persistido localmente; 401 remove/revoga sessão local.
-- [ ] Frontend chama somente `/api/v1/*` same-origin com Bearer.
-- [ ] Polling é 30 s somente enquanto visible e GET é imediato no retorno.
-- [ ] Só existe um GET em voo.
-- [ ] Último snapshot em memória continua visível em falha temporária.
-- [ ] `collector_online` controla estado ativo/stale.
-- [ ] Mapa usa `piers.png` e coordenadas/projeção equivalentes ao Desktop.
-- [ ] Estados de navio usam sprites corretos e prioridade DES > ATR > atracado.
-- [ ] Navio abre bottom sheet; drawer e sheet nunca ficam abertos juntos.
-- [ ] Ficha usa apenas dados reais do snapshot e não inventa foto.
-- [ ] Footer possui Manobras confirmadas, Prev. atracação, Prev. desatracação e Fundeados.
-- [ ] Regras das quatro listas reproduzem o comportamento do Desktop.
-- [ ] Alertas é feed curto de ocorrências recentes, sem Web Push.
-- [ ] Histórico é timeline completa disponível no snapshot.
-- [ ] Drawer possui Mapa, Alertas, Histórico, Config., Instalar aplicativo e Sobre.
-- [ ] Config. permite esquecer o aparelho com confirmação.
-- [ ] Manifest/service worker tornam o app instalável.
-- [ ] iOS recebe instrução específica de instalação quando necessário.
-- [ ] Service worker nunca cacheia respostas autenticadas de `/api/`.
-- [ ] PWA abre shell sem rede.
-- [ ] Schema incompatível produz erro explícito.
-- [ ] Assets do Desktop necessários são copiados para o frontend.
-- [ ] Nenhum segredo administrativo é empacotado no frontend.
-- [ ] Unitários, componentes e Playwright ficam verdes.
+- [x] React + TypeScript + Vite substituem o placeholder atual.
+- [x] Frontend é mobile-first e responsivo nos viewports definidos.
+- [x] Pareamento v1 é consumido sem enviar token ao servidor na URL.
+- [x] Token é removido da barra de endereço imediatamente.
+- [x] Pareamento válido é persistido localmente; 401 remove/revoga sessão local.
+- [x] Frontend chama somente `/api/v1/*` same-origin com Bearer.
+- [x] Polling é 30 s somente enquanto visible e GET é imediato no retorno.
+- [x] Só existe um GET em voo.
+- [x] Último snapshot em memória continua visível em falha temporária.
+- [x] `collector_online` controla estado ativo/stale.
+- [x] Mapa usa `piers.png` e coordenadas/projeção equivalentes ao Desktop.
+- [x] Estados de navio usam sprites corretos e prioridade DES > ATR > atracado.
+- [x] Navio abre bottom sheet; drawer e sheet nunca ficam abertos juntos.
+- [x] Ficha usa apenas dados reais do snapshot e não inventa foto.
+- [x] Footer possui Manobras confirmadas, Prev. atracação, Prev. desatracação e Fundeados.
+- [x] Regras das quatro listas reproduzem o comportamento do Desktop.
+- [x] Alertas é feed curto de ocorrências recentes, sem Web Push.
+- [x] Histórico é timeline completa disponível no snapshot.
+- [x] Drawer possui Mapa, Alertas, Histórico, Config., Instalar aplicativo e Sobre.
+- [x] Config. permite esquecer o aparelho com confirmação.
+- [x] Manifest/service worker tornam o app instalável.
+- [x] iOS recebe instrução específica de instalação quando necessário.
+- [x] Service worker nunca cacheia respostas autenticadas de `/api/`.
+- [x] PWA abre shell sem rede.
+- [x] Schema incompatível produz erro explícito.
+- [x] Assets do Desktop necessários são copiados para o frontend.
+- [x] Nenhum segredo administrativo é empacotado no frontend.
+- [x] Unitários, componentes e Playwright ficam verdes.
 - [ ] Deploy Vercel serve frontend e API no mesmo domínio sem quebrar `/api/v1/*`.
 - [ ] Fluxo real Desktop QR -> PWA -> GET autenticado é validado antes de concluir a spec.
+
 
 ## Perguntas em aberto
 

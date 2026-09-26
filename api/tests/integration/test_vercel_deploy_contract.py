@@ -38,14 +38,20 @@ def test_vercel_services_config_points_to_same_fastapi_entrypoint():
     }
     assert config["services"]["frontend"] == {
         "root": "frontend/",
+        "rewrites": [
+            {
+                "source": "/(.*)",
+                "destination": "/index.html",
+            },
+        ],
     }
     assert config["rewrites"] == [
         {
-            "source": "/api/v1/:path*",
+            "source": "/api/v1/(.*)",
             "destination": {"service": "api"},
         },
         {
-            "source": "/:path*",
+            "source": "/(.*)",
             "destination": {"service": "frontend"},
         },
     ]

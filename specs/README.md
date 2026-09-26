@@ -2,7 +2,7 @@
 
 | ID | Documento | Status | Resumo |
 |---|---|---|---|
-| 020 | [Frontend mobile responsivo e PWA](020-frontend-mobile-pwa.md) | Proposto | React/Vite read-only, pareamento por QR, polling 30 s, mapa, drawer, bottom sheet, navegação inferior e instalação PWA |
+| 020 | [Frontend mobile responsivo e PWA](020-frontend-mobile-pwa.md) | Em validação final | React/Vite read-only, pareamento por QR, polling 30 s, mapa, drawer, bottom sheet, navegação inferior e instalação PWA |
 
 ## Dependências cross-repo
 
