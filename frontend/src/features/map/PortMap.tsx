@@ -6,6 +6,12 @@ type PortMapProps = {
   onSelectVessel: (vessel: VesselV1) => void;
 };
 
+function movementClass(vessel: VesselV1): string {
+  if (vessel.status === "ATRACANDO") return " port-map__vessel--arriving";
+  if (vessel.status === "DESATRACANDO") return " port-map__vessel--departing";
+  return "";
+}
+
 export function PortMap({ snapshot, onSelectVessel }: PortMapProps) {
   const vessels = selectMapVessels(snapshot);
 
@@ -17,19 +23,25 @@ export function PortMap({ snapshot, onSelectVessel }: PortMapProps) {
           src="/assets/piers.png"
           alt="Mapa esquemático dos berços do Porto do Pecém"
         />
-        {vessels.map(({ berth, vessel, sprite, position, moving }) => (
+        {vessels.map(({ berth, vessel, sprite, position }) => (
           <button
             key={berth}
             type="button"
-            className={`port-map__vessel${moving ? " port-map__vessel--moving" : ""}`}
+            className={`port-map__vessel${movementClass(vessel)}`}
             style={{ left: `${position.xPct}%`, top: `${position.yPct}%` }}
             aria-label={`${vessel.name}, Berço ${berth}`}
             onClick={() => onSelectVessel(vessel)}
           >
-            <img src={sprite} alt="" aria-hidden="true" />
-            <span>Berço {berth}</span>
+            <span className="port-map__sprite" aria-hidden="true">
+              <img src={sprite} alt="" />
+            </span>
+            <span className="port-map__berth">{berth}</span>
           </button>
         ))}
+        <div className="port-map__location">
+          <span aria-hidden="true">📍</span>
+          <span>{snapshot.port.name} - CE</span>
+        </div>
       </div>
     </section>
   );

@@ -38,7 +38,9 @@ test("renders_header_session_and_real_last_collection", async () => {
   renderApp();
 
   expect(screen.getByRole("button", { name: "Abrir menu" })).toBeInTheDocument();
-  expect(screen.getByText("AlertaM")).toBeInTheDocument();
+  expect(
+    screen.getByText("Alerta de Movimentações Marítimas"),
+  ).toBeInTheDocument();
   expect(await screen.findByText("Sessão válida")).toBeInTheDocument();
   expect(screen.getByText(/25\/09\/2026/)).toBeInTheDocument();
 });

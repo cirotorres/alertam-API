@@ -16,12 +16,14 @@ test("demo_bypasses_pairing_and_shows_arrival_and_departure_in_progress", async 
   render(<App />);
 
   expect(await screen.findByText("Modo demonstração")).toBeInTheDocument();
-  expect(
-    screen.getByRole("button", { name: /ATLANTIC DAWN, Berço 2/i }),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByRole("button", { name: /OCEAN STAR, Berço 7/i }),
-  ).toBeInTheDocument();
+  const arriving = screen.getByRole("button", {
+    name: /ATLANTIC DAWN, Berço 2/i,
+  });
+  const departing = screen.getByRole("button", {
+    name: /OCEAN STAR, Berço 7/i,
+  });
+  expect(arriving).toHaveClass("port-map__vessel--arriving");
+  expect(departing).toHaveClass("port-map__vessel--departing");
   expect(fetchMock).not.toHaveBeenCalled();
 });
 

@@ -9,13 +9,15 @@ type HeaderProps = {
   menuButtonRef: RefObject<HTMLButtonElement | null>;
 };
 
-function formatDateTime(value: string | null): string {
-  if (!value) return "Aguardando leitura";
+function formatTime(value: string | null): string {
+  if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
   }).format(date);
 }
 
@@ -41,15 +43,23 @@ export function Header({
         aria-label="Abrir menu"
         onClick={onMenu}
       >
-        ☰
+        <span aria-hidden="true">☰</span>
       </button>
+
       <div className="mobile-header__identity">
-        <strong>AlertaM</strong>
-        <span>Alerta de Movimentações Marítimas</span>
-      </div>
-      <div className="mobile-header__status">
-        <span>{sessionText}</span>
-        <time>{formatDateTime(lastCollectionAt)}</time>
+        <strong>Alerta de Movimentações Marítimas</strong>
+        <div className="mobile-header__status">
+          <span
+            className="mobile-header__session"
+            data-demo={demoMode ? "true" : "false"}
+          >
+            {sessionText}
+          </span>
+          <span className="mobile-header__separator" aria-hidden="true">|</span>
+          <span>
+            Última leitura: <time>{formatTime(lastCollectionAt)}</time>
+          </span>
+        </div>
       </div>
     </header>
   );

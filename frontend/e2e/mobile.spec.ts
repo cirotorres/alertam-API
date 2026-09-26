@@ -252,6 +252,24 @@ test("demo mode shows mocked maneuvers without calling the real api", async ({ p
     "/assets/navio_red.png",
   );
 
+  const arrivingAnimation = await arriving.locator("img").evaluate(
+    (element) => getComputedStyle(element).animationName,
+  );
+  const departingAnimation = await departing.locator("img").evaluate(
+    (element) => getComputedStyle(element).animationName,
+  );
+  const arrivingRingAnimation = await arriving
+    .locator(".port-map__sprite")
+    .evaluate((element) => getComputedStyle(element, "::before").animationName);
+  const departingRingAnimation = await departing
+    .locator(".port-map__sprite")
+    .evaluate((element) => getComputedStyle(element, "::before").animationName);
+
+  expect(arrivingAnimation).toContain("alertam-status-sprite");
+  expect(departingAnimation).toContain("alertam-status-sprite");
+  expect(arrivingRingAnimation).toContain("alertam-status-ring");
+  expect(departingRingAnimation).toContain("alertam-status-ring");
+
   await page.getByRole("button", { name: "Prev. desatracação" }).click();
   await expect(
     page.getByRole("heading", { name: "Previsão de desatracação" }),

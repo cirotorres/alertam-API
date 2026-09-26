@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 
-import type { ManeuverV1, VesselV1 } from "../api/contract";
+import type {
+  ManeuverV1,
+  MobileSnapshotV1,
+  VesselV1,
+} from "../api/contract";
 import type { BottomTab } from "../components/BottomNav";
 import { StatusCards } from "../components/StatusCards";
 import { PortMap } from "../features/map/PortMap";
@@ -27,6 +31,7 @@ export function MapPage() {
     if (active === "departures") return departureForecast(snapshot);
     return anchoredVessels(snapshot);
   }, [active, snapshot]);
+
   return (
     <>
       <h1 className="sr-only">Mapa operacional</h1>
@@ -47,17 +52,21 @@ export function MapPage() {
       <StatusCards status={snapshotState.status} data={snapshotState.data} />
 
       <section className="operational-list" aria-live="polite">
-        <h2>{tabTitle(active)}</h2>
+        <h2 className="sr-only">{tabTitle(active)}</h2>
         {content.length === 0 ? (
           <p className="empty-state">Nenhum item disponível nesta categoria.</p>
         ) : (
-          <ul>{content.map((item) => renderItem(active, item))}</ul>
+          <ul>
+            {content.map((item) =>
+              renderItem(active, item, snapshot, selectVessel),
+            )}
+          </ul>
         )}
       </section>
-
     </>
   );
 }
+
 function tabTitle(tab: BottomTab): string {
   return {
     maneuvers: "Manobras confirmadas",
@@ -67,30 +76,89 @@ function tabTitle(tab: BottomTab): string {
   }[tab];
 }
 
+function vesselSprite(vessel: VesselV1): string {
+  if (vessel.status === "ATRACANDO") return "/assets/navio_green.png";
+  if (vessel.status === "DESATRACANDO") return "/assets/navio_red.png";
+  return "/assets/navio.png";
+}
+
 function renderItem(
   tab: BottomTab,
   item: ManeuverV1 | VesselV1,
+  snapshot: MobileSnapshotV1 | null,
+  onSelect: (vessel: VesselV1) => void,
 ) {
   if ("vessel_name" in item) {
+    const vessel =
+      snapshot?.vessels.find((candidate) => candidate.name === item.vessel_name) ??
+      null;
+    const movement =
+      item.type === "ATRACACAO" ? "arrival" : "departure";
+
     return (
-      <li key={item.id} className="operational-card">
-        <strong>{item.vessel_name}</strong>
-        <span>
-          {item.type === "ATRACACAO" ? "ATR" : "DES"} · Berço {item.berth ?? "—"}
-        </span>
-        <small>{item.pob ?? item.detected_at}</small>
+      <li key={item.id}>
+        <button
+          type="button"
+          className="operational-card"
+          onClick={() => vessel && onSelect(vessel)}
+          disabled={!vessel}
+        >
+          <span
+            className={`operational-card__dot operational-card__dot--${movement}`}
+            aria-hidden="true"
+          />
+          <img
+            className="operational-card__ship"
+            src={
+              vessel
+                ? vesselSprite(vessel)
+                : item.type === "ATRACACAO"
+                  ? "/assets/navio_green.png"
+                  : "/assets/navio_red.png"
+            }
+            alt=""
+            aria-hidden="true"
+          />
+          <span className="operational-card__body">
+            <strong>{item.vessel_name}</strong>
+            <span>
+              {item.pob ? `POB ${item.pob} · ` : ""}
+              B: {item.berth ?? "—"}
+            </span>
+          </span>
+          <span className="operational-card__chevron" aria-hidden="true">›</span>
+        </button>
       </li>
     );
   }
 
   const time = tab === "anchored" ? item.eta : item.etb_ets;
+
   return (
-    <li key={`${item.name}-${item.berth ?? "x"}`} className="operational-card">
-      <strong>{item.name}</strong>
-      <span>{time ?? "Sem previsão"} · Berço {item.berth ?? "—"}</span>
-      {tab === "anchored" && item.status === "ATRACANDO" ? (
-        <small>Atracando</small>
-      ) : null}
+    <li key={`${item.name}-${item.berth ?? "x"}`}>
+      <button
+        type="button"
+        className="operational-card"
+        onClick={() => onSelect(item)}
+      >
+        <span
+          className={`operational-card__dot operational-card__dot--${item.status.toLowerCase()}`}
+          aria-hidden="true"
+        />
+        <img
+          className="operational-card__ship"
+          src={vesselSprite(item)}
+          alt=""
+          aria-hidden="true"
+        />
+        <span className="operational-card__body">
+          <strong>{item.name}</strong>
+          <span>
+            {time ?? "Sem previsão"} · B: {item.berth ?? "—"}
+          </span>
+        </span>
+        <span className="operational-card__chevron" aria-hidden="true">›</span>
+      </button>
     </li>
   );
 }

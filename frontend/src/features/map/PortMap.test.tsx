@@ -14,6 +14,7 @@ test("positions_vessel_with_percentages_and_emits_selection", () => {
   render(<PortMap snapshot={snapshot} onSelectVessel={onSelect} />);
 
   const pin = screen.getByRole("button", { name: /NAVIO A.*Berço 2/i });
+  expect(pin).toHaveClass("port-map__vessel--arriving");
   expect(pin).toHaveStyle({ left: "41%", top: "64%" });
   expect(pin.style.left).not.toContain("px");
   expect(screen.getByRole("img", { name: /Mapa esquemático/i })).toHaveAttribute("src", "/assets/piers.png");
