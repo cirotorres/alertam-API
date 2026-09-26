@@ -451,17 +451,36 @@ Regras:
 - `age_seconds`
 - `collector_online`
 - `stale_after_seconds`
-- [ ] RED: Bearer inválido ou VIEW_SECRET ausente retorna 401 genérico.
-- [ ] RED: dispositivo sem snapshot retorna 404 / `snapshot_not_available`.
-- [ ] RED: GET válido devolve snapshot completo + meta.
-- [ ] RED: 119 s → online.
-- [ ] RED: 120 s → offline.
-- [ ] RED: snapshot offline continua sendo devolvido.
-- [ ] RED: cálculo usa apenas `received_at`.
-- [ ] GREEN: implementar leitura e cálculo.
-- [ ] GREEN: rodar testes da Task 8.
-- [ ] REFACTOR: relógio injetável/testável.
-- [ ] REVIEW: `generated_at` não influencia online/offline.
+- [x] RED/GREEN: Bearer inválido, ausente ou VIEW_SECRET não provisionado retorna 401 genérico.
+- [x] RED/GREEN: dispositivo autenticado sem snapshot retorna 404 / `snapshot_not_available`.
+- [x] RED/GREEN: GET válido devolve snapshot completo + meta.
+- [x] RED/GREEN: 119 s → online.
+- [x] RED/GREEN: 120 s → offline.
+- [x] RED/GREEN: snapshot offline continua sendo devolvido.
+- [x] RED/GREEN: cálculo usa apenas `received_at`.
+- [x] RED/GREEN: falha de persistência na leitura retorna 503 sem inventar dados.
+- [x] GREEN: leitura e cálculo implementados.
+- [x] GREEN: testes da Task 8 executados.
+- [x] REFACTOR: relógio e stale threshold são injetáveis/testáveis.
+- [x] REVIEW: `generated_at` não influencia online/offline.
+
+### Registro da Task 8 — 2026-09-25
+
+- Criado `SnapshotReadService` para autenticação por `VIEW_SECRET`, leitura e cálculo de disponibilidade.
+- Criado GET `/api/v1/devices/{device_id}/snapshot` com `Authorization: Bearer <VIEW_SECRET>`.
+- Dispositivo inexistente, VIEW_SECRET ausente no banco e token incorreto são indistinguíveis externamente: todos retornam 401 genérico.
+- Dispositivo autenticado sem snapshot retorna 404 / `snapshot_not_available`.
+- Resposta de sucesso contém `snapshot` validado como `MobileSnapshotV1` e envelope `meta`.
+- `age_seconds` é calculado exclusivamente por `now_utc - received_at`.
+- Limite validado: 119 segundos permanece online; 120 segundos já é offline.
+- Snapshot offline continua sendo devolvido integralmente.
+- Alterar `generated_at` para valor histórico não altera o estado online/offline.
+- Relógio e `stale_after_seconds` são injetáveis no service/router/app para testes determinísticos.
+- `SupabaseDeviceRepository.get_snapshot()` lê snapshot + metadados úteis da linha única do dispositivo.
+- Linha sem snapshot e dispositivo inexistente retornam `None` no repository; a autenticação prévia do service define a semântica pública.
+- Falha de leitura no repository é convertida para 503 / `persistence_unavailable`.
+- Nenhum cache de snapshot em memória foi introduzido para o caminho Supabase/serverless.
+- Verificação final da etapa: suíte completa com 123 testes verdes, incluindo integrações PostgreSQL e warnings tratados como erro.
 
 ## Task 9 — Router v1, health, CORS e observabilidade
 

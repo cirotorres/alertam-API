@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Callable
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -13,6 +16,9 @@ from app.repositories.memory import MemoryDeviceRepository
 
 def create_app(
     repository: DevicesRepository | None = None,
+    *,
+    stale_after_seconds: int = 120,
+    clock: Callable[[], datetime] | None = None,
 ) -> FastAPI:
     application = FastAPI(
         title="AlertaM Mobile API",
@@ -20,7 +26,11 @@ def create_app(
     )
     devices_repository = repository or MemoryDeviceRepository()
     application.include_router(
-        create_snapshot_router(devices_repository)
+        create_snapshot_router(
+            devices_repository,
+            stale_after_seconds=stale_after_seconds,
+            clock=clock,
+        )
     )
     application.include_router(
         create_access_router(devices_repository)

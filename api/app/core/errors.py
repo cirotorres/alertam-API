@@ -72,3 +72,12 @@ class InvalidViewSecretError(ApiError):
             code="invalid_view_secret",
             message="Segredo de leitura inválido.",
         )
+
+
+class SnapshotNotAvailableError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=404,
+            code="snapshot_not_available",
+            message="Ainda não há snapshot disponível.",
+        )

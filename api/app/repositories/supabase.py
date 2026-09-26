@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 import httpx
 
@@ -11,6 +12,7 @@ from app.repositories.devices import (
     DeviceAuthRecord,
     PersistenceUnavailableError,
     SnapshotCandidate,
+    StoredSnapshot,
 )
 
 
@@ -68,6 +70,62 @@ class SupabaseDeviceRepository:
                     if row.get("view_secret_hash") is None
                     else str(row["view_secret_hash"])
                 ),
+            )
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def get_snapshot(
+        self,
+        device_id: str,
+    ) -> StoredSnapshot | None:
+        try:
+            response = self._client.get(
+                f"{self._base_url}/rest/v1/devices",
+                headers=self._headers(),
+                params={
+                    "select": (
+                        "device_id,snapshot,snapshot_schema_version,"
+                        "boot_id,sequence,generated_at,received_at"
+                    ),
+                    "device_id": f"eq.{device_id}",
+                    "limit": "1",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise ValueError("Resposta de snapshot inválida.")
+            if not data:
+                return None
+            if len(data) != 1 or not isinstance(data[0], dict):
+                raise ValueError("Resposta de snapshot inválida.")
+
+            row = data[0]
+            if row.get("snapshot") is None:
+                return None
+            if not isinstance(row["snapshot"], dict):
+                raise TypeError("Snapshot persistido inválido.")
+
+            generated_at = self._parse_datetime(row.get("generated_at"))
+            received_at = self._parse_datetime(row.get("received_at"))
+            if generated_at is None or received_at is None:
+                raise ValueError("Metadados de snapshot ausentes.")
+
+            return StoredSnapshot(
+                device_id=str(row["device_id"]),
+                snapshot=row["snapshot"],
+                snapshot_schema_version=int(
+                    row["snapshot_schema_version"]
+                ),
+                boot_id=UUID(str(row["boot_id"])),
+                sequence=int(row["sequence"]),
+                generated_at=generated_at,
+                received_at=received_at,
             )
         except (
             httpx.HTTPError,
