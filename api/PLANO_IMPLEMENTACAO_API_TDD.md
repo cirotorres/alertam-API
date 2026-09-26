@@ -274,15 +274,32 @@ Tabela `devices`:
 - `received_at`
 - timestamps de criação/atualização e rotação
 
-- [ ] RED: fake repository representa dispositivo inexistente, vazio e com snapshot.
-- [ ] RED: interface não aceita segredo em texto puro.
-- [ ] GREEN: definir DTOs/Protocol de persistência.
-- [ ] RED: provisionamento gera `DEVICE_SECRET` com `secrets.token_urlsafe(32)` ou entropia equivalente, mostra o segredo uma única vez e persiste somente seu SHA-256.
-- [ ] RED: provisionamento não sobrescreve silenciosamente um `device_id` já existente.
-- [ ] GREEN: migration habilita RLS e não cria policy pública.
-- [ ] GREEN: criar script administrativo local de provisionamento, sem endpoint público de cadastro.
-- [ ] GREEN: rodar testes da Task 4.
-- [ ] REVIEW: routers futuros não conhecem SQL e nenhum fluxo público cria dispositivos.
+- [x] RED/GREEN: repository em memória representa dispositivo inexistente, vazio e com snapshot.
+- [x] RED/GREEN: DTOs de autenticação persistem somente hashes, nunca segredo em texto puro.
+- [x] GREEN: DTOs e Protocol de persistência definidos.
+- [x] RED/GREEN: provisionamento gera `DEVICE_SECRET` com 32 bytes de entropia e persiste somente seu SHA-256.
+- [x] RED/GREEN: provisionamento não sobrescreve silenciosamente um `device_id` já existente.
+- [x] RED/GREEN: CLI administrativo mostra o segredo uma única vez e gera SQL contendo apenas o hash.
+- [x] GREEN: migration habilita RLS e não cria policy pública.
+- [x] GREEN: script administrativo local criado, sem endpoint público de cadastro.
+- [x] GREEN: testes da Task 4 executados.
+- [x] REVIEW: routers futuros não conhecem SQL e nenhum fluxo público cria dispositivos.
+
+### Registro da Task 4 — 2026-09-25
+
+- Criado `DeviceAuthRecord` com somente `device_secret_hash` e `view_secret_hash`.
+- Criado `StoredSnapshot`, `SnapshotCandidate`, `AcceptSnapshotResult` e enum de resultados para preparar a fronteira da Task 5.
+- Criado `DevicesRepository` como Protocol para autenticação, leitura, rotação e aceitação atômica futura.
+- **Ruling:** o contrato ganhou `create_device()`, necessário para o provisionamento administrativo. Custo se essa decisão mudar: adaptação pequena do provisionador e dos repositories.
+- `MemoryDeviceRepository` passou a suportar criação sem overwrite, leitura de snapshot e rotação de hash, preservando compatibilidade com os testes anteriores.
+- Migration `001_devices.sql` cria uma única linha por dispositivo, habilita RLS e não cria policy pública.
+- Migration revoga acesso direto de `anon` e `authenticated`; a futura API usará apenas credencial privada de servidor.
+- `provision_device()` gera segredo de 32 bytes, entrega o plaintext apenas ao chamador e persiste somente SHA-256.
+- CLI administrativo permite gerar o segredo hoje e emitir o `INSERT` seguro para execução manual futura no SQL Editor do Supabase.
+- A saída SQL nunca contém o segredo em texto puro.
+- Revisão da etapa: nenhuma rota pública de cadastro foi criada e o mock local não substitui a atomicidade PostgreSQL da Task 5.
+- Verificação final da etapa: suíte completa da API com 52 testes verdes antes do commit.
+
 ## Task 5 — Operação atômica de ordenação e idempotência
 
 **Entrega:** uma única operação PostgreSQL decide se o snapshot é aceito, repetido ou conflitante.
