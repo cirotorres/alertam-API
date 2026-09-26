@@ -1401,7 +1401,7 @@ textarea {
 
 .port-map__canvas {
   aspect-ratio: auto;
-  height: clamp(220px, 32dvh, 286px);
+  height: clamp(225px, 35dvh, 305px);
 }
 
 .port-map__background {
