@@ -17,7 +17,6 @@ import { VesselSheet } from "../features/vessels/VesselSheet";
 type AppShellProps = {
   pairing: Pairing;
   onPairingCleared?: () => void;
-  onInstall?: () => void;
 };
 
 export type ShellOutletContext = {
@@ -29,7 +28,6 @@ export type ShellOutletContext = {
 export function AppShell({
   pairing,
   onPairingCleared = () => undefined,
-  onInstall = () => undefined,
 }: AppShellProps) {
   const snapshotState = useSnapshotState();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -87,7 +85,7 @@ export function AppShell({
         onMenu={openDrawer}
         menuButtonRef={menuButtonRef}
       />
-      <Drawer open={drawerOpen} onClose={closeDrawer} onInstall={onInstall} />
+      <Drawer open={drawerOpen} onClose={closeDrawer} />
       <main className="mobile-content">
         <Outlet context={outletContext} />
       </main>

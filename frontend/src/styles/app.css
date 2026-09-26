@@ -610,3 +610,39 @@ textarea {
   font-weight: 700;
   cursor: pointer;
 }
+
+
+.install-help {
+  position: fixed;
+  z-index: 80;
+  left: 50%;
+  top: 50%;
+  width: min(calc(100% - 2rem), 24rem);
+  padding: var(--space-4);
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--alertam-border);
+  border-radius: var(--radius-md);
+  background: var(--alertam-surface);
+  box-shadow: 0 1rem 3rem rgb(9 27 39 / 24%);
+}
+
+.install-help h2 {
+  margin: 0 0 var(--space-2);
+  color: var(--alertam-blue-900);
+}
+
+.install-help p {
+  color: var(--alertam-muted);
+  line-height: 1.5;
+}
+
+.install-help button {
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--alertam-blue-900);
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}

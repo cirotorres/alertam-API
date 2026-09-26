@@ -1,14 +1,18 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+
+import { InstallHelp } from "../features/install/InstallHelp";
+import { usePwaInstall } from "../features/install/usePwaInstall";
 
 type DrawerProps = {
   open: boolean;
   onClose: () => void;
-  onInstall: () => void;
 };
 
-export function Drawer({ open, onClose, onInstall }: DrawerProps) {
+export function Drawer({ open, onClose }: DrawerProps) {
   const firstLinkRef = useRef<HTMLAnchorElement>(null);
+  const [installHelpOpen, setInstallHelpOpen] = useState(false);
+  const pwa = usePwaInstall();
 
   useEffect(() => {
     if (!open) return;
@@ -20,32 +24,56 @@ export function Drawer({ open, onClose, onInstall }: DrawerProps) {
     return () => document.removeEventListener("keydown", handleKey);
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open && !installHelpOpen) return null;
+  const handleInstall = async () => {
+    if (pwa.state === "installed") return;
+    if (pwa.state === "available") {
+      await pwa.install();
+      onClose();
+      return;
+    }
+    setInstallHelpOpen(true);
+    onClose();
+  };
+
   return (
     <>
-      <button
-        type="button"
-        className="drawer-overlay"
-        aria-label="Fechar menu"
-        onClick={onClose}
+      {open ? (
+        <>
+          <button
+            type="button"
+            className="drawer-overlay"
+            aria-label="Fechar menu"
+            onClick={onClose}
+          />
+          <aside className="drawer" role="dialog" aria-modal="true" aria-label="Menu principal">
+            <div className="drawer__brand">
+              <strong>AlertaM</strong>
+              <span>Consulta mobile</span>
+            </div>
+            <nav aria-label="Navegação principal">
+              <Link ref={firstLinkRef} to="/" onClick={onClose}>Mapa</Link>
+              <Link to="/alertas" onClick={onClose}>Alertas</Link>
+              <Link to="/historico" onClick={onClose}>Histórico</Link>
+              <Link to="/config" onClick={onClose}>Config.</Link>
+            </nav>
+            <div className="drawer__separator" />
+            <button
+              type="button"
+              disabled={pwa.state === "installed"}
+              onClick={() => void handleInstall()}
+            >
+              {pwa.state === "installed" ? "Aplicativo instalado" : "Instalar aplicativo"}
+            </button>
+            <Link to="/sobre" onClick={onClose}>Sobre</Link>
+          </aside>
+        </>
+      ) : null}
+      <InstallHelp
+        open={installHelpOpen}
+        state={pwa.state}
+        onClose={() => setInstallHelpOpen(false)}
       />
-      <aside className="drawer" role="dialog" aria-modal="true" aria-label="Menu principal">
-        <div className="drawer__brand">
-          <strong>AlertaM</strong>
-          <span>Consulta mobile</span>
-        </div>
-        <nav aria-label="Navegação principal">
-          <Link ref={firstLinkRef} to="/" onClick={onClose}>Mapa</Link>
-          <Link to="/alertas" onClick={onClose}>Alertas</Link>
-          <Link to="/historico" onClick={onClose}>Histórico</Link>
-          <Link to="/config" onClick={onClose}>Config.</Link>
-        </nav>
-        <div className="drawer__separator" />
-        <button type="button" onClick={() => { onInstall(); onClose(); }}>
-          Instalar aplicativo
-        </button>
-        <Link to="/sobre" onClick={onClose}>Sobre</Link>
-      </aside>
     </>
   );
 }

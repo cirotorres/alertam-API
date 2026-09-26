@@ -11,13 +11,11 @@ import { AppShell } from "./AppShell";
 type AppRoutesProps = {
   pairing: Pairing;
   onPairingCleared?: () => void;
-  onInstall?: () => void;
 };
 
 export function AppRoutes({
   pairing,
   onPairingCleared,
-  onInstall,
 }: AppRoutesProps) {
   return (
     <Routes>
@@ -26,7 +24,6 @@ export function AppRoutes({
           <AppShell
             pairing={pairing}
             onPairingCleared={onPairingCleared}
-            onInstall={onInstall}
           />
         }
       >
