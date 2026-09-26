@@ -118,3 +118,64 @@ Foram executados e validados:
 - stack production com Supabase fictício apenas para startup: API healthy e proxy em `:8080/api/v1/health`.
 
 Nenhuma chamada ao Supabase real foi feita e nenhum segredo de produção foi criado.
+
+## Migrations
+
+As migrations ficam em `api/supabase/migrations/` e são numeradas em ordem:
+
+```text
+001_devices.sql
+002_accept_snapshot_rpc.sql
+003_rotate_view_secret_rpc.sql
+...
+```
+
+O runner mantém `public.schema_migrations` e aplica cada arquivo somente uma vez.
+
+### Desenvolvimento
+
+Aplicar somente migrations pendentes:
+
+```bash
+make migrate
+```
+
+Aplicar pendentes e reaplicar o seed local:
+
+```bash
+make migrate-seed
+```
+
+Listar migrations:
+
+```bash
+make migrate-list
+```
+
+Criar a próxima migration numerada:
+
+```bash
+make migration-new NAME=add_alerts
+```
+
+Exemplo resultante:
+
+```text
+api/supabase/migrations/004_add_alerts.sql
+```
+
+### Produção / Supabase
+
+Além das credenciais HTTP da API, `api/.env.prod` precisa da conexão PostgreSQL:
+
+```env
+SUPABASE_DB_URL=postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres
+```
+
+Depois:
+
+```bash
+make prod-migrate
+```
+
+O comando usa a mesma tabela `schema_migrations` e portanto aplica somente arquivos ainda não registrados. A URL PostgreSQL é usada apenas pelo processo de migration e não pela API em runtime.

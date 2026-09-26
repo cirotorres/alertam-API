@@ -4,11 +4,13 @@ SHELL := /bin/bash
 DEV_COMPOSE := docker compose -f docker-compose.dev.yml
 PROD_COMPOSE := docker compose -f docker-compose.prod.yml
 PROD_ENV := api/.env.prod
+MIGRATIONS_DIR := api/supabase/migrations
 
 .PHONY: help run dev dev-up dev-down dev-reset dev-logs dev-ps dev-config dev-info \
         dev-db-shell dev-api-shell api-run sync test test-unit test-contract \
-        test-integration test-all docker-build prod-env prod-check prod prod-up \
-        prod-down prod-logs prod-ps prod-config prod-rebuild
+        test-integration test-all docker-build migrate migrate-dev migrate-seed \
+        migrate-list migration-new prod-migrate prod-migrate-check prod-env prod-check \
+        prod prod-up prod-down prod-logs prod-ps prod-config prod-rebuild
 
 help:
 	@printf '%s\n' \
@@ -24,6 +26,13 @@ help:
 	  '  make dev-info       Mostra URLs e credenciais locais de teste' \
 	  '  make dev-db-shell   Abre psql no banco dev' \
 	  '  make dev-api-shell  Abre shell no container da API' \
+	  '' \
+	  'MIGRATIONS' \
+	  '  make migrate        Aplica somente as migrations pendentes no banco dev' \
+	  '  make migrate-seed   Aplica migrations e reaplica o seed dev' \
+	  '  make migrate-list   Lista migrations SQL em ordem' \
+	  '  make migration-new NAME=nome  Cria a próxima migration numerada' \
+	  '  make prod-migrate   Aplica migrations no PostgreSQL do Supabase' \
 	  '' \
 	  'API LOCAL (sem Docker)' \
 	  '  make sync           Sincroniza dependências com uv' \
@@ -89,6 +98,59 @@ dev-db-shell:
 
 dev-api-shell:
 	$(DEV_COMPOSE) exec api /bin/sh
+
+migrate: migrate-dev
+
+migrate-dev:
+	$(DEV_COMPOSE) up -d db
+	$(DEV_COMPOSE) run --rm db-migrate
+
+migrate-seed: migrate-dev
+	$(DEV_COMPOSE) run --rm --no-deps db-seed
+
+migrate-list:
+	@find "$(MIGRATIONS_DIR)" -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | sort
+
+migration-new:
+	@test -n "$(NAME)" || { \
+		echo "Erro: informe NAME. Ex.: make migration-new NAME=add_alerts"; \
+		exit 1; \
+	}
+	@set -e; \
+	slug="$$(printf '%s' "$(NAME)" | tr '[:upper:]' '[:lower:]' | tr ' ' '_' | tr -cd 'a-z0-9_-')"; \
+	test -n "$$slug" || { echo 'Erro: NAME resultou em nome vazio.'; exit 1; }; \
+	last="$$(find "$(MIGRATIONS_DIR)" -maxdepth 1 -type f -name '[0-9][0-9][0-9]_*.sql' -printf '%f\n' | sort | tail -n 1 | cut -d_ -f1)"; \
+	if [ -z "$$last" ]; then next=1; else next=$$((10#$$last + 1)); fi; \
+	number="$$(printf '%03d' "$$next")"; \
+	filename="$$(printf '%s_%s.sql' "$$number" "$$slug")"; \
+	file="$(MIGRATIONS_DIR)/$$filename"; \
+	test ! -e "$$file" || { echo "Erro: $$file já existe."; exit 1; }; \
+	printf '%s\n' "-- Migration $$number: $$slug" "" > "$$file"; \
+	echo "Criada: $$file"
+
+prod-migrate-check:
+	@test -f "$(PROD_ENV)" || { \
+		echo "Erro: $(PROD_ENV) não existe. Execute 'make prod-env'."; \
+		exit 1; \
+	}
+	@db_url="$$(sed -n 's/^SUPABASE_DB_URL=//p' "$(PROD_ENV)" | tail -n 1)"; \
+	test -n "$$db_url" || { \
+		echo 'Erro: SUPABASE_DB_URL precisa ser preenchida em api/.env.prod.'; \
+		exit 1; \
+	}; \
+	case "$$db_url" in \
+	  *'<project-ref>'*|*'<password>'*) \
+	    echo 'Erro: SUPABASE_DB_URL ainda contém placeholder.'; exit 1 ;; \
+	esac
+
+prod-migrate: prod-migrate-check
+	@db_url="$$(sed -n 's/^SUPABASE_DB_URL=//p' "$(PROD_ENV)" | tail -n 1)"; \
+	docker run --rm \
+	  -e DATABASE_URL="$$db_url" \
+	  -v "$(CURDIR)/$(MIGRATIONS_DIR):/migrations:ro" \
+	  -v "$(CURDIR)/api/scripts/migrate.sh:/scripts/migrate.sh:ro" \
+	  postgres:16-alpine \
+	  /bin/sh /scripts/migrate.sh
 
 sync:
 	cd api && uv sync --extra dev

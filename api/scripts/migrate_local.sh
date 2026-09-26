@@ -23,7 +23,4 @@ exception when duplicate_object then null;
 end $$;
 SQL
 
-for migration in /migrations/*.sql; do
-    echo "Aplicando ${migration}..."
-    psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
-done
+exec /bin/sh /scripts/migrate.sh

@@ -27,6 +27,7 @@ services:
       DATABASE_URL: postgresql://alertam:alertam@db:5432/alertam_dev
     volumes:
       - ./api/supabase/migrations:/migrations:ro
+      - ./api/scripts/migrate.sh:/scripts/migrate.sh:ro
       - ./api/scripts/migrate_local.sh:/scripts/migrate_local.sh:ro
     command: ["/bin/sh", "/scripts/migrate_local.sh"]
     restart: "no"
