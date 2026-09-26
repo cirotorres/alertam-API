@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
-import { BottomNav, type BottomTab } from "../components/BottomNav";
+import type { ManeuverV1, VesselV1 } from "../api/contract";
+import type { BottomTab } from "../components/BottomNav";
 import { StatusCards } from "../components/StatusCards";
 import { PortMap } from "../features/map/PortMap";
 import {
@@ -12,11 +13,14 @@ import {
 import { useShellContext } from "../app/AppShell";
 
 export function MapPage() {
-  const { snapshotState, selectVessel } = useShellContext();
-  const [active, setActive] = useState<BottomTab>("maneuvers");
+  const {
+    snapshotState,
+    selectVessel,
+    activeBottomTab: active,
+  } = useShellContext();
   const snapshot = snapshotState.data?.snapshot ?? null;
 
-  const content = useMemo(() => {
+  const content = useMemo<Array<ManeuverV1 | VesselV1>>(() => {
     if (!snapshot) return [];
     if (active === "maneuvers") return confirmedManeuvers(snapshot);
     if (active === "arrivals") return arrivalForecast(snapshot);
@@ -51,7 +55,6 @@ export function MapPage() {
         )}
       </section>
 
-      <BottomNav active={active} onChange={setActive} />
     </>
   );
 }
@@ -64,24 +67,30 @@ function tabTitle(tab: BottomTab): string {
   }[tab];
 }
 
-function renderItem(tab: BottomTab, item: any) {
-  if (tab === "maneuvers") {
+function renderItem(
+  tab: BottomTab,
+  item: ManeuverV1 | VesselV1,
+) {
+  if ("vessel_name" in item) {
     return (
       <li key={item.id} className="operational-card">
         <strong>{item.vessel_name}</strong>
-        <span>{item.type === "ATRACACAO" ? "ATR" : "DES"} · Berço {item.berth ?? "—"}</span>
+        <span>
+          {item.type === "ATRACACAO" ? "ATR" : "DES"} · Berço {item.berth ?? "—"}
+        </span>
         <small>{item.pob ?? item.detected_at}</small>
       </li>
     );
   }
 
-  const time =
-    tab === "anchored" ? item.eta : item.etb_ets;
+  const time = tab === "anchored" ? item.eta : item.etb_ets;
   return (
     <li key={`${item.name}-${item.berth ?? "x"}`} className="operational-card">
       <strong>{item.name}</strong>
       <span>{time ?? "Sem previsão"} · Berço {item.berth ?? "—"}</span>
-      {tab === "anchored" && item.status === "ATRACANDO" ? <small>Atracando</small> : null}
+      {tab === "anchored" && item.status === "ATRACANDO" ? (
+        <small>Atracando</small>
+      ) : null}
     </li>
   );
 }

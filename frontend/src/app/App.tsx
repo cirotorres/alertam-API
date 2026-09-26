@@ -9,7 +9,10 @@ export function App() {
     <PairingGate>
       {(pairing, resetPairing) => (
         <BrowserRouter>
-          <SnapshotProvider pairing={pairing}>
+          <SnapshotProvider
+            pairing={pairing}
+            onAccessRevoked={resetPairing}
+          >
             <AppRoutes
               pairing={pairing}
               onPairingCleared={resetPairing}

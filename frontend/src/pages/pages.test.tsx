@@ -66,3 +66,17 @@ test.each([
   render(<StatusCards status={status} data={status === "online" || status === "stale" || status === "offline" ? response : null} />);
   expect(screen.getByRole("status")).toHaveTextContent(label);
 });
+
+
+test("alerts_and_history_keep_operational_footer_and_tab_returns_to_map", async () => {
+  renderRoute("/alertas");
+
+  expect(await screen.findByRole("heading", { name: "Alertas" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Manobras confirmadas" })).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Prev. atracação" }));
+
+  expect(
+    await screen.findByRole("heading", { name: "Previsão de atracação" }),
+  ).toBeInTheDocument();
+});

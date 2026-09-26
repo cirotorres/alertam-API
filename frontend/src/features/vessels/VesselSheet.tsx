@@ -37,7 +37,12 @@ export function VesselSheet({
           <p className="vessel-sheet__eyebrow">Ficha do navio</p>
           <h2>{vessel.name}</h2>
         </div>
-        <button type="button" onClick={onClose} aria-label="Fechar ficha do navio">
+        <button
+          type="button"
+          autoFocus
+          onClick={onClose}
+          aria-label="Fechar ficha do navio"
+        >
           ×
         </button>
       </header>

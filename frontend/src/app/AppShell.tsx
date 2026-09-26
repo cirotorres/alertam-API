@@ -4,9 +4,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { Outlet, useOutletContext } from "react-router-dom";
+import {
+  Outlet,
+  useLocation,
+  useNavigate,
+  useOutletContext,
+} from "react-router-dom";
 
 import type { VesselV1 } from "../api/contract";
+import { BottomNav, type BottomTab } from "../components/BottomNav";
 import { Drawer } from "../components/Drawer";
 import { Header } from "../components/Header";
 import type { Pairing } from "../features/pairing/pairing";
@@ -22,6 +28,8 @@ type AppShellProps = {
 export type ShellOutletContext = {
   pairing: Pairing;
   snapshotState: SnapshotState;
+  activeBottomTab: BottomTab;
+  setActiveBottomTab: (tab: BottomTab) => void;
   selectVessel: (vessel: VesselV1) => void;
   onPairingCleared: () => void;
 };
@@ -30,8 +38,12 @@ export function AppShell({
   onPairingCleared = () => undefined,
 }: AppShellProps) {
   const snapshotState = useSnapshotState();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedVessel, setSelectedVessel] = useState<VesselV1 | null>(null);
+  const [activeBottomTab, setActiveBottomTab] =
+    useState<BottomTab>("maneuvers");
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const vesselTriggerRef = useRef<HTMLElement | null>(null);
 
@@ -74,8 +86,21 @@ export function AppShell({
   const outletContext: ShellOutletContext = {
     pairing,
     snapshotState,
+    activeBottomTab,
+    setActiveBottomTab,
     selectVessel,
     onPairingCleared,
+  };
+
+  const showBottomNav = ["/", "/alertas", "/historico"].includes(
+    location.pathname,
+  );
+
+  const handleBottomTabChange = (tab: BottomTab) => {
+    setActiveBottomTab(tab);
+    if (location.pathname !== "/") {
+      navigate("/");
+    }
   };
   return (
     <div className="mobile-app">
@@ -89,6 +114,12 @@ export function AppShell({
       <main className="mobile-content">
         <Outlet context={outletContext} />
       </main>
+      {showBottomNav ? (
+        <BottomNav
+          active={activeBottomTab}
+          onChange={handleBottomTabChange}
+        />
+      ) : null}
       {selectedVessel ? (
         <>
           <button

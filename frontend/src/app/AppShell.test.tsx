@@ -81,3 +81,16 @@ test("escape_closes_vessel_sheet_and_returns_focus_to_trigger", async () => {
   await waitFor(() => expect(screen.queryByRole("dialog", { name: /Ficha do navio/i })).not.toBeInTheDocument());
   expect(vessel).toHaveFocus();
 });
+
+
+test("install_action_opens_browser_specific_help_when_native_prompt_is_unavailable", async () => {
+  renderApp();
+
+  fireEvent.click(screen.getByRole("button", { name: "Abrir menu" }));
+  fireEvent.click(screen.getByRole("button", { name: "Instalar aplicativo" }));
+
+  expect(
+    await screen.findByRole("dialog", { name: "Instalar aplicativo" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/não está disponível neste navegador/i)).toBeInTheDocument();
+});

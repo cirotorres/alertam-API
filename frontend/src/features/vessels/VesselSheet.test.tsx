@@ -20,6 +20,7 @@ test("renders_real_vessel_fields_without_fake_photo", () => {
   render(<VesselSheet vessel={vessel} open onClose={onClose} />);
 
   expect(screen.getByRole("dialog", { name: /NAVIO A/i })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Fechar ficha do navio" })).toHaveFocus();
   for (const value of ["1234567", "ATRACANDO", "25/09 12:00", "Berço 2", "SANTOS", "R1, R2", "PPAA"]) {
     expect(screen.getByText(value, { exact: false })).toBeInTheDocument();
   }
