@@ -369,16 +369,37 @@ Regras:
 - schema não suportado → 422 / `unsupported_snapshot_schema`;
 - persistência temporariamente indisponível → 503.
 
-- [ ] RED: credencial inválida retorna 401 genérico.
-- [ ] RED: payload válido chega a `accept_snapshot_atomic`.
-- [ ] RED: resposta não devolve snapshot completo.
-- [ ] RED: repetição idempotente retorna 200.
-- [ ] RED: conflitos retornam 409 correto.
-- [ ] RED: erro de repository nunca vira sucesso.
-- [ ] GREEN: implementar service e router mínimos.
-- [ ] GREEN: rodar testes do POST.
-- [ ] REFACTOR: regra no service; HTTP no router.
-- [ ] REVIEW: comparar com `SnapshotHttpClient` da 017.
+- [x] RED/GREEN: credencial inválida retorna 401 genérico.
+- [x] RED/GREEN: payload válido chega a `accept_snapshot_atomic`.
+- [x] RED/GREEN: resposta não devolve snapshot completo.
+- [x] RED/GREEN: repetição idempotente retorna 200 preservando `received_at`.
+- [x] RED/GREEN: conflitos retornam 409 com código correto.
+- [x] RED/GREEN: erro de repository nunca vira sucesso e retorna 503.
+- [x] RED/GREEN: versão desconhecida retorna 422 / `unsupported_snapshot_schema`.
+- [x] RED/GREEN: schema ausente não é confundido com versão não suportada.
+- [x] RED/GREEN: autenticação inválida é resolvida antes da validação do body.
+- [x] GREEN: service e router mínimos implementados.
+- [x] GREEN: testes do POST executados.
+- [x] REFACTOR: regra de negócio permanece no service; parsing HTTP permanece no router/dependency.
+- [x] REVIEW: endpoint comparado com o `SnapshotHttpClient` da 017.
+
+### Registro da Task 6 — 2026-09-25
+
+- Criado `SnapshotService` para autenticação do dispositivo e mapeamento dos resultados de persistência.
+- Criado `AuthenticatedDevice` como contexto explícito entre a dependency autenticada e a gravação do snapshot.
+- Criado `POST /api/v1/devices/{device_id}/snapshot` com `Authorization: Device <secret>`.
+- O router interpreta o header; o service valida o segredo contra o hash persistido.
+- **Ruling:** autenticação passou a ser dependency da rota para ocorrer antes da validação Pydantic do body, conforme a ordem definida na SPEC 018. Custo se essa ordem mudar: simplificação pequena do router.
+- Payload inválido com credencial inválida retorna 401, evitando revelar detalhes do contrato antes da autenticação.
+- Sucesso e retry idempotente retornam somente `ok + received_at`; o snapshot completo nunca volta no POST.
+- `out_of_order_snapshot` e `sequence_reuse_mismatch` retornam 409.
+- Falha de persistência é convertida para 503 / `persistence_unavailable`.
+- Versão desconhecida recebe 422 / `unsupported_snapshot_schema`; campo `schema_version` ausente continua sendo erro de validação genérico até a padronização completa da Task 9.
+- **Ruling:** o handler mínimo de `RequestValidationError` foi iniciado nesta etapa somente para distinguir versão desconhecida; a normalização geral de 422 continua pertencendo à Task 9.
+- `httpx2` foi adicionado apenas às dependências de desenvolvimento para manter o `TestClient` atual do Starlette sem warning; `httpx` continua sendo o cliente de produção do Supabase.
+- Revisão da etapa: router não acessa repository diretamente e service não conhece FastAPI.
+- Verificação final da etapa: suíte completa com 85 testes verdes, incluindo integrações PostgreSQL e warnings tratados como erro.
+
 ## Task 7 — VIEW_SECRET e rotação
 
 **Entrega:** dispositivo autenticado registra/rotaciona o segredo de leitura.

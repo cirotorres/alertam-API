@@ -36,3 +36,30 @@ class InvalidViewCredentialsError(ApiError):
             code="invalid_view_credentials",
             message="Credenciais de leitura inválidas.",
         )
+
+
+class OutOfOrderSnapshotError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=409,
+            code="out_of_order_snapshot",
+            message="Snapshot fora de ordem.",
+        )
+
+
+class SequenceReuseMismatchError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=409,
+            code="sequence_reuse_mismatch",
+            message="Sequência reutilizada com conteúdo diferente.",
+        )
+
+
+class PersistenceUnavailableApiError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=503,
+            code="persistence_unavailable",
+            message="Persistência temporariamente indisponível.",
+        )
