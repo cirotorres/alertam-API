@@ -32,18 +32,38 @@ beforeEach(() => {
   window.history.replaceState({}, "", "/");
 });
 
-function renderGate(fetcher = vi.fn().mockResolvedValue(response)) {
+function renderGate(
+  fetcher = vi.fn().mockResolvedValue(response),
+  options: {
+    sessionCreator?: (pairing: Pairing) => Promise<void>;
+    sessionRecoverer?: () => Promise<Pairing | null>;
+    sessionClearer?: () => Promise<void>;
+  } = {},
+) {
   return render(
-    <PairingGate fetcher={fetcher}>
+    <PairingGate
+      fetcher={fetcher}
+      sessionCreator={
+        options.sessionCreator ?? vi.fn().mockResolvedValue(undefined)
+      }
+      sessionRecoverer={
+        options.sessionRecoverer ?? vi.fn().mockResolvedValue(null)
+      }
+      sessionClearer={
+        options.sessionClearer ?? vi.fn().mockResolvedValue(undefined)
+      }
+    >
       {(pairing) => <div>APP {pairing.deviceId}</div>}
     </PairingGate>,
   );
 }
 
-test("without_pairing_asks_for_desktop_qr", () => {
+test("without_pairing_asks_for_desktop_qr", async () => {
   renderGate();
   expect(
-    screen.getByRole("heading", { name: "Alerta de Movimentações Marítimas" }),
+    await screen.findByRole("heading", {
+      name: "Alerta de Movimentações Marítimas",
+    }),
   ).toBeInTheDocument();
   expect(screen.getByText(/Conectar Celular/i)).toBeInTheDocument();
 });
@@ -105,4 +125,80 @@ test("temporary_error_keeps_candidate_only_in_memory_and_retry_can_confirm", asy
   await waitFor(() => expect(screen.getByText("APP pecem-01")).toBeInTheDocument());
   expect(fetcher).toHaveBeenCalledTimes(2);
   expect(loadPairing()?.viewSecret).toBe(TOKEN);
+});
+
+
+test("recovers_cookie_session_when_local_storage_is_empty", async () => {
+  const recovered: Pairing = {
+    deviceId: "pecem-cookie",
+    viewSecret: null,
+    pairedAt: "2026-09-26T15:00:00-03:00",
+  };
+  const recoverer = vi.fn().mockResolvedValue(recovered);
+
+  renderGate(undefined, { sessionRecoverer: recoverer });
+
+  expect(await screen.findByText("APP pecem-cookie")).toBeInTheDocument();
+  expect(recoverer).toHaveBeenCalledTimes(1);
+  expect(loadPairing()).toBeNull();
+});
+
+test("valid_qr_creates_server_session_before_promoting_pairing", async () => {
+  window.history.replaceState({}, "", `/#/pair/pecem-01?token=${TOKEN}`);
+  const creator = vi.fn().mockResolvedValue(undefined);
+
+  renderGate(undefined, { sessionCreator: creator });
+
+  expect(await screen.findByText("APP pecem-01")).toBeInTheDocument();
+  expect(creator).toHaveBeenCalledTimes(1);
+  expect(creator).toHaveBeenCalledWith(
+    expect.objectContaining({
+      deviceId: "pecem-01",
+      viewSecret: TOKEN,
+    }),
+  );
+});
+
+
+test("reset_does_not_immediately_recover_the_same_cookie_session", async () => {
+  const previous: Pairing = {
+    deviceId: "pecem-01",
+    viewSecret: TOKEN,
+    pairedAt: "2026-09-26T15:00:00-03:00",
+  };
+  savePairing(previous);
+
+  const recoverer = vi.fn().mockResolvedValue({
+    deviceId: "pecem-cookie",
+    viewSecret: null,
+    pairedAt: "2026-09-26T15:01:00-03:00",
+  } satisfies Pairing);
+  const clearer = vi.fn().mockResolvedValue(undefined);
+
+  render(
+    <PairingGate
+      fetcher={vi.fn().mockResolvedValue(response)}
+      sessionCreator={vi.fn().mockResolvedValue(undefined)}
+      sessionRecoverer={recoverer}
+      sessionClearer={clearer}
+    >
+      {(pairing, reset) => (
+        <div>
+          <span>APP {pairing.deviceId}</span>
+          <button type="button" onClick={reset}>RESET</button>
+        </div>
+      )}
+    </PairingGate>,
+  );
+
+  expect(await screen.findByText("APP pecem-01")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "RESET" }));
+
+  expect(
+    await screen.findByRole("heading", {
+      name: "Alerta de Movimentações Marítimas",
+    }),
+  ).toBeInTheDocument();
+  expect(clearer).toHaveBeenCalledTimes(1);
+  expect(recoverer).not.toHaveBeenCalled();
 });

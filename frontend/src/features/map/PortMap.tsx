@@ -12,6 +12,13 @@ function movementClass(vessel: VesselV1): string {
   return "";
 }
 
+function portLocationLabel(name: string): string {
+  const normalized = name.trim();
+  return /(?:^|[-–—\s])CE$/i.test(normalized)
+    ? normalized
+    : `${normalized} - CE`;
+}
+
 export function PortMap({ snapshot, onSelectVessel }: PortMapProps) {
   const vessels = selectMapVessels(snapshot);
 
@@ -57,7 +64,7 @@ export function PortMap({ snapshot, onSelectVessel }: PortMapProps) {
         })}
         <div className="port-map__location">
           <span aria-hidden="true">📍</span>
-          <span>{snapshot.port.name} - CE</span>
+          <span>{portLocationLabel(snapshot.port.name)}</span>
         </div>
       </div>
     </section>

@@ -8,15 +8,18 @@ const TOKEN = "Abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE";
 
 beforeEach(() => {
   localStorage.clear();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   window.history.replaceState({}, "", "/");
 });
 
-test("renders_alertam_shell_title", () => {
+test("renders_alertam_shell_title", async () => {
   render(<App />);
 
   expect(
-    screen.getByRole("heading", { name: "Alerta de Movimentações Marítimas" }),
+    await screen.findByRole("heading", {
+      name: "Alerta de Movimentações Marítimas",
+    }),
   ).toBeInTheDocument();
 });
 

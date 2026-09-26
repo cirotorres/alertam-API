@@ -1364,3 +1364,137 @@ textarea {
     transform: scale(1.05);
   }
 }
+
+
+/* Compactação iPhone: mais espaço útil para a lista operacional */
+.mobile-header {
+  min-height: calc(3.7rem + env(safe-area-inset-top));
+  padding:
+    max(0.24rem, env(safe-area-inset-top))
+    0.62rem
+    0.24rem;
+}
+
+.mobile-header__menu {
+  width: 36px;
+  height: 36px;
+  font-size: 1.5rem;
+}
+
+.mobile-header::after {
+  width: 36px;
+  height: 36px;
+}
+
+.mobile-header__identity {
+  gap: 0.18rem;
+}
+
+.mobile-header__identity strong {
+  font-size: clamp(0.82rem, 3.7vw, 0.94rem);
+}
+
+.mobile-header__status {
+  gap: 0.28rem;
+  font-size: clamp(0.58rem, 2.6vw, 0.68rem);
+}
+
+.port-map__canvas {
+  aspect-ratio: auto;
+  height: clamp(210px, 30dvh, 270px);
+}
+
+.port-map__background {
+  object-fit: fill;
+}
+
+.reading-card,
+.system-card {
+  min-height: 2.95rem;
+  padding: 0.34rem 0.58rem;
+  gap: 0.5rem;
+  border-radius: 0.72rem;
+}
+
+.reading-card__icon {
+  flex-basis: 28px;
+  width: 28px;
+  height: 28px;
+}
+
+.reading-card__icon svg {
+  width: 25px;
+  height: 25px;
+}
+
+.reading-card__label {
+  font-size: 0.7rem;
+}
+
+.reading-card strong {
+  font-size: clamp(0.9rem, 4vw, 1.02rem);
+}
+
+.system-card__dot {
+  flex-basis: 20px;
+  width: 20px;
+  height: 20px;
+}
+
+.system-card strong {
+  font-size: 0.9rem;
+}
+
+.system-card p {
+  font-size: 0.7rem;
+}
+
+.bottom-nav {
+  min-height: calc(3.25rem + env(safe-area-inset-bottom));
+  padding:
+    0.16rem
+    0.12rem
+    max(0.16rem, env(safe-area-inset-bottom));
+}
+
+.bottom-nav__item {
+  min-height: 2.72rem;
+  gap: 0.06rem;
+  padding: 0.06rem 0.06rem 0.22rem;
+}
+
+.bottom-nav__item svg {
+  width: 20px;
+  height: 20px;
+}
+
+.bottom-nav__item > span {
+  font-size: clamp(0.55rem, 2.4vw, 0.64rem);
+  line-height: 1;
+}
+
+.map-page__lower {
+  gap: 0.38rem;
+  padding: 0.38rem 0.58rem 0;
+}
+
+.map-page__lower .operational-list {
+  padding-bottom: calc(3.7rem + env(safe-area-inset-bottom));
+}
+
+.operational-card {
+  min-height: 4.15rem;
+  padding-block: 0.5rem;
+}
+
+@media (max-height: 700px) {
+  .port-map__canvas {
+    height: clamp(195px, 29dvh, 230px);
+  }
+
+  .reading-card,
+  .system-card {
+    min-height: 2.75rem;
+    padding-block: 0.28rem;
+  }
+}

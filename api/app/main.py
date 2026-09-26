@@ -49,6 +49,7 @@ def create_app(
         create_v1_router(
             devices_repository,
             stale_after_seconds=resolved_stale_after,
+            cookie_secure=resolved_settings.environment == "production",
             clock=clock,
         )
     )

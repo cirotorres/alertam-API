@@ -43,9 +43,12 @@ export async function getSnapshot(
       `/api/v1/devices/${encodeURIComponent(pairing.deviceId)}/snapshot`,
       {
         cache: "no-store",
-        headers: {
-          Authorization: `Bearer ${pairing.viewSecret}`,
-        },
+        credentials: "same-origin",
+        headers: pairing.viewSecret
+          ? {
+              Authorization: `Bearer ${pairing.viewSecret}`,
+            }
+          : undefined,
         signal,
       },
     );

@@ -33,6 +33,14 @@ class SnapshotReadService:
         device_id: str,
         view_secret: str,
     ) -> SnapshotReadResponse:
+        self.authenticate_view(device_id, view_secret)
+        return self.get_authenticated_snapshot(device_id)
+
+    def authenticate_view(
+        self,
+        device_id: str,
+        view_secret: str,
+    ) -> None:
         try:
             auth = self._repository.get_device_auth(device_id)
         except PersistenceUnavailableError as exc:
@@ -45,6 +53,10 @@ class SnapshotReadService:
         ):
             raise InvalidViewCredentialsError()
 
+    def get_authenticated_snapshot(
+        self,
+        device_id: str,
+    ) -> SnapshotReadResponse:
         try:
             stored = self._repository.get_snapshot(device_id)
         except PersistenceUnavailableError as exc:

@@ -103,3 +103,32 @@ test("maps_incompatible_snapshot_to_unsupported_error", async () => {
 
   await expect(getSnapshot(pairing)).rejects.toBeInstanceOf(UnsupportedSnapshotError);
 });
+
+
+test("uses_cookie_session_when_view_secret_is_null", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(JSON.stringify(validResponse), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  const cookiePairing: Pairing = {
+    deviceId: "pecem-01",
+    viewSecret: null,
+    pairedAt: "2026-09-26T15:00:00-03:00",
+  };
+
+  const result = await getSnapshot(cookiePairing);
+
+  expect(result.snapshot.schema_version).toBe(1);
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/v1/devices/pecem-01/snapshot",
+    expect.objectContaining({
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: undefined,
+    }),
+  );
+});

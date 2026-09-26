@@ -138,3 +138,42 @@ def test_get_snapshot_without_authorization_is_401():
 
     assert response.status_code == 401
     assert response.json()["detail"]["code"] == "invalid_view_credentials"
+
+
+def test_get_snapshot_accepts_valid_mobile_session_cookie():
+    client = _client(
+        _repo(),
+        RECEIVED_AT + timedelta(seconds=24),
+    )
+
+    created = client.post(
+        "/api/v1/mobile/session",
+        headers={"Authorization": f"Bearer {VIEW_SECRET}"},
+        json={"device_id": DEVICE_ID},
+    )
+    assert created.status_code == 200
+
+    response = client.get(
+        f"/api/v1/devices/{DEVICE_ID}/snapshot",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["snapshot"]["schema_version"] == 1
+
+
+def test_mobile_session_cookie_cannot_read_another_device_path():
+    client = _client(_repo(), RECEIVED_AT)
+
+    created = client.post(
+        "/api/v1/mobile/session",
+        headers={"Authorization": f"Bearer {VIEW_SECRET}"},
+        json={"device_id": DEVICE_ID},
+    )
+    assert created.status_code == 200
+
+    response = client.get(
+        "/api/v1/devices/outro-device/snapshot",
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"]["code"] == "invalid_view_credentials"

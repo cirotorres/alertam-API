@@ -3,8 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Callable
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Cookie, Depends, Header
 
+from app.api.v1.mobile_session import COOKIE_NAME
 from app.models.mobile_snapshot import MobileSnapshotV1
 from app.models.read_snapshot import SnapshotReadResponse
 from app.models.responses import SnapshotAcceptedResponse
@@ -14,6 +15,7 @@ from app.security.credentials import (
     parse_device_authorization,
 )
 from app.services.device_auth import AuthenticatedDevice
+from app.services.mobile_session_service import MobileSessionService
 from app.services.snapshot_read_service import SnapshotReadService
 from app.services.snapshot_service import SnapshotService
 
@@ -31,6 +33,7 @@ def create_snapshot_router(
         stale_after_seconds=stale_after_seconds,
         clock=clock,
     )
+    session_service = MobileSessionService(repository, clock=clock)
 
     def require_device(
         device_id: str,
@@ -68,8 +71,20 @@ def create_snapshot_router(
             default=None,
             alias="Authorization",
         ),
+        mobile_session: str | None = Cookie(
+            default=None,
+            alias=COOKIE_NAME,
+        ),
     ) -> SnapshotReadResponse:
-        view_secret = parse_bearer_authorization(authorization)
-        return read_service.get_snapshot(device_id, view_secret)
+        if authorization is not None:
+            view_secret = parse_bearer_authorization(authorization)
+            return read_service.get_snapshot(device_id, view_secret)
+
+        session_device_id = session_service.resolve_session(mobile_session)
+        if session_device_id != device_id:
+            from app.core.errors import InvalidViewCredentialsError
+
+            raise InvalidViewCredentialsError()
+        return read_service.get_authenticated_snapshot(device_id)
 
     return router

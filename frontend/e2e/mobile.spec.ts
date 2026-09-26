@@ -30,7 +30,46 @@ async function mockSnapshot(
   });
 }
 
+async function mockMobileSession(
+  page: Page,
+  recoverDeviceId: string | null = null,
+) {
+  await page.route("**/api/v1/mobile/session", async (route) => {
+    const method = route.request().method();
+
+    if (method === "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ device_id: "pecem-01" }),
+      });
+      return;
+    }
+
+    if (method === "DELETE") {
+      await route.fulfill({ status: 204, body: "" });
+      return;
+    }
+
+    if (recoverDeviceId) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ device_id: recoverDeviceId }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: { code: "invalid_view_credentials" } }),
+    });
+  });
+}
+
 async function seedPairing(page: Page) {
+  await mockMobileSession(page);
   await page.addInitScript(
     ({ key, value }) => localStorage.setItem(key, JSON.stringify(value)),
     { key: PAIRING_KEY, value: storedPairing() },
@@ -46,6 +85,7 @@ async function expectNoHorizontalOverflow(page: Page) {
 }
 test("pairing removes token from url and renders operational data", async ({ page }) => {
   await mockSnapshot(page);
+  await mockMobileSession(page);
 
   await page.goto(`/#/pair/pecem-01?token=${TOKEN}`);
 
@@ -286,6 +326,9 @@ test("demo mode shows mocked maneuvers without calling the real api", async ({ p
   const statusBefore = await page.locator(".status-stack").boundingBox();
   const scrollArea = page.locator(".operational-list");
   const windowScrollBefore = await page.evaluate(() => window.scrollY);
+  const scrollStyle = await scrollArea.evaluate(
+    (element) => getComputedStyle(element).overflowY,
+  );
 
   await scrollArea.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
@@ -294,13 +337,32 @@ test("demo mode shows mocked maneuvers without calling the real api", async ({ p
   const fixedMapAfter = await page.locator(".map-page__fixed").boundingBox();
   const statusAfter = await page.locator(".status-stack").boundingBox();
   const windowScrollAfter = await page.evaluate(() => window.scrollY);
-  const listScrollTop = await scrollArea.evaluate((element) => element.scrollTop);
 
+  expect(scrollStyle).toBe("auto");
   expect(windowScrollBefore).toBe(0);
   expect(windowScrollAfter).toBe(0);
   expect(fixedMapBefore?.y).toBe(fixedMapAfter?.y);
   expect(statusBefore?.y).toBe(statusAfter?.y);
-  expect(listScrollTop).toBeGreaterThan(0);
+
+  const layout = await page.evaluate(() => {
+    const header = document.querySelector(".mobile-header")?.getBoundingClientRect();
+    const map = document.querySelector(".port-map__canvas")?.getBoundingClientRect();
+    const footer = document.querySelector(".bottom-nav")?.getBoundingClientRect();
+    const cards = Array.from(
+      document.querySelectorAll(".reading-card, .system-card"),
+    ).map((element) => element.getBoundingClientRect().height);
+    return {
+      header: header?.height ?? 0,
+      map: map?.height ?? 0,
+      footer: footer?.height ?? 0,
+      cards,
+    };
+  });
+
+  expect(layout.header).toBeLessThanOrEqual(80);
+  expect(layout.map).toBeLessThanOrEqual(270);
+  expect(layout.footer).toBeLessThanOrEqual(66);
+  expect(layout.cards.every((height) => height <= 54)).toBe(true);
 
   await page.getByRole("button", { name: "Prev. desatracação" }).click();
   await expect(
@@ -314,4 +376,33 @@ test("demo mode shows mocked maneuvers without calling the real api", async ({ p
   await expect(page.getByRole("heading", { name: "Alertas" })).toBeVisible();
 
   expect(apiCalls).toBe(0);
+});
+
+
+test("installed_pwa_recovers_cookie_session_without_local_storage", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-390", "Cookie recovery smoke runs once.");
+
+  await mockMobileSession(page, "pecem-01");
+
+  let snapshotAuthorization: string | undefined;
+  await page.route("**/api/v1/devices/pecem-01/snapshot", async (route) => {
+    snapshotAuthorization = route.request().headers()["authorization"];
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(onlineResponse),
+    });
+  });
+
+  await page.goto("/");
+
+  await expect(page.getByText("Sistema ativo")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /NAVIO A, Berço 2/i }),
+  ).toBeVisible();
+
+  expect(
+    await page.evaluate((key) => localStorage.getItem(key), PAIRING_KEY),
+  ).toBeNull();
+  expect(snapshotAuthorization).toBeUndefined();
 });

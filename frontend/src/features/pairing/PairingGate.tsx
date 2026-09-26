@@ -2,6 +2,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -22,31 +23,49 @@ import {
   loadPairing,
   savePairing,
 } from "./pairingStorage";
+import {
+  clearMobileSession,
+  createMobileSession,
+  recoverMobileSession,
+} from "./mobileSessionClient";
 
 type PairingFetcher = typeof getSnapshot;
 type GateMode = "idle" | "validating" | "temporary" | "invalid";
 
 type PairingGateProps = {
   fetcher?: PairingFetcher;
+  sessionCreator?: (pairing: Pairing) => Promise<void>;
+  sessionRecoverer?: () => Promise<Pairing | null>;
+  sessionClearer?: () => Promise<void>;
   children: (pairing: Pairing, reset: () => void) => ReactNode;
 };
 export function PairingGate({
   fetcher = getSnapshot,
+  sessionCreator = createMobileSession,
+  sessionRecoverer = recoverMobileSession,
+  sessionClearer = clearMobileSession,
   children,
 }: PairingGateProps) {
   const [active, setActive] = useState<Pairing | null>(() => loadPairing());
   const [candidate, setCandidate] = useState<Pairing | null>(null);
   const [mode, setMode] = useState<GateMode>("idle");
+  const skipNextRecoveryRef = useRef(false);
+  const syncedSessionRef = useRef<string | null>(null);
 
   const reset = useCallback(() => {
+    skipNextRecoveryRef.current = true;
+    syncedSessionRef.current = null;
     clearPairing();
+    void sessionClearer();
     setActive(null);
     setCandidate(null);
     setMode("idle");
-  }, []);
+  }, [sessionClearer]);
 
   const promote = useCallback((next: Pairing) => {
-    savePairing(next);
+    if (next.viewSecret) {
+      savePairing(next);
+    }
     setActive(next);
     setCandidate(null);
     setMode("idle");
@@ -57,13 +76,27 @@ export function PairingGate({
       setMode("validating");
       try {
         await fetcher(next);
+        await sessionCreator(next);
+        syncedSessionRef.current = `${next.deviceId}:${next.viewSecret}`;
         promote(next);
       } catch (error) {
         if (
           error instanceof SnapshotUnavailableError ||
           error instanceof UnsupportedSnapshotError
         ) {
-          promote(next);
+          try {
+            await sessionCreator(next);
+            syncedSessionRef.current = `${next.deviceId}:${next.viewSecret}`;
+            promote(next);
+          } catch (sessionError) {
+            if (sessionError instanceof AccessRevokedError) {
+              setCandidate(null);
+              setMode("invalid");
+              return;
+            }
+            setCandidate(next);
+            setMode("temporary");
+          }
           return;
         }
         if (error instanceof AccessRevokedError) {
@@ -80,12 +113,43 @@ export function PairingGate({
         setMode("temporary");
       }
     },
-    [fetcher, promote],
+    [fetcher, promote, sessionCreator],
   );
 
   useEffect(() => {
     const hash = window.location.hash;
-    if (!hash.startsWith("#/pair/")) return;
+    if (!hash.startsWith("#/pair/")) {
+      if (active?.viewSecret) {
+        const sessionKey = `${active.deviceId}:${active.viewSecret}`;
+        if (syncedSessionRef.current !== sessionKey) {
+          void sessionCreator(active)
+            .then(() => {
+              syncedSessionRef.current = sessionKey;
+            })
+            .catch(() => undefined);
+        }
+        return;
+      }
+      if (active) {
+        return;
+      }
+      if (skipNextRecoveryRef.current) {
+        skipNextRecoveryRef.current = false;
+        return;
+      }
+
+      setMode("validating");
+      void sessionRecoverer()
+        .then((recovered) => {
+          if (recovered) {
+            promote(recovered);
+          } else {
+            setMode("idle");
+          }
+        })
+        .catch(() => setMode("idle"));
+      return;
+    }
 
     const parsed = parsePairingFragment(hash);
     clearPairingFragment(window.history);
@@ -101,7 +165,7 @@ export function PairingGate({
     };
     setCandidate(next);
     void validate(next);
-  }, [validate]);
+  }, [active, promote, sessionCreator, sessionRecoverer, validate]);
   if (mode === "temporary" && candidate) {
     return (
       <PairingScreen
