@@ -322,6 +322,33 @@ test("demo mode shows mocked maneuvers without calling the real api", async ({ p
   expect(arrivingRingAnimation).toContain("alertam-status-ring");
   expect(departingRingAnimation).toContain("alertam-status-ring");
 
+  await expect(page.locator(".port-map__vessel")).toHaveCount(10);
+  await expect(page.locator(".port-map__canvas")).toHaveClass(
+    /port-map__canvas--dense/,
+  );
+  const spriteOverlapCount = await page.locator(".port-map__sprite").evaluateAll(
+    (elements) => {
+      const boxes = elements.map((element) => element.getBoundingClientRect());
+      let overlaps = 0;
+      for (let i = 0; i < boxes.length; i += 1) {
+        for (let j = i + 1; j < boxes.length; j += 1) {
+          const a = boxes[i];
+          const b = boxes[j];
+          if (
+            a.left < b.right &&
+            a.right > b.left &&
+            a.top < b.bottom &&
+            a.bottom > b.top
+          ) {
+            overlaps += 1;
+          }
+        }
+      }
+      return overlaps;
+    },
+  );
+  expect(spriteOverlapCount).toBe(0);
+
   const fixedMapBefore = await page.locator(".map-page__fixed").boundingBox();
   const statusBefore = await page.locator(".status-stack").boundingBox();
   const scrollArea = page.locator(".operational-list");
@@ -360,8 +387,8 @@ test("demo mode shows mocked maneuvers without calling the real api", async ({ p
   });
 
   expect(layout.header).toBeLessThanOrEqual(80);
-  expect(layout.map).toBeGreaterThanOrEqual(280);
-  expect(layout.map).toBeLessThanOrEqual(305);
+  expect(layout.map).toBeGreaterThanOrEqual(330);
+  expect(layout.map).toBeLessThanOrEqual(340);
   expect(layout.footer).toBeLessThanOrEqual(66);
   expect(layout.cards.every((height) => height <= 54)).toBe(true);
 

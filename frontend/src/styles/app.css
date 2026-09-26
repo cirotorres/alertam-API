@@ -1401,7 +1401,7 @@ textarea {
 
 .port-map__canvas {
   aspect-ratio: auto;
-  height: clamp(225px, 35dvh, 305px);
+  height: clamp(240px, 40dvh, 340px);
 }
 
 .port-map__background {
@@ -1489,7 +1489,7 @@ textarea {
 
 @media (max-height: 700px) {
   .port-map__canvas {
-    height: clamp(200px, 30dvh, 240px);
+    height: clamp(210px, 33dvh, 255px);
   }
 
   .reading-card,
@@ -1677,4 +1677,19 @@ textarea {
   .vessel-sheet-backdrop.is-drag-interacted {
     transition: none !important;
   }
+}
+
+/* Modo denso: preserva leitura quando muitos berços estão ocupados. */
+.port-map__canvas--dense .port-map__vessel {
+  min-width: 44px;
+  min-height: 46px;
+}
+
+.port-map__canvas--dense .port-map__sprite {
+  width: clamp(30px, 8vw, 36px);
+  height: clamp(30px, 8vw, 36px);
+}
+
+.port-map__canvas--dense .port-map__berth {
+  font-size: clamp(0.66rem, 2.9vw, 0.76rem);
 }

@@ -6,6 +6,19 @@ type PortMapProps = {
   onSelectVessel: (vessel: VesselV1) => void;
 };
 
+const DENSE_BERTH_OFFSET_X_PX: Record<number, number> = {
+  1: -32,
+  2: -24,
+  3: -12,
+  4: -4,
+  5: 0,
+  6: 0,
+  7: -4,
+  8: -8,
+  9: -12,
+  10: -16,
+};
+
 function movementClass(vessel: VesselV1): string {
   if (vessel.status === "ATRACANDO") return " port-map__vessel--arriving";
   if (vessel.status === "DESATRACANDO") return " port-map__vessel--departing";
@@ -21,10 +34,13 @@ function portLocationLabel(name: string): string {
 
 export function PortMap({ snapshot, onSelectVessel }: PortMapProps) {
   const vessels = selectMapVessels(snapshot);
+  const dense = vessels.length >= 8;
 
   return (
     <section className="port-map" aria-label="Mapa do porto">
-      <div className="port-map__canvas">
+      <div
+        className={`port-map__canvas${dense ? " port-map__canvas--dense" : ""}`}
+      >
         <img
           className="port-map__background"
           src="/assets/piers.png"
@@ -40,7 +56,13 @@ export function PortMap({ snapshot, onSelectVessel }: PortMapProps) {
               key={berth}
               type="button"
               className={`port-map__vessel${movementClass(vessel)}`}
-              style={{ left: `${position.xPct}%`, top: `${position.yPct}%` }}
+              style={{
+                left: `${position.xPct}%`,
+                top: `${position.yPct}%`,
+                transform: dense
+                  ? `translate(calc(-50% + ${DENSE_BERTH_OFFSET_X_PX[berth] ?? 0}px), -50%)`
+                  : undefined,
+              }}
               aria-label={`${vessel.name}, Berço ${berth}`}
               onClick={() => onSelectVessel(vessel)}
             >

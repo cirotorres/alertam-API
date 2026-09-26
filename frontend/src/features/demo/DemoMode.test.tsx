@@ -24,6 +24,16 @@ test("demo_bypasses_pairing_and_shows_arrival_and_departure_in_progress", async 
   });
   expect(arriving).toHaveClass("port-map__vessel--arriving");
   expect(departing).toHaveClass("port-map__vessel--departing");
+
+  for (let berth = 1; berth <= 10; berth += 1) {
+    expect(
+      screen.getByRole("button", { name: new RegExp(`Berço ${berth}$`, "i") }),
+    ).toBeInTheDocument();
+  }
+  expect(
+    document.querySelector(".port-map__canvas"),
+  ).toHaveClass("port-map__canvas--dense");
+
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
