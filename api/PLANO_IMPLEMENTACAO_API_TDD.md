@@ -35,7 +35,7 @@ A API está fixada em Python 3.12 e possui `.env.example`. Enquanto o Supabase r
 ## Restrições globais
 
 - A API não depende de Tkinter, Selenium, WebPilot ou módulos internos do Desktop.
-- Nunca enviar `SUPABASE_SERVICE_ROLE_KEY` ao Desktop ou frontend.
+- Nunca enviar `SUPABASE_SECRET_KEY` nem a chave legada `SUPABASE_SERVICE_ROLE_KEY` ao Desktop ou frontend.
 - Não persistir `DEVICE_SECRET` ou `VIEW_SECRET` em texto puro.
 - Novos segredos devem ser gerados com no mínimo 32 bytes aleatórios; não aceitar segredo operacional escolhido manualmente pelo usuário.
 - Não logar Authorization, snapshots completos, segredos ou hashes completos.
@@ -323,13 +323,31 @@ Regras:
 - mesmo boot + sequence menor → out_of_order;
 - boot diferente → sequence pode reiniciar.
 
-- [ ] RED: cobrir todas as regras acima.
-- [ ] RED: idempotência mantém `received_at` original.
-- [ ] RED: concorrência não deixa snapshot antigo vencer.
-- [ ] GREEN: implementar função SQL/RPC transacional.
-- [ ] GREEN: implementar adaptador do repository.
-- [ ] REFACTOR: nunca fazer SELECT de validação + UPDATE independente.
-- [ ] REVIEW: revisar concorrência serverless.
+- [x] RED/GREEN: todos os resultados de ordenação cobertos no mock e no PostgreSQL.
+- [x] RED/GREEN: repetição idempotente mantém o `received_at` original.
+- [x] RED/GREEN: concorrência não deixa snapshot antigo vencer.
+- [x] GREEN: função SQL/RPC transacional implementada.
+- [x] GREEN: adapter RPC do repository implementado.
+- [x] REFACTOR: validação de ordem e UPDATE acontecem sob o mesmo lock/transaction no banco.
+- [x] REVIEW: concorrência serverless revisada em PostgreSQL real.
+
+### Registro da Task 5 — 2026-09-25
+
+- `MemoryDeviceRepository.accept_snapshot_atomic()` implementa os cinco resultados do contrato sob lock local e relógio injetável.
+- Migration `002_accept_snapshot_rpc.sql` usa `SELECT ... FOR UPDATE` para serializar decisões por dispositivo.
+- Comparação idempotente usa igualdade estrutural de `jsonb`, portanto não depende de ordem de chaves ou whitespace.
+- Mesmo `boot_id + sequence + payload` retorna `idempotent` sem atualizar `received_at`.
+- Reutilização da mesma sequence com conteúdo diferente retorna `sequence_reuse_mismatch`.
+- Sequence menor no mesmo boot retorna `out_of_order`; boot diferente pode reiniciar em 1.
+- Duas requisições concorrentes foram exercitadas contra PostgreSQL 16 real; o estado final permaneceu na maior sequence.
+- `SupabaseDeviceRepository` chama `/rest/v1/rpc/accept_device_snapshot` e converte a resposta em `AcceptSnapshotResult`.
+- Falha HTTP/RPC é convertida para `PersistenceUnavailableError` sem vazar chave de servidor.
+- **Ruling:** para novos projetos Supabase, a API usa `SUPABASE_SECRET_KEY` como credencial principal; `SUPABASE_SERVICE_ROLE_KEY` fica apenas como fallback legado. Custo se a estratégia mudar: ajuste restrito à configuração e aos headers do repository.
+- Secret Key atual é enviada no header `apikey`; chave legada mantém `Authorization: Bearer` para compatibilidade.
+- `httpx` passou a dependência de produção; `psycopg` permanece somente em dependências de desenvolvimento/teste.
+- `.env.example` documenta Secret Key atual e fallback legado.
+- Verificação final da etapa: suíte completa com 69 testes verdes, incluindo 6 integrações PostgreSQL.
+
 ## Task 6 — POST do snapshot
 
 **Entrega:** endpoint de escrita completo para o Desktop.

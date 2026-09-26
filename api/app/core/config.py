@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     persistence_backend: Literal["memory", "supabase"] = "memory"
 
     supabase_url: str = ""
+    supabase_secret_key: str = Field(default="", repr=False)
     supabase_service_role_key: str = Field(default="", repr=False)
 
     stale_after_seconds: int = 120
@@ -35,6 +36,13 @@ class Settings(BaseSettings):
         repr=False,
     )
 
+    @property
+    def supabase_server_key(self) -> str:
+        return (
+            self.supabase_secret_key.strip()
+            or self.supabase_service_role_key.strip()
+        )
+
     @model_validator(mode="after")
     def validate_persistence_credentials(self) -> "Settings":
         if self.persistence_backend != "supabase":
@@ -43,8 +51,11 @@ class Settings(BaseSettings):
         missing: list[str] = []
         if not self.supabase_url.strip():
             missing.append("SUPABASE_URL")
-        if not self.supabase_service_role_key.strip():
-            missing.append("SUPABASE_SERVICE_ROLE_KEY")
+        if not self.supabase_server_key:
+            missing.append(
+                "SUPABASE_SECRET_KEY "
+                "(ou SUPABASE_SERVICE_ROLE_KEY legado)"
+            )
         if missing:
             joined = ", ".join(missing)
             raise ValueError(f"Supabase requer: {joined}")

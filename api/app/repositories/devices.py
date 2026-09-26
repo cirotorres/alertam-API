@@ -11,6 +11,11 @@ class DeviceAlreadyExistsError(Exception):
     pass
 
 
+class PersistenceUnavailableError(Exception):
+    def __init__(self) -> None:
+        super().__init__("Persistência temporariamente indisponível.")
+
+
 @dataclass(frozen=True)
 class DeviceAuthRecord:
     device_id: str
