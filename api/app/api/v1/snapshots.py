@@ -24,7 +24,7 @@ def create_snapshot_router(
     stale_after_seconds: int = 120,
     clock: Callable[[], datetime] | None = None,
 ) -> APIRouter:
-    router = APIRouter(prefix="/api/v1/devices")
+    router = APIRouter(prefix="/devices")
     service = SnapshotService(repository)
     read_service = SnapshotReadService(
         repository,

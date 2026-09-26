@@ -12,7 +12,7 @@ from app.services.device_auth import AuthenticatedDevice
 def create_access_router(
     repository: DevicesRepository,
 ) -> APIRouter:
-    router = APIRouter(prefix="/api/v1/devices")
+    router = APIRouter(prefix="/devices")
     service = AccessService(repository)
 
     def require_device(

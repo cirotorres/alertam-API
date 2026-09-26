@@ -493,16 +493,33 @@ Regras:
 - ajustes em `app/main.py`
 - testes de shell/logging
 
-- [ ] RED: `/api/v1/health` responde sem consultar snapshot.
-- [ ] RED: rotas v1 são montadas uma única vez.
-- [ ] RED: CORS não usa wildcard por padrão.
-- [ ] RED: `ALLOWED_ORIGINS` explícito é respeitado.
-- [ ] RED: logs contêm método, rota, status e duração.
-- [ ] RED: logs nunca contêm Authorization ou snapshot completo.
-- [ ] RED: erros de validação Pydantic são convertidos para o envelope `detail.code + detail.message`, sem expor detalhes internos.
-- [ ] RED: `schema_version` desconhecido retorna especificamente 422 / `unsupported_snapshot_schema`.
-- [ ] GREEN: implementar router, middleware, logging e handler central de `RequestValidationError`.
-- [ ] REVIEW: manter caminho preparado para same-origin com o frontend.
+- [x] RED/GREEN: `/api/v1/health` responde sem consultar repository/snapshot.
+- [x] RED/GREEN: rotas v1 são expostas uma única vez no contrato OpenAPI.
+- [x] RED/GREEN: CORS fica fechado por padrão e não usa wildcard.
+- [x] RED/GREEN: `ALLOWED_ORIGINS` explícito é respeitado.
+- [x] RED/GREEN: logs contêm método, rota, status e duração.
+- [x] RED/GREEN: logs nunca contêm Authorization ou request body.
+- [x] RED/GREEN: erros de validação Pydantic usam envelope sanitizado `detail.code + detail.message`.
+- [x] RED/GREEN: `schema_version` desconhecido mantém 422 / `unsupported_snapshot_schema`.
+- [x] GREEN: router v1, health, CORS, middleware, logging e handler central implementados.
+- [x] REVIEW: estrutura permanece compatível com same-origin do frontend.
+
+### Registro da Task 9 — 2026-09-25
+
+- Criado `create_v1_router()` como agregador único com prefixo `/api/v1`.
+- Routers de snapshot e acesso passaram a usar prefixos relativos `/devices`, preservando as URLs públicas existentes.
+- Criado `GET /api/v1/health` independente de repository, Supabase e snapshot.
+- **Ruling:** a verificação de rotas únicas usa o contrato OpenAPI, não a lista interna `app.routes`, pois a versão atual do FastAPI representa routers incluídos por `_IncludedRouter`. Custo se o framework mudar: apenas teste de shell.
+- `create_app()` aceita `Settings` injetável e usa `STALE_AFTER_SECONDS` da configuração quando não há override de teste.
+- `ALLOWED_ORIGINS` é normalizado como lista; CORS middleware só é instalado quando a lista é não vazia.
+- CORS permite apenas origens explícitas, métodos do MVP e headers `Authorization`/`Content-Type`; wildcard não é usado.
+- Criado middleware ASGI de logging que mede duração e registra somente método, path, status e `duration_ms`.
+- Middleware não lê nem registra headers, query payload, body ou resposta.
+- Handler central de `RequestValidationError` devolve `invalid_request_payload` sem `input` e preserva o caso específico `unsupported_snapshot_schema`.
+- `LOG_LEVEL` passa a configurar o logger HTTP da aplicação.
+- Revisão da etapa: health isolado, CORS fechado por padrão, logs sanitizados e URLs públicas inalteradas.
+- Verificação final da etapa: suíte completa com 131 testes verdes, incluindo integrações PostgreSQL e warnings tratados como erro.
+
 ## Task 10 — Contrato ponta a ponta Desktop → API → Mobile
 
 **Entrega:** prova automatizada de compatibilidade da 017 com a API.

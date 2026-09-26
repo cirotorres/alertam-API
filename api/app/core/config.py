@@ -37,6 +37,14 @@ class Settings(BaseSettings):
     )
 
     @property
+    def allowed_origins_list(self) -> list[str]:
+        return [
+            origin.strip()
+            for origin in self.allowed_origins.split(",")
+            if origin.strip()
+        ]
+
+    @property
     def supabase_server_key(self) -> str:
         return (
             self.supabase_secret_key.strip()
