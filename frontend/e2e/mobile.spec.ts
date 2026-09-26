@@ -1,0 +1,219 @@
+import { expect, test, type Page } from "@playwright/test";
+
+import {
+  onlineResponse,
+  PAIRING_KEY,
+  staleResponse,
+  storedPairing,
+  TOKEN,
+} from "./fixtures";
+
+async function mockSnapshot(
+  page: Page,
+  options: {
+    status?: number;
+    body?: unknown;
+    count?: { value: number };
+  } = {},
+) {
+  await page.route("**/api/v1/devices/**/snapshot", async (route) => {
+    if (options.count) options.count.value += 1;
+    const status = options.status ?? 200;
+    await route.fulfill({
+      status,
+      contentType: "application/json",
+      body:
+        status === 200
+          ? JSON.stringify(options.body ?? onlineResponse)
+          : JSON.stringify({ detail: "mock" }),
+    });
+  });
+}
+
+async function seedPairing(page: Page) {
+  await page.addInitScript(
+    ({ key, value }) => localStorage.setItem(key, JSON.stringify(value)),
+    { key: PAIRING_KEY, value: storedPairing() },
+  );
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
+  const sizes = await page.evaluate(() => ({
+    width: document.documentElement.clientWidth,
+    scroll: document.documentElement.scrollWidth,
+  }));
+  expect(sizes.scroll).toBeLessThanOrEqual(sizes.width);
+}
+test("pairing removes token from url and renders operational data", async ({ page }) => {
+  await mockSnapshot(page);
+
+  await page.goto(`/#/pair/pecem-01?token=${TOKEN}`);
+
+  await expect(page.getByText("Sistema ativo")).toBeVisible();
+  await expect(page.getByRole("button", { name: /NAVIO A, Berço 2/i })).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
+  expect(page.url()).not.toContain(TOKEN);
+  expect(await page.evaluate(() => document.body.textContent)).not.toContain(TOKEN);
+  expect(
+    await page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "null").deviceId, PAIRING_KEY),
+  ).toBe("pecem-01");
+  await expectNoHorizontalOverflow(page);
+});
+
+test("operational navigation, vessel sheet and drawer work together", async ({ page }) => {
+  await seedPairing(page);
+  await mockSnapshot(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Prev. atracação" }).click();
+  await expect(page.getByRole("heading", { name: "Previsão de atracação" })).toBeVisible();
+
+  await page.getByRole("button", { name: /NAVIO A, Berço 2/i }).click();
+  await expect(page.getByRole("dialog", { name: /Ficha do navio NAVIO A/i })).toBeVisible();
+
+  await page.getByRole("button", { name: "Abrir menu" }).click();
+  await expect(page.getByRole("dialog", { name: "Menu principal" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: /Ficha do navio/i })).toHaveCount(0);
+
+  await page.getByRole("link", { name: "Alertas" }).click();
+  await expect(page.getByRole("heading", { name: "Alertas" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Prev. desatracação" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Abrir menu" }).click();
+  await page.getByRole("link", { name: "Histórico" }).click();
+  await expect(page.getByRole("heading", { name: "Histórico" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Abrir menu" }).click();
+  await page.getByRole("link", { name: "Config." }).click();
+  await expect(page.getByRole("heading", { name: "Config." })).toBeVisible();
+
+  await page.getByRole("button", { name: "Abrir menu" }).click();
+  await page.getByRole("link", { name: "Sobre" }).click();
+  await expect(page.getByRole("heading", { name: "Sobre o AlertaM" })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+});
+test("waiting, stale, revoked and temporary offline states are handled", async ({ page }) => {
+  await seedPairing(page);
+
+  await mockSnapshot(page, { status: 404 });
+  await page.goto("/");
+  await expect(page.getByText("Aguardando primeira leitura")).toBeVisible();
+
+  await page.unroute("**/api/v1/devices/**/snapshot");
+  await mockSnapshot(page, { body: staleResponse });
+  await page.reload();
+  await expect(page.getByText("Dados desatualizados")).toBeVisible();
+
+  await page.unroute("**/api/v1/devices/**/snapshot");
+  let calls = 0;
+  await page.route("**/api/v1/devices/**/snapshot", async (route) => {
+    calls += 1;
+    if (calls === 1) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(onlineResponse),
+      });
+      return;
+    }
+    await route.abort("failed");
+  });
+  await page.reload();
+  await expect(page.getByText("Sistema ativo")).toBeVisible();
+  await page.getByRole("button", { name: "Abrir menu" }).click();
+  await page.getByRole("link", { name: "Mapa" }).click();
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(page.getByText("Sem conexão com o servidor")).toBeVisible();
+  await expect(page.getByRole("button", { name: /NAVIO A, Berço 2/i })).toBeVisible();
+
+  await page.unroute("**/api/v1/devices/**/snapshot");
+  await mockSnapshot(page, { status: 401 });
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Alerta de Movimentações Marítimas" }),
+  ).toBeVisible();
+  await expect(page.getByText(/Conectar Celular/i)).toBeVisible();
+});
+test("visibility changes pause hidden polling and fetch immediately on return", async ({ page }) => {
+  await seedPairing(page);
+  const count = { value: 0 };
+  await mockSnapshot(page, { count });
+  await page.goto("/");
+  await expect(page.getByText("Sistema ativo")).toBeVisible();
+  expect(count.value).toBe(1);
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.waitForTimeout(1_000);
+  expect(count.value).toBe(1);
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(() => count.value).toBe(2);
+});
+
+test("forget device clears local pairing and returns to gate", async ({ page }) => {
+  await seedPairing(page);
+  await mockSnapshot(page);
+  await page.goto("/config");
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Esquecer este aparelho" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Alerta de Movimentações Marítimas" }),
+  ).toBeVisible();
+  expect(await page.evaluate((key) => localStorage.getItem(key), PAIRING_KEY)).toBeNull();
+});
+test("installed shell reloads offline without cached authenticated snapshot", async ({ browser }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-390", "Service worker offline smoke runs once.");
+
+  const context = await browser.newContext({
+    baseURL: "http://127.0.0.1:4173",
+    viewport: { width: 390, height: 844 },
+    serviceWorkers: "allow",
+  });
+  const page = await context.newPage();
+
+  await seedPairing(page);
+  await mockSnapshot(page);
+  await page.goto("/");
+  await expect(page.getByText("Sistema ativo")).toBeVisible();
+
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+
+  await context.setOffline(true);
+  await page.reload({ waitUntil: "domcontentloaded" });
+
+  await expect(page.getByText("Sem conexão com o servidor")).toBeVisible();
+  await expect(page.getByRole("button", { name: /NAVIO A, Berço 2/i })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Abrir menu" })).toBeVisible();
+
+  await context.close();
+});
