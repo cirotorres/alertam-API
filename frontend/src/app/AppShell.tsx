@@ -48,6 +48,7 @@ export function AppShell({
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedVessel, setSelectedVessel] = useState<VesselV1 | null>(null);
+  const [renderedVessel, setRenderedVessel] = useState<VesselV1 | null>(null);
   const [activeBottomTab, setActiveBottomTab] =
     useState<BottomTab>("maneuvers");
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -74,6 +75,7 @@ export function AppShell({
     vesselTriggerRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setDrawerOpen(false);
+    setRenderedVessel(vessel);
     setSelectedVessel(vessel);
   }, []);
 
@@ -85,6 +87,13 @@ export function AppShell({
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
   }, [closeVessel, drawerOpen, selectedVessel]);
+
+  useEffect(() => {
+    if (selectedVessel || !renderedVessel) return;
+
+    const timeoutId = window.setTimeout(() => setRenderedVessel(null), 220);
+    return () => window.clearTimeout(timeoutId);
+  }, [renderedVessel, selectedVessel]);
 
   const lastCollectionAt =
     snapshotState.data?.snapshot.collector.last_collection_at ?? null;
@@ -145,15 +154,21 @@ export function AppShell({
           onChange={handleBottomTabChange}
         />
       ) : null}
-      {selectedVessel ? (
+      {renderedVessel ? (
         <>
           <button
-            className="vessel-sheet-backdrop"
+            className={`vessel-sheet-backdrop ${selectedVessel ? "is-open" : "is-closing"}`}
             type="button"
             aria-label="Fechar ficha"
+            aria-hidden={!selectedVessel}
+            disabled={!selectedVessel}
             onClick={closeVessel}
           />
-          <VesselSheet vessel={selectedVessel} open onClose={closeVessel} />
+          <VesselSheet
+            vessel={renderedVessel}
+            open={selectedVessel !== null}
+            onClose={closeVessel}
+          />
         </>
       ) : null}
     </div>

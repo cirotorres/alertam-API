@@ -54,8 +54,11 @@ test("drawer_has_expected_destinations_and_escape_returns_focus", async () => {
     expect(screen.getByText(label, { exact: true })).toBeInTheDocument();
   }
 
+  const drawer = screen.getByRole("dialog", { name: "Menu principal" });
   fireEvent.keyDown(document, { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Menu principal" })).not.toBeInTheDocument());
+
+  expect(drawer).toHaveClass("is-closing");
+  await waitFor(() => expect(drawer).not.toBeInTheDocument());
   expect(menu).toHaveFocus();
 });
 test("opening_drawer_closes_vessel_sheet", async () => {
@@ -78,9 +81,11 @@ test("escape_closes_vessel_sheet_and_returns_focus_to_trigger", async () => {
   fireEvent.click(vessel);
   expect(screen.getByRole("dialog", { name: /Ficha do navio NAVIO A/i })).toBeInTheDocument();
 
+  const sheet = screen.getByRole("dialog", { name: /Ficha do navio NAVIO A/i });
   fireEvent.keyDown(document, { key: "Escape" });
 
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: /Ficha do navio/i })).not.toBeInTheDocument());
+  expect(sheet).toHaveClass("is-closing");
+  await waitFor(() => expect(sheet).not.toBeInTheDocument());
   expect(vessel).toHaveFocus();
 });
 

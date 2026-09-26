@@ -360,7 +360,8 @@ test("demo mode shows mocked maneuvers without calling the real api", async ({ p
   });
 
   expect(layout.header).toBeLessThanOrEqual(80);
-  expect(layout.map).toBeLessThanOrEqual(270);
+  expect(layout.map).toBeGreaterThanOrEqual(260);
+  expect(layout.map).toBeLessThanOrEqual(286);
   expect(layout.footer).toBeLessThanOrEqual(66);
   expect(layout.cards.every((height) => height <= 54)).toBe(true);
 

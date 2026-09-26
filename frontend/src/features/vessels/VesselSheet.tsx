@@ -23,12 +23,12 @@ export function VesselSheet({
   onClose,
   imageUrl,
 }: VesselSheetProps) {
-  if (!open) return null;
   return (
     <aside
-      className="vessel-sheet"
+      className={`vessel-sheet ${open ? "is-open" : "is-closing"}`}
       role="dialog"
       aria-modal="true"
+      aria-hidden={!open}
       aria-label={`Ficha do navio ${vessel.name}`}
     >
       <div className="vessel-sheet__handle" aria-hidden="true" />

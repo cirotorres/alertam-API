@@ -21,7 +21,19 @@ export function Drawer({
   const routePath = (suffix: string) =>
     basePath ? `${basePath}${suffix}` : suffix || "/";
   const [installHelpOpen, setInstallHelpOpen] = useState(false);
+  const [rendered, setRendered] = useState(open);
   const pwa = usePwaInstall();
+
+  useEffect(() => {
+    if (open) {
+      setRendered(true);
+      return;
+    }
+    if (!rendered) return;
+
+    const timeoutId = window.setTimeout(() => setRendered(false), 220);
+    return () => window.clearTimeout(timeoutId);
+  }, [open, rendered]);
 
   useEffect(() => {
     if (!open) return;
@@ -33,7 +45,7 @@ export function Drawer({
     return () => document.removeEventListener("keydown", handleKey);
   }, [open, onClose]);
 
-  if (!open && !installHelpOpen) return null;
+  if (!rendered && !installHelpOpen) return null;
   const handleInstall = async () => {
     if (pwa.state === "installed") return;
     if (pwa.state === "available") {
@@ -47,15 +59,23 @@ export function Drawer({
 
   return (
     <>
-      {open ? (
+      {rendered ? (
         <>
           <button
             type="button"
-            className="drawer-overlay"
+            className={`drawer-overlay ${open ? "is-open" : "is-closing"}`}
             aria-label="Fechar menu"
+            aria-hidden={!open}
+            disabled={!open}
             onClick={onClose}
           />
-          <aside className="drawer" role="dialog" aria-modal="true" aria-label="Menu principal">
+          <aside
+            className={`drawer ${open ? "is-open" : "is-closing"}`}
+            role="dialog"
+            aria-modal="true"
+            aria-hidden={!open}
+            aria-label="Menu principal"
+          >
             <div className="drawer__brand">
               <strong>AlertaM</strong>
               <span>{demoMode ? "Modo demonstração" : "Consulta mobile"}</span>
