@@ -18,7 +18,8 @@ test("positions_vessel_with_percentages_and_emits_selection", () => {
   expect(pin).toHaveStyle({ left: "41%", top: "64%" });
   expect(pin.style.left).not.toContain("px");
   expect(screen.getByRole("img", { name: /Mapa esquemático/i })).toHaveAttribute("src", "/assets/piers.png");
-  expect(screen.getByText("Porto do Pecém (CIPP) - CE")).toBeInTheDocument();
+  expect(screen.getByText("Porto do Pecém - CE")).toBeInTheDocument();
+  expect(screen.queryByText(/\(CIPP\)/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/- CE - CE/)).not.toBeInTheDocument();
 
   fireEvent.click(pin);

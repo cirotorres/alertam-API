@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import { App } from "../../app/App";
+import { BERTH_POSITIONS } from "../map/berthMap";
 
 beforeEach(() => {
   localStorage.clear();
@@ -26,9 +27,16 @@ test("demo_bypasses_pairing_and_shows_arrival_and_departure_in_progress", async 
   expect(departing).toHaveClass("port-map__vessel--departing");
 
   for (let berth = 1; berth <= 10; berth += 1) {
-    expect(
-      screen.getByRole("button", { name: new RegExp(`Berço ${berth}$`, "i") }),
-    ).toBeInTheDocument();
+    const marker = screen.getByRole("button", {
+      name: new RegExp(`Berço ${berth}$`, "i"),
+    });
+    const position = BERTH_POSITIONS[berth];
+
+    expect(marker).toBeInTheDocument();
+    expect(marker).toHaveStyle({
+      left: `${position.xPct}%`,
+      top: `${position.yPct}%`,
+    });
   }
   expect(
     document.querySelector(".port-map__canvas"),

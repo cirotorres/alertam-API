@@ -6,19 +6,6 @@ type PortMapProps = {
   onSelectVessel: (vessel: VesselV1) => void;
 };
 
-const DENSE_BERTH_OFFSET_X_PX: Record<number, number> = {
-  1: -32,
-  2: -24,
-  3: -12,
-  4: -4,
-  5: 0,
-  6: 0,
-  7: -4,
-  8: -8,
-  9: -12,
-  10: -16,
-};
-
 function movementClass(vessel: VesselV1): string {
   if (vessel.status === "ATRACANDO") return " port-map__vessel--arriving";
   if (vessel.status === "DESATRACANDO") return " port-map__vessel--departing";
@@ -26,7 +13,11 @@ function movementClass(vessel: VesselV1): string {
 }
 
 function portLocationLabel(name: string): string {
-  const normalized = name.trim();
+  const normalized = name
+    .replace(/\s*\(CIPP\)\s*/i, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
   return /(?:^|[-–—\s])CE$/i.test(normalized)
     ? normalized
     : `${normalized} - CE`;
@@ -59,9 +50,6 @@ export function PortMap({ snapshot, onSelectVessel }: PortMapProps) {
               style={{
                 left: `${position.xPct}%`,
                 top: `${position.yPct}%`,
-                transform: dense
-                  ? `translate(calc(-50% + ${DENSE_BERTH_OFFSET_X_PX[berth] ?? 0}px), -50%)`
-                  : undefined,
               }}
               aria-label={`${vessel.name}, Berço ${berth}`}
               onClick={() => onSelectVessel(vessel)}

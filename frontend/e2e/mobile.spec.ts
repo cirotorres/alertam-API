@@ -326,28 +326,26 @@ test("demo mode shows mocked maneuvers without calling the real api", async ({ p
   await expect(page.locator(".port-map__canvas")).toHaveClass(
     /port-map__canvas--dense/,
   );
-  const spriteOverlapCount = await page.locator(".port-map__sprite").evaluateAll(
-    (elements) => {
-      const boxes = elements.map((element) => element.getBoundingClientRect());
-      let overlaps = 0;
-      for (let i = 0; i < boxes.length; i += 1) {
-        for (let j = i + 1; j < boxes.length; j += 1) {
-          const a = boxes[i];
-          const b = boxes[j];
-          if (
-            a.left < b.right &&
-            a.right > b.left &&
-            a.top < b.bottom &&
-            a.bottom > b.top
-          ) {
-            overlaps += 1;
-          }
-        }
-      }
-      return overlaps;
-    },
-  );
-  expect(spriteOverlapCount).toBe(0);
+  const berthPositions: Record<number, [string, string]> = {
+    1: ["35%", "70%"],
+    2: ["41%", "64%"],
+    3: ["46%", "60%"],
+    4: ["52%", "56%"],
+    5: ["59%", "50%"],
+    6: ["51%", "42%"],
+    7: ["43%", "34%"],
+    8: ["36%", "26%"],
+    9: ["29%", "18%"],
+    10: ["22%", "10%"],
+  };
+  for (const [berth, [left, top]] of Object.entries(berthPositions)) {
+    const marker = page.getByRole("button", {
+      name: new RegExp(`Berço ${berth}$`, "i"),
+    });
+    await expect(marker).toHaveCSS("left", /.+/);
+    expect(await marker.evaluate((element) => element.style.left)).toBe(left);
+    expect(await marker.evaluate((element) => element.style.top)).toBe(top);
+  }
 
   const fixedMapBefore = await page.locator(".map-page__fixed").boundingBox();
   const statusBefore = await page.locator(".status-stack").boundingBox();
