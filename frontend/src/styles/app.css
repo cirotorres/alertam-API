@@ -48,3 +48,164 @@ textarea {
 .app-shell p {
   color: var(--alertam-muted);
 }
+
+
+.port-map {
+  width: 100%;
+  background: var(--alertam-surface);
+  border: 1px solid var(--alertam-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.port-map__canvas {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+}
+
+.port-map__background {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.port-map__vessel {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: grid;
+  justify-items: center;
+  gap: 0.125rem;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.2rem;
+  border: 0;
+  background: transparent;
+  color: var(--alertam-blue-900);
+  cursor: pointer;
+}
+
+.port-map__vessel img {
+  width: clamp(28px, 8vw, 42px);
+  height: auto;
+  pointer-events: none;
+}
+
+.port-map__vessel span {
+  padding: 0.1rem 0.3rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 88%);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.port-map__vessel--moving img {
+  animation: alertam-vessel-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes alertam-vessel-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+.vessel-sheet {
+  position: fixed;
+  z-index: 40;
+  left: 50%;
+  bottom: 0;
+  width: min(100%, 48rem);
+  max-height: 76svh;
+  transform: translateX(-50%);
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-4)
+    max(var(--space-6), env(safe-area-inset-bottom));
+  background: var(--alertam-surface);
+  border-radius: 1.25rem 1.25rem 0 0;
+  box-shadow: 0 -0.5rem 2rem rgb(18 63 91 / 16%);
+}
+
+.vessel-sheet__handle {
+  width: 2.75rem;
+  height: 0.3rem;
+  margin: 0 auto var(--space-3);
+  border-radius: 999px;
+  background: var(--alertam-border);
+}
+
+.vessel-sheet__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.vessel-sheet__header h2,
+.vessel-sheet__header p {
+  margin: 0;
+}
+
+.vessel-sheet__header button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  font-size: 1.8rem;
+  cursor: pointer;
+}
+
+.vessel-sheet__eyebrow {
+  color: var(--alertam-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.vessel-sheet__photo {
+  width: 100%;
+  max-height: 14rem;
+  margin-top: var(--space-3);
+  object-fit: cover;
+  border-radius: var(--radius-md);
+}
+
+.vessel-sheet__details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-4) 0 0;
+}
+
+.vessel-sheet__detail {
+  min-width: 0;
+}
+
+.vessel-sheet__detail dt {
+  color: var(--alertam-muted);
+  font-size: 0.78rem;
+}
+
+.vessel-sheet__detail dd {
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+  font-weight: 650;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .port-map__vessel--moving img {
+    animation: none;
+  }
+}
+
+@media (max-width: 360px) {
+  .vessel-sheet__details {
+    grid-template-columns: 1fr;
+  }
+}
