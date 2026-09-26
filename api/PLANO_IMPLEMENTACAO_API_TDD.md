@@ -555,11 +555,29 @@ Regras:
 
 **Entrega:** API FastAPI deployável na Vercel sem alterar as regras testadas.
 
-- [ ] RED: smoke test prova que o entrypoint de deploy expõe a mesma app FastAPI.
-- [ ] GREEN: adicionar somente configuração necessária de deploy.
-- [ ] GREEN: variáveis sensíveis ficam exclusivamente no ambiente.
-- [ ] REVIEW: nenhuma credencial administrativa versionada.
-- [ ] REVIEW: deploy não usa memória local como fonte de verdade.
+- [x] RED/GREEN: smoke test prova que o entrypoint declarado na Vercel expõe a mesma app FastAPI.
+- [x] GREEN: configuração mínima de Vercel Services adicionada ao monorepo.
+- [x] GREEN: variáveis sensíveis permanecem exclusivamente no ambiente.
+- [x] REVIEW: nenhuma credencial administrativa está versionada.
+- [x] REVIEW: produção rejeita persistence backend `memory` e usa factory Supabase.
+
+### Registro da Task 11 — 2026-09-25
+
+- Revisada a estratégia de deploy contra a documentação oficial atual da Vercel para FastAPI e Vercel Services.
+- **Ruling:** o monorepo usa Vercel Services porque a arquitetura já prevê `api/` + futuro `frontend/` no mesmo projeto/domínio. Custo se essa decisão mudar: remover `vercel.json` e configurar a API como projeto Vercel separado.
+- Criado `vercel.json` na raiz do monorepo com service `api`, root `api/`, entrypoint `main:app` e rewrite público para `/api/v1/:path*`.
+- Adicionado `$schema=https://openapi.vercel.sh/vercel.json` para validação/editor tooling da configuração.
+- `api/main.py` reexporta a mesma instância `app` de `app.main`; o smoke test importa dinamicamente exatamente o entrypoint `main:app` declarado em `vercel.json`, confirma identidade da instância e valida `GET /api/v1/health`.
+- Criado `create_devices_repository(Settings)` como factory única de persistência em runtime.
+- Desenvolvimento/testes usam `MemoryDeviceRepository` e podem receber dispositivo mockado pelas variáveis `MOCK_*`.
+- Produção com `PERSISTENCE_BACKEND=memory` é rejeitada durante a criação de `Settings`; não existe fallback silencioso para memória em Vercel.
+- Produção com `PERSISTENCE_BACKEND=supabase` cria `SupabaseDeviceRepository` usando `SUPABASE_URL` + `SUPABASE_SECRET_KEY` (ou fallback legado).
+- Construir a app em modo produção com Supabase não abre conexão de rede durante import/startup; requests reais usam o repository quando chamados.
+- `.env.example` documenta explicitamente os valores obrigatórios para desenvolvimento e produção.
+- `vercel.json` não contém SUPABASE_SECRET_KEY, service role ou qualquer segredo.
+- O futuro frontend pode ser acrescentado como segundo service sem mudar as URLs públicas `/api/v1/*`.
+- Nenhum deploy remoto foi realizado nesta etapa porque o projeto Vercel e o Supabase reais ainda não foram provisionados.
+- Verificação final da etapa: suíte completa com 140 testes verdes, incluindo integrações PostgreSQL e warnings tratados como erro.
 
 ## Ordem obrigatória
 

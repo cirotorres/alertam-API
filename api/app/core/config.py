@@ -53,6 +53,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_persistence_credentials(self) -> "Settings":
+        if (
+            self.environment == "production"
+            and self.persistence_backend == "memory"
+        ):
+            raise ValueError(
+                "Ambiente de produção não pode usar persistência memory."
+            )
+
         if self.persistence_backend != "supabase":
             return self
 

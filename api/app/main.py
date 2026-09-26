@@ -16,7 +16,7 @@ from app.core.logging import (
     configure_logging,
 )
 from app.repositories.devices import DevicesRepository
-from app.repositories.memory import MemoryDeviceRepository
+from app.repositories.factory import create_devices_repository
 
 
 def create_app(
@@ -39,7 +39,11 @@ def create_app(
         title="AlertaM Mobile API",
         version="0.1.0",
     )
-    devices_repository = repository or MemoryDeviceRepository()
+    devices_repository = (
+        repository
+        if repository is not None
+        else create_devices_repository(resolved_settings)
+    )
 
     application.include_router(
         create_v1_router(
