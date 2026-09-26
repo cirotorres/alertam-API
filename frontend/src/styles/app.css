@@ -1541,8 +1541,8 @@ textarea {
 
 @keyframes alertam-drawer-in {
   from {
-    opacity: 0;
-    transform: translateX(-18px);
+    opacity: 0.4;
+    transform: translateX(-100%);
   }
   to {
     opacity: 1;
@@ -1556,15 +1556,15 @@ textarea {
     transform: translateX(0);
   }
   to {
-    opacity: 0;
-    transform: translateX(-18px);
+    opacity: 0.4;
+    transform: translateX(-100%);
   }
 }
 
 @keyframes alertam-sheet-in {
   from {
-    opacity: 0;
-    transform: translate(-50%, 18px);
+    opacity: 0.4;
+    transform: translate(-50%, 100%);
   }
   to {
     opacity: 1;
@@ -1578,8 +1578,8 @@ textarea {
     transform: translate(-50%, 0);
   }
   to {
-    opacity: 0;
-    transform: translate(-50%, 18px);
+    opacity: 0.4;
+    transform: translate(-50%, 100%);
   }
 }
 
@@ -1606,5 +1606,75 @@ textarea {
   .vessel-sheet.is-closing,
   .vessel-sheet-backdrop.is-closing {
     opacity: 0;
+  }
+}
+
+/* Gestos de gaveta: drag físico para menu lateral e ficha do navio. */
+.drawer {
+  touch-action: pan-y;
+}
+
+.drawer__grab {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 28px;
+  height: 84px;
+  transform: translateY(-50%);
+  cursor: grab;
+  touch-action: none;
+}
+
+.drawer__grab::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: 4px;
+  height: 34px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: #c7cdd2;
+}
+
+.vessel-sheet__drag-zone {
+  display: grid;
+  place-items: center;
+  min-height: 1.55rem;
+  margin: -0.2rem 0 0.35rem;
+  cursor: grab;
+  touch-action: none;
+}
+
+.vessel-sheet__drag-zone .vessel-sheet__handle {
+  margin: 0;
+}
+
+.drawer.is-dragging,
+.vessel-sheet.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.drawer.is-open.is-drag-interacted,
+.vessel-sheet.is-open.is-drag-interacted,
+.drawer.is-drag-dismissing,
+.vessel-sheet.is-drag-dismissing {
+  animation: none;
+}
+
+.drawer-overlay.is-open.is-drag-interacted,
+.vessel-sheet-backdrop.is-open.is-drag-interacted,
+.drawer-overlay.is-drag-dismissing,
+.vessel-sheet-backdrop.is-drag-dismissing {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer.is-drag-interacted,
+  .drawer-overlay.is-drag-interacted,
+  .vessel-sheet.is-drag-interacted,
+  .vessel-sheet-backdrop.is-drag-interacted {
+    transition: none !important;
   }
 }

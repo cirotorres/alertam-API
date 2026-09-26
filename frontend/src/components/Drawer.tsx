@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { InstallHelp } from "../features/install/InstallHelp";
 import { usePwaInstall } from "../features/install/usePwaInstall";
+import { useDismissDrag } from "../hooks/useDismissDrag";
 
 type DrawerProps = {
   open: boolean;
@@ -23,9 +24,22 @@ export function Drawer({
   const [installHelpOpen, setInstallHelpOpen] = useState(false);
   const [rendered, setRendered] = useState(open);
   const pwa = usePwaInstall();
+  const canStartDrag = useCallback((target: EventTarget | null) => {
+    return !(
+      target instanceof Element &&
+      target.closest("a, button, input, select, textarea")
+    );
+  }, []);
+  const drag = useDismissDrag({
+    axis: "x",
+    direction: "negative",
+    onDismiss: onClose,
+    canStart: canStartDrag,
+  });
 
   useEffect(() => {
     if (open) {
+      drag.reset();
       setRendered(true);
       return;
     }
@@ -57,25 +71,52 @@ export function Drawer({
     onClose();
   };
 
+  const dragActive = drag.interacted && (open || drag.dismissing);
+  const drawerStyle = dragActive
+    ? {
+        transform: `translateX(-${drag.offset}px)`,
+        transition: drag.dragging
+          ? "none"
+          : "transform 180ms cubic-bezier(0.22, 1, 0.36, 1)",
+      }
+    : undefined;
+  const overlayStyle = dragActive
+    ? {
+        opacity: Math.max(0, 1 - drag.progress * 0.92),
+        transition: drag.dragging ? "none" : "opacity 180ms ease-out",
+      }
+    : undefined;
+  const dragClasses = [
+    drag.interacted ? "is-drag-interacted" : "",
+    drag.dragging ? "is-dragging" : "",
+    drag.dismissing ? "is-drag-dismissing" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <>
       {rendered ? (
         <>
           <button
             type="button"
-            className={`drawer-overlay ${open ? "is-open" : "is-closing"}`}
+            className={`drawer-overlay ${open ? "is-open" : "is-closing"} ${dragClasses}`}
+            style={overlayStyle}
             aria-label="Fechar menu"
             aria-hidden={!open}
             disabled={!open}
             onClick={onClose}
           />
           <aside
-            className={`drawer ${open ? "is-open" : "is-closing"}`}
+            className={`drawer ${open ? "is-open" : "is-closing"} ${dragClasses}`}
+            style={drawerStyle}
             role="dialog"
             aria-modal="true"
             aria-hidden={!open}
             aria-label="Menu principal"
+            {...drag.pointerHandlers}
           >
+            <div className="drawer__grab" aria-hidden="true" />
             <div className="drawer__brand">
               <strong>AlertaM</strong>
               <span>{demoMode ? "Modo demonstração" : "Consulta mobile"}</span>

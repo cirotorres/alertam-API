@@ -1,4 +1,7 @@
+import { useCallback, useEffect } from "react";
+
 import type { VesselV1 } from "../../api/contract";
+import { useDismissDrag } from "../../hooks/useDismissDrag";
 
 type VesselSheetProps = {
   vessel: VesselV1;
@@ -23,15 +26,69 @@ export function VesselSheet({
   onClose,
   imageUrl,
 }: VesselSheetProps) {
+  const canStartDrag = useCallback((target: EventTarget | null) => {
+    return (
+      target instanceof Element &&
+      target.closest(".vessel-sheet__drag-zone") !== null
+    );
+  }, []);
+  const drag = useDismissDrag({
+    axis: "y",
+    direction: "positive",
+    onDismiss: onClose,
+    canStart: canStartDrag,
+  });
+
+  useEffect(() => {
+    if (open) drag.reset();
+  }, [open]);
+
+  const dragActive = drag.interacted && (open || drag.dismissing);
+  const sheetStyle = dragActive
+    ? {
+        transform: `translate(-50%, ${drag.offset}px)`,
+        transition: drag.dragging
+          ? "none"
+          : "transform 180ms cubic-bezier(0.22, 1, 0.36, 1)",
+      }
+    : undefined;
+  const backdropStyle = dragActive
+    ? {
+        opacity: Math.max(0, 1 - drag.progress * 0.92),
+        transition: drag.dragging ? "none" : "opacity 180ms ease-out",
+      }
+    : undefined;
+  const dragClasses = [
+    drag.interacted ? "is-drag-interacted" : "",
+    drag.dragging ? "is-dragging" : "",
+    drag.dismissing ? "is-drag-dismissing" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <aside
-      className={`vessel-sheet ${open ? "is-open" : "is-closing"}`}
-      role="dialog"
-      aria-modal="true"
-      aria-hidden={!open}
-      aria-label={`Ficha do navio ${vessel.name}`}
-    >
-      <div className="vessel-sheet__handle" aria-hidden="true" />
+    <>
+      <button
+        className={`vessel-sheet-backdrop ${open ? "is-open" : "is-closing"} ${dragClasses}`}
+        style={backdropStyle}
+        type="button"
+        aria-label="Fechar ficha"
+        aria-hidden={!open}
+        disabled={!open}
+        onClick={onClose}
+      />
+      <aside
+        className={`vessel-sheet ${open ? "is-open" : "is-closing"} ${dragClasses}`}
+        style={sheetStyle}
+        role="dialog"
+        aria-modal="true"
+        aria-hidden={!open}
+        aria-label={`Ficha do navio ${vessel.name}`}
+        {...drag.pointerHandlers}
+      >
+        <div className="vessel-sheet__drag-zone" aria-hidden="true">
+          <div className="vessel-sheet__handle" />
+        </div>
       <header className="vessel-sheet__header">
         <div>
           <p className="vessel-sheet__eyebrow">Ficha do navio</p>
@@ -60,6 +117,7 @@ export function VesselSheet({
         <Detail label="IRIN" value={vessel.irin} />
         <Detail label="Bandeira" value={vessel.flag} />
       </dl>
-    </aside>
+      </aside>
+    </>
   );
 }

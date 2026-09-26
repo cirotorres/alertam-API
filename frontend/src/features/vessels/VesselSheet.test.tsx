@@ -35,3 +35,45 @@ test("does_not_render_when_closed", () => {
   render(<VesselSheet vessel={vessel} open={false} onClose={() => undefined} />);
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
+
+test("short_downward_drag_keeps_vessel_sheet_open", () => {
+  const onClose = vi.fn();
+  const { container } = render(
+    <VesselSheet vessel={vessel} open onClose={onClose} />,
+  );
+  const sheet = screen.getByRole("dialog", { name: /NAVIO A/i });
+  const grab = container.querySelector(".vessel-sheet__drag-zone");
+  expect(grab).not.toBeNull();
+
+  fireEvent.pointerDown(grab!, {
+    pointerId: 1,
+    isPrimary: true,
+    button: 0,
+    clientY: 100,
+  });
+  fireEvent.pointerMove(sheet, { pointerId: 1, clientY: 135 });
+  fireEvent.pointerUp(sheet, { pointerId: 1, clientY: 135 });
+
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+test("long_downward_drag_dismisses_vessel_sheet", async () => {
+  const onClose = vi.fn();
+  const { container } = render(
+    <VesselSheet vessel={vessel} open onClose={onClose} />,
+  );
+  const sheet = screen.getByRole("dialog", { name: /NAVIO A/i });
+  const grab = container.querySelector(".vessel-sheet__drag-zone");
+  expect(grab).not.toBeNull();
+
+  fireEvent.pointerDown(grab!, {
+    pointerId: 2,
+    isPrimary: true,
+    button: 0,
+    clientY: 100,
+  });
+  fireEvent.pointerMove(sheet, { pointerId: 2, clientY: 240 });
+  fireEvent.pointerUp(sheet, { pointerId: 2, clientY: 240 });
+
+  await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+});

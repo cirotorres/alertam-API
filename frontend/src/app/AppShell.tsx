@@ -155,21 +155,11 @@ export function AppShell({
         />
       ) : null}
       {renderedVessel ? (
-        <>
-          <button
-            className={`vessel-sheet-backdrop ${selectedVessel ? "is-open" : "is-closing"}`}
-            type="button"
-            aria-label="Fechar ficha"
-            aria-hidden={!selectedVessel}
-            disabled={!selectedVessel}
-            onClick={closeVessel}
-          />
-          <VesselSheet
-            vessel={renderedVessel}
-            open={selectedVessel !== null}
-            onClose={closeVessel}
-          />
-        </>
+        <VesselSheet
+          vessel={renderedVessel}
+          open={selectedVessel !== null}
+          onClose={closeVessel}
+        />
       ) : null}
     </div>
   );
