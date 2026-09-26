@@ -560,3 +560,53 @@ textarea {
     font-size: 0.72rem;
   }
 }
+
+
+.pairing-screen {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--space-3);
+  width: min(100% - 2rem, 30rem);
+  min-height: 100vh;
+  min-height: 100svh;
+  margin: 0 auto;
+  padding:
+    max(var(--space-6), env(safe-area-inset-top))
+    var(--space-4)
+    max(var(--space-6), env(safe-area-inset-bottom));
+  text-align: center;
+}
+
+.pairing-screen__mark {
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 50%;
+  background: var(--alertam-blue-100);
+  font-size: 2rem;
+}
+
+.pairing-screen h1 {
+  margin: 0;
+  color: var(--alertam-blue-900);
+  font-size: clamp(1.5rem, 7vw, 2rem);
+}
+
+.pairing-screen p {
+  margin: 0;
+  color: var(--alertam-muted);
+  line-height: 1.55;
+}
+
+.pairing-screen button {
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--alertam-blue-900);
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
