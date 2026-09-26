@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "boot_id": "550e8400-e29b-41d4-a716-446655440000",
+  "sequence": 1,
+  "generated_at": "2026-09-25T13:40:12-03:00",
+  "collector": {
+    "status": "monitoring",
+    "last_collection_at": "2026-09-25T13:40:12-03:00"
+  },
+  "port": {
+    "name": "Porto do Pecém (CIPP) - CE"
+  },
+  "vessels": [
+    {
+      "name": "NAVIO A",
+      "imo": "1234567",
+      "status": "ATRACANDO",
+      "section": "FUNDEADO",
+      "berth": 2,
+      "side": "BE",
+      "eta": "25/09 10:00",
+      "etb_ets": "25/09 11:00",
+      "pob": "25/09 12:00",
+      "flag": "BRASIL",
+      "origin_port": "SANTOS",
+      "irin": "PPAA",
+      "agency": "AG",
+      "tugs": "R1, R2"
+    }
+  ],
+  "weather": {
+    "consulted_at": "2026-09-25T13:39:00-03:00",
+    "observed_at": "2026-09-25T13:35:00-03:00",
+    "air_temperature_c": 29.5,
+    "humidity_pct": 70.0,
+    "weather_code": 1,
+    "wind_speed_kn": 12.3,
+    "wind_direction_deg": 80.0,
+    "wind_gust_kn": 16.4,
+    "visibility_m": 10000.0,
+    "precipitation_mm": 0.0
+  },
+  "marine": {
+    "consulted_at": "2026-09-25T13:38:00-03:00",
+    "observed_at": "2026-09-25T13:30:00-03:00",
+    "wave_height_m": 1.2,
+    "wave_direction_deg": 90.0,
+    "wave_period_s": 8.0,
+    "swell_height_m": 0.8,
+    "swell_direction_deg": 100.0,
+    "swell_period_s": 10.0,
+    "sea_temperature_c": 28.0,
+    "current_kn": 0.6,
+    "current_direction_deg": 210.0
+  },
+  "recent_maneuvers": {
+    "active": [
+      {
+        "id": "m1",
+        "type": "ATRACACAO",
+        "vessel_name": "NAVIO A",
+        "berth": 2,
+        "pob": "25/09 12:00",
+        "status": "ACTIVE",
+        "detected_at": "2026-09-25T12:00:00-03:00",
+        "completed_at": null
+      }
+    ],
+    "completed": [
+      {
+        "id": "m2",
+        "type": "DESATRACACAO",
+        "vessel_name": "NAVIO B",
+        "berth": 3,
+        "pob": "25/09 09:00",
+        "status": "COMPLETED",
+        "detected_at": "2026-09-25T09:00:00-03:00",
+        "completed_at": "2026-09-25T10:00:00-03:00"
+      }
+    ]
+  }
+}

@@ -177,18 +177,34 @@ Durante a implementação, revisar especialmente:
 - `RecentManeuversV1`
 - `ManeuverV1`
 
-- [ ] RED: fixture válida do `MobileSnapshotBuilder` é aceita.
-- [ ] RED: `schema_version != 1` é rejeitado e fica classificável como `unsupported_snapshot_schema`.
-- [ ] RED: campos extras são rejeitados.
-- [ ] RED: navio sem qualquer chave da whitelist é rejeitado.
-- [ ] RED: `weather` e `marine` aceitam somente `{}` ou bloco completo.
-- [ ] RED: timestamps obrigatórios sem timezone são rejeitados.
-- [ ] RED: item active exige `ACTIVE + completed_at=null`.
-- [ ] RED: item completed exige `COMPLETED + completed_at`.
-- [ ] GREEN: implementar os modelos mínimos.
-- [ ] GREEN: rodar unit + contract da Task 2.
-- [ ] REFACTOR: nenhuma persistência dentro dos modelos.
-- [ ] REVIEW: comparar campo a campo com o DTO real do Desktop.
+- [x] RED/GREEN: fixture válida do `MobileSnapshotBuilder` é aceita.
+- [x] RED/GREEN: `schema_version != 1` é rejeitado e fica classificável como `unsupported_snapshot_schema`.
+- [x] RED/GREEN: campos extras são rejeitados.
+- [x] RED/GREEN: navio sem qualquer chave da whitelist é rejeitado.
+- [x] RED/GREEN: `weather` e `marine` aceitam somente `{}` ou bloco completo.
+- [x] RED/GREEN: timestamps obrigatórios sem timezone são rejeitados.
+- [x] RED/GREEN: item active exige `ACTIVE + completed_at=null`.
+- [x] RED/GREEN: item completed exige `COMPLETED + completed_at`.
+- [x] RED/GREEN: medidas presentes precisam ser numéricas e não aceitam strings numéricas.
+- [x] GREEN: modelos mínimos implementados.
+- [x] GREEN: unit + contract da Task 2 executados.
+- [x] REFACTOR: modelos permanecem puros, sem persistência.
+- [x] REVIEW: contrato comparado campo a campo com o DTO real do Desktop e a SPEC 018.
+
+### Registro da Task 2 — 2026-09-25
+
+- Fixture `mobile_snapshot_v1.json` gerada diretamente pelo `MobileSnapshotBuilder` real do Desktop.
+- `MobileSnapshotV1` e DTOs internos criados com `extra="forbid"`.
+- `boot_id` validado como UUID e `sequence` como inteiro estritamente positivo.
+- Timestamps contratuais validados como timezone-aware.
+- Navios exigem todas as chaves da whitelist v1, inclusive campos nullable presentes com `null`.
+- `weather` e `marine` aceitam somente bloco vazio ou bloco v1 completo.
+- Medições numéricas usam tipos estritos para impedir coerção silenciosa de strings.
+- Manobras recentes validam tipo, status e coerência entre grupo active/completed e `completed_at`.
+- Testes de contrato garantem que a fixture do Desktop não contém `linhas_brutas` nem campos fora do contrato.
+- Revisão da etapa: nenhum acesso ao banco, nenhuma regra náutica recriada e nenhuma dependência da aplicação Desktop introduzida.
+- Verificação final da etapa: suíte completa da API com 24 testes verdes antes do commit.
+
 ## Task 3 — Credenciais e erros sanitizados
 
 **Entrega:** parsing e hash de credenciais sem vazar segredos.
