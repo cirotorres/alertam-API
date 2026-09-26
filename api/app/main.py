@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, Request
-from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.api.v1.access import create_access_router
 from app.api.v1.snapshots import create_snapshot_router
 from app.core.errors import ApiError
 from app.repositories.devices import DevicesRepository
@@ -21,6 +21,9 @@ def create_app(
     devices_repository = repository or MemoryDeviceRepository()
     application.include_router(
         create_snapshot_router(devices_repository)
+    )
+    application.include_router(
+        create_access_router(devices_repository)
     )
 
     @application.exception_handler(ApiError)
@@ -52,7 +55,15 @@ def create_app(
                         }
                     },
                 )
-        return await request_validation_exception_handler(request, exc)
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": {
+                    "code": "invalid_request_payload",
+                    "message": "Payload inválido.",
+                }
+            },
+        )
 
     return application
 

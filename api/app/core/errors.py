@@ -63,3 +63,12 @@ class PersistenceUnavailableApiError(ApiError):
             code="persistence_unavailable",
             message="Persistência temporariamente indisponível.",
         )
+
+
+class InvalidViewSecretError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=422,
+            code="invalid_view_secret",
+            message="Segredo de leitura inválido.",
+        )

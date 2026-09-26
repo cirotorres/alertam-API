@@ -1,20 +1,19 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Response, status
 
-from app.models.mobile_snapshot import MobileSnapshotV1
-from app.models.responses import SnapshotAcceptedResponse
+from app.models.access import ViewAccessRequest
 from app.repositories.devices import DevicesRepository
 from app.security.credentials import parse_device_authorization
+from app.services.access_service import AccessService
 from app.services.device_auth import AuthenticatedDevice
-from app.services.snapshot_service import SnapshotService
 
 
-def create_snapshot_router(
+def create_access_router(
     repository: DevicesRepository,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/devices")
-    service = SnapshotService(repository)
+    service = AccessService(repository)
 
     def require_device(
         device_id: str,
@@ -24,22 +23,20 @@ def create_snapshot_router(
         ),
     ) -> AuthenticatedDevice:
         device_secret = parse_device_authorization(authorization)
-        return service.authenticate_device(
-            device_id,
-            device_secret,
-        )
+        return service.authenticate_device(device_id, device_secret)
 
-    @router.post(
-        "/{device_id}/snapshot",
-        response_model=SnapshotAcceptedResponse,
+    @router.put(
+        "/{device_id}/view-access",
+        status_code=status.HTTP_204_NO_CONTENT,
     )
-    def post_snapshot(
-        snapshot: MobileSnapshotV1,
+    def put_view_access(
+        request: ViewAccessRequest,
         device: AuthenticatedDevice = Depends(require_device),
-    ) -> SnapshotAcceptedResponse:
-        return service.accept_authenticated_snapshot(
+    ) -> Response:
+        service.rotate_authenticated_view_secret(
             device,
-            snapshot,
+            request.view_secret,
         )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     return router

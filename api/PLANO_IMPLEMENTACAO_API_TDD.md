@@ -412,15 +412,33 @@ Regras:
 - `tests/unit/test_access_service.py`
 - `tests/integration/test_put_view_access.py`
 
-- [ ] RED: exige Authorization Device válido.
-- [ ] RED: token curto/formato inválido é rejeitado.
-- [ ] RED: repository recebe apenas hash.
-- [ ] RED: resposta é 204 e não contém segredo.
-- [ ] RED: rotação invalida imediatamente o token anterior.
-- [ ] GREEN: implementar service + endpoint.
-- [ ] GREEN: rodar testes da Task 7.
-- [ ] REFACTOR: geração de QR/token continua fora deste endpoint.
-- [ ] REVIEW: verificar logs/exceptions.
+- [x] RED/GREEN: exige Authorization Device válido.
+- [x] RED/GREEN: token curto ou fora de base64url é rejeitado.
+- [x] RED/GREEN: repository recebe somente SHA-256, nunca plaintext.
+- [x] RED/GREEN: resposta é 204 e não contém segredo.
+- [x] RED/GREEN: rotação invalida imediatamente o token anterior.
+- [x] RED/GREEN: erros 422 não ecoam o VIEW_SECRET recebido.
+- [x] GREEN: service + endpoint implementados.
+- [x] GREEN: testes da Task 7 executados.
+- [x] REFACTOR: autenticação de dispositivo extraída para serviço compartilhado.
+- [x] REVIEW: geração de QR/token permanece fora da API e erros não expõem segredos.
+
+### Registro da Task 7 — 2026-09-25
+
+- Criado `DeviceAuthService` compartilhado pelos fluxos de snapshot e rotação, evitando duplicação da verificação de `DEVICE_SECRET`.
+- Criado `AccessService` com validação de `VIEW_SECRET` em formato base64url e mínimo de 43 caracteres.
+- Criado `PUT /api/v1/devices/{device_id}/view-access` com autenticação Device resolvida antes da validação do body.
+- O endpoint retorna `204 No Content` e nunca devolve o `VIEW_SECRET`.
+- O service calcula SHA-256 e entrega somente o hash ao repository.
+- Segunda rotação substitui o hash anterior imediatamente; o token antigo deixa de validar.
+- **Ruling:** validação de comprimento/formato do `VIEW_SECRET` fica no service, não no Pydantic, para impedir que erros de validação reflitam o segredo em detalhes internos.
+- O fallback global de `RequestValidationError` foi sanitizado para `invalid_request_payload` sem incluir valores de entrada; a Task 9 continuará responsável por consolidar esse handler.
+- `SupabaseDeviceRepository.get_device_auth()` lê apenas identificador e hashes necessários para autenticação.
+- `SupabaseDeviceRepository.rotate_view_secret_hash()` chama RPC recebendo somente hash.
+- Migration `003_rotate_view_secret_rpc.sql` atualiza `view_secret_hash`, `view_secret_updated_at` e `updated_at` usando relógio do PostgreSQL.
+- A RPC retorna `false` quando o dispositivo não existe e não cria registro automaticamente.
+- Revisão da etapa: nenhuma geração de QR, nenhum plaintext persistido e nenhuma resposta/error payload contém segredo.
+- Verificação final da etapa: suíte completa com 106 testes verdes, incluindo integrações PostgreSQL e warnings tratados como erro.
 
 ## Task 8 — GET read-only para o mobile
 

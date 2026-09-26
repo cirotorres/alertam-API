@@ -8,6 +8,7 @@ import httpx
 from app.repositories.devices import (
     AcceptSnapshotResult,
     AcceptSnapshotStatus,
+    DeviceAuthRecord,
     PersistenceUnavailableError,
     SnapshotCandidate,
 )
@@ -33,6 +34,76 @@ class SupabaseDeviceRepository:
         if not self._server_key.startswith("sb_secret_"):
             headers["Authorization"] = f"Bearer {self._server_key}"
         return headers
+
+    def get_device_auth(
+        self,
+        device_id: str,
+    ) -> DeviceAuthRecord | None:
+        try:
+            response = self._client.get(
+                f"{self._base_url}/rest/v1/devices",
+                headers=self._headers(),
+                params={
+                    "select": (
+                        "device_id,device_secret_hash,view_secret_hash"
+                    ),
+                    "device_id": f"eq.{device_id}",
+                    "limit": "1",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise ValueError("Resposta de dispositivo inválida.")
+            if not data:
+                return None
+            if len(data) != 1 or not isinstance(data[0], dict):
+                raise ValueError("Resposta de dispositivo inválida.")
+            row = data[0]
+            return DeviceAuthRecord(
+                device_id=str(row["device_id"]),
+                device_secret_hash=str(row["device_secret_hash"]),
+                view_secret_hash=(
+                    None
+                    if row.get("view_secret_hash") is None
+                    else str(row["view_secret_hash"])
+                ),
+            )
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def rotate_view_secret_hash(
+        self,
+        device_id: str,
+        view_secret_hash: str,
+    ) -> bool:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/rotate_device_view_secret",
+                headers=self._headers(),
+                json={
+                    "p_device_id": device_id,
+                    "p_view_secret_hash": view_secret_hash,
+                },
+            )
+            response.raise_for_status()
+            row = self._extract_row(response.json())
+            updated = row["updated"]
+            if not isinstance(updated, bool):
+                raise TypeError("Resultado de rotação inválido.")
+            return updated
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
 
     def accept_snapshot_atomic(
         self,
