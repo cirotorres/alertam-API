@@ -7,10 +7,19 @@ import { usePwaInstall } from "../features/install/usePwaInstall";
 type DrawerProps = {
   open: boolean;
   onClose: () => void;
+  basePath?: string;
+  demoMode?: boolean;
 };
 
-export function Drawer({ open, onClose }: DrawerProps) {
+export function Drawer({
+  open,
+  onClose,
+  basePath = "",
+  demoMode = false,
+}: DrawerProps) {
   const firstLinkRef = useRef<HTMLAnchorElement>(null);
+  const routePath = (suffix: string) =>
+    basePath ? `${basePath}${suffix}` : suffix || "/";
   const [installHelpOpen, setInstallHelpOpen] = useState(false);
   const pwa = usePwaInstall();
 
@@ -49,13 +58,13 @@ export function Drawer({ open, onClose }: DrawerProps) {
           <aside className="drawer" role="dialog" aria-modal="true" aria-label="Menu principal">
             <div className="drawer__brand">
               <strong>AlertaM</strong>
-              <span>Consulta mobile</span>
+              <span>{demoMode ? "Modo demonstração" : "Consulta mobile"}</span>
             </div>
             <nav aria-label="Navegação principal">
-              <Link ref={firstLinkRef} to="/" onClick={onClose}>Mapa</Link>
-              <Link to="/alertas" onClick={onClose}>Alertas</Link>
-              <Link to="/historico" onClick={onClose}>Histórico</Link>
-              <Link to="/config" onClick={onClose}>Config.</Link>
+              <Link ref={firstLinkRef} to={routePath("")} onClick={onClose}>Mapa</Link>
+              <Link to={routePath("/alertas")} onClick={onClose}>Alertas</Link>
+              <Link to={routePath("/historico")} onClick={onClose}>Histórico</Link>
+              <Link to={routePath("/config")} onClick={onClose}>Config.</Link>
             </nav>
             <div className="drawer__separator" />
             <button
@@ -65,7 +74,7 @@ export function Drawer({ open, onClose }: DrawerProps) {
             >
               {pwa.state === "installed" ? "Aplicativo instalado" : "Instalar aplicativo"}
             </button>
-            <Link to="/sobre" onClick={onClose}>Sobre</Link>
+            <Link to={routePath("/sobre")} onClick={onClose}>Sobre</Link>
           </aside>
         </>
       ) : null}

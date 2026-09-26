@@ -23,6 +23,8 @@ import { VesselSheet } from "../features/vessels/VesselSheet";
 type AppShellProps = {
   pairing: Pairing;
   onPairingCleared?: () => void;
+  basePath?: string;
+  demoMode?: boolean;
 };
 
 export type ShellOutletContext = {
@@ -32,10 +34,14 @@ export type ShellOutletContext = {
   setActiveBottomTab: (tab: BottomTab) => void;
   selectVessel: (vessel: VesselV1) => void;
   onPairingCleared: () => void;
+  basePath: string;
+  demoMode: boolean;
 };
 export function AppShell({
   pairing,
   onPairingCleared = () => undefined,
+  basePath = "",
+  demoMode = false,
 }: AppShellProps) {
   const snapshotState = useSnapshotState();
   const navigate = useNavigate();
@@ -83,6 +89,10 @@ export function AppShell({
   const lastCollectionAt =
     snapshotState.data?.snapshot.collector.last_collection_at ?? null;
 
+  const rootPath = basePath || "/";
+  const routePath = (suffix: string) =>
+    basePath ? `${basePath}${suffix}` : suffix || "/";
+
   const outletContext: ShellOutletContext = {
     pairing,
     snapshotState,
@@ -90,16 +100,20 @@ export function AppShell({
     setActiveBottomTab,
     selectVessel,
     onPairingCleared,
+    basePath,
+    demoMode,
   };
 
-  const showBottomNav = ["/", "/alertas", "/historico"].includes(
-    location.pathname,
-  );
+  const showBottomNav = [
+    rootPath,
+    routePath("/alertas"),
+    routePath("/historico"),
+  ].includes(location.pathname);
 
   const handleBottomTabChange = (tab: BottomTab) => {
     setActiveBottomTab(tab);
-    if (location.pathname !== "/") {
-      navigate("/");
+    if (location.pathname !== rootPath) {
+      navigate(rootPath);
     }
   };
   return (
@@ -107,10 +121,21 @@ export function AppShell({
       <Header
         status={snapshotState.status}
         lastCollectionAt={lastCollectionAt}
+        demoMode={demoMode}
         onMenu={openDrawer}
         menuButtonRef={menuButtonRef}
       />
-      <Drawer open={drawerOpen} onClose={closeDrawer} />
+      <Drawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        basePath={basePath}
+        demoMode={demoMode}
+      />
+      {demoMode ? (
+        <div className="demo-banner" role="note">
+          Dados fictícios para validação visual · nenhuma consulta à API real
+        </div>
+      ) : null}
       <main className="mobile-content">
         <Outlet context={outletContext} />
       </main>

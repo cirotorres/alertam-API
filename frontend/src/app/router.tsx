@@ -11,12 +11,19 @@ import { AppShell } from "./AppShell";
 type AppRoutesProps = {
   pairing: Pairing;
   onPairingCleared?: () => void;
+  basePath?: string;
+  demoMode?: boolean;
 };
 
 export function AppRoutes({
   pairing,
   onPairingCleared,
+  basePath = "",
+  demoMode = false,
 }: AppRoutesProps) {
+  const routePath = (suffix: string) =>
+    basePath ? `${basePath}${suffix}` : suffix || "/";
+
   return (
     <Routes>
       <Route
@@ -24,14 +31,16 @@ export function AppRoutes({
           <AppShell
             pairing={pairing}
             onPairingCleared={onPairingCleared}
+            basePath={basePath}
+            demoMode={demoMode}
           />
         }
       >
-        <Route path="/" element={<MapPage />} />
-        <Route path="/alertas" element={<AlertsPage />} />
-        <Route path="/historico" element={<HistoryPage />} />
-        <Route path="/config" element={<ConfigPage />} />
-        <Route path="/sobre" element={<AboutPage />} />
+        <Route path={routePath("")} element={<MapPage />} />
+        <Route path={routePath("/alertas")} element={<AlertsPage />} />
+        <Route path={routePath("/historico")} element={<HistoryPage />} />
+        <Route path={routePath("/config")} element={<ConfigPage />} />
+        <Route path={routePath("/sobre")} element={<AboutPage />} />
       </Route>
     </Routes>
   );

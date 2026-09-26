@@ -4,6 +4,7 @@ import type { SnapshotStatus } from "../features/snapshot/useSnapshotPolling";
 type HeaderProps = {
   status: SnapshotStatus;
   lastCollectionAt: string | null;
+  demoMode?: boolean;
   onMenu: () => void;
   menuButtonRef: RefObject<HTMLButtonElement | null>;
 };
@@ -21,11 +22,15 @@ function formatDateTime(value: string | null): string {
 export function Header({
   status,
   lastCollectionAt,
+  demoMode = false,
   onMenu,
   menuButtonRef,
 }: HeaderProps) {
-  const sessionText =
-    status === "revoked" ? "Acesso revogado" : "Sessão válida";
+  const sessionText = demoMode
+    ? "Modo demonstração"
+    : status === "revoked"
+      ? "Acesso revogado"
+      : "Sessão válida";
 
   return (
     <header className="mobile-header">

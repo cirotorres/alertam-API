@@ -217,3 +217,51 @@ test("installed shell reloads offline without cached authenticated snapshot", as
 
   await context.close();
 });
+
+
+test("demo mode shows mocked maneuvers without calling the real api", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-390", "Demo validation runs once on mobile.");
+
+  let apiCalls = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/")) {
+      apiCalls += 1;
+    }
+  });
+
+  await page.goto("/demo");
+
+  await expect(page.getByText("Modo demonstração")).toBeVisible();
+  await expect(page.getByText(/Dados fictícios para validação visual/i)).toBeVisible();
+
+  const arriving = page.getByRole("button", {
+    name: /ATLANTIC DAWN, Berço 2/i,
+  });
+  const departing = page.getByRole("button", {
+    name: /OCEAN STAR, Berço 7/i,
+  });
+
+  await expect(arriving).toBeVisible();
+  await expect(departing).toBeVisible();
+  await expect(arriving.locator("img")).toHaveAttribute(
+    "src",
+    "/assets/navio_green.png",
+  );
+  await expect(departing.locator("img")).toHaveAttribute(
+    "src",
+    "/assets/navio_red.png",
+  );
+
+  await page.getByRole("button", { name: "Prev. desatracação" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Previsão de desatracação" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Abrir menu" }).click();
+  const alerts = page.getByRole("link", { name: "Alertas" });
+  await expect(alerts).toHaveAttribute("href", "/demo/alertas");
+  await alerts.click();
+  await expect(page.getByRole("heading", { name: "Alertas" })).toBeVisible();
+
+  expect(apiCalls).toBe(0);
+});

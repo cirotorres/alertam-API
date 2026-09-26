@@ -20,6 +20,11 @@ type SnapshotProviderProps = {
   onAccessRevoked?: () => void;
   children: ReactNode;
 };
+
+type StaticSnapshotProviderProps = {
+  state: SnapshotState;
+  children: ReactNode;
+};
 export function SnapshotProvider({
   pairing,
   fetcher,
@@ -34,6 +39,17 @@ export function SnapshotProvider({
     }
   }, [onAccessRevoked, state.status]);
 
+  return (
+    <SnapshotContext.Provider value={state}>
+      {children}
+    </SnapshotContext.Provider>
+  );
+}
+
+export function StaticSnapshotProvider({
+  state,
+  children,
+}: StaticSnapshotProviderProps) {
   return (
     <SnapshotContext.Provider value={state}>
       {children}
