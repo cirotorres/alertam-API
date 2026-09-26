@@ -221,15 +221,28 @@ Durante a implementação, revisar especialmente:
 - `parse_device_authorization(header: str | None) -> str`
 - `parse_bearer_authorization(header: str | None) -> str`
 
-- [ ] RED: header Device válido extrai somente o token.
-- [ ] RED: Bearer válido extrai somente o token.
-- [ ] RED: esquema ausente/incorreto/token vazio gera 401 genérico.
-- [ ] RED: comparação usa SHA-256 + `hmac.compare_digest`.
-- [ ] RED: erros/logs não contêm o segredo.
-- [ ] GREEN: implementar utilitários mínimos.
-- [ ] GREEN: rodar testes da Task 3.
-- [ ] REFACTOR: security não conhece router nem Supabase.
-- [ ] REVIEW: dispositivo inexistente e segredo incorreto não podem ser distinguíveis externamente.
+- [x] RED/GREEN: header Device válido extrai somente o token.
+- [x] RED/GREEN: Bearer válido extrai somente o token.
+- [x] RED/GREEN: esquema ausente/incorreto/token vazio gera 401 genérico.
+- [x] RED/GREEN: hashing usa SHA-256 e verificação usa `hmac.compare_digest`.
+- [x] RED/GREEN: erros públicos não contêm o segredo recebido.
+- [x] GREEN: utilitários mínimos implementados.
+- [x] GREEN: testes da Task 3 executados.
+- [x] REFACTOR: security permanece sem dependência de router ou Supabase.
+- [x] REVIEW: os erros públicos não distinguem causa interna de falha de credencial.
+
+### Registro da Task 3 — 2026-09-25
+
+- `hash_secret()` implementado com SHA-256 hexadecimal.
+- `verify_secret()` compara hashes com `hmac.compare_digest`.
+- Headers `Authorization: Device <token>` e `Authorization: Bearer <token>` possuem parsers independentes.
+- Headers ausentes, com esquema incorreto, token vazio ou token contendo espaços extras são rejeitados com 401 genérico.
+- `InvalidDeviceCredentialsError` expõe somente `invalid_device_credentials` e mensagem pública curta.
+- `InvalidViewCredentialsError` expõe somente `invalid_view_credentials` e mensagem pública curta.
+- Nenhum token, header bruto ou hash é incluído nas mensagens de erro.
+- Revisão da etapa: a camada security não acessa repository, FastAPI, Supabase ou logging.
+- Verificação final da etapa: suíte completa da API com 43 testes verdes antes do commit.
+
 ## Task 4 — Schema Supabase e contrato do repository
 
 **Entrega:** persistência representável sem banco real e schema SQL mínimo.
