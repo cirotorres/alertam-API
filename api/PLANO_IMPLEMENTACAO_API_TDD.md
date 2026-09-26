@@ -528,13 +528,28 @@ Regras:
 - `tests/fixtures/mobile_snapshot_v1.json`
 - `tests/contract/test_desktop_to_mobile_roundtrip.py`
 
-- [ ] RED: fixture é gerada/capturada a partir do `MobileSnapshotBuilder`, sem Selenium.
-- [ ] RED: POST aceita exatamente a fixture real.
-- [ ] RED: GET devolve o mesmo snapshot sem perda ou reformatação.
-- [ ] RED: `linhas_brutas`, cookies, logs e sessão não aparecem.
-- [ ] GREEN: corrigir somente incompatibilidades reais.
-- [ ] GREEN: executar toda suíte aplicável.
-- [ ] REVIEW: quebra incompatível exige futura nova `schema_version`.
+- [x] VERIFY: fixture regenerada diretamente pelo `MobileSnapshotBuilder` real, sem Selenium e sem rede.
+- [x] VERIFY: fixture regenerada é byte a byte idêntica à fixture versionada.
+- [x] VERIFY: POST aceita exatamente a fixture real.
+- [x] VERIFY: GET devolve o mesmo snapshot sem perda ou reformatação.
+- [x] VERIFY: `linhas_brutas`, cookies, sessão e segredos não aparecem no round-trip.
+- [x] GREEN: nenhuma correção de produção foi necessária.
+- [x] GREEN: toda suíte aplicável executada.
+- [x] REVIEW: quebra incompatível continuará exigindo futura nova `schema_version`.
+
+### Registro da Task 10 — 2026-09-25
+
+- A fixture `tests/fixtures/mobile_snapshot_v1.json` foi regenerada a partir do `MobileSnapshotBuilder` do Desktop AlertaM.
+- A geração utilizou apenas modelos/domínio do Desktop; Selenium e rede não foram usados.
+- Comparação byte a byte confirmou que a fixture regenerada é idêntica à versionada.
+- SHA-256 confirmado: `6a40fc97e36eefc07fac36e8ee02cf2ce589b942f2cbe34521723e65699322a9`.
+- Criado teste contratual completo `Device POST → persistência memory → rotação VIEW_SECRET → Bearer GET`.
+- O JSON devolvido pelo GET é igual ao JSON original do Desktop, sem perda nem renomeação de campos.
+- O round-trip verifica ausência de campos internos/sensíveis como `linhas_brutas`, cookies, sessão, Authorization e segredos.
+- **Ruling:** a API não importa o projeto Desktop nem executa subprocess para validar contrato em sua suíte normal; a fixture estática versionada mantém o repositório portátil. A regeneração contra o projeto irmão é uma verificação de manutenção, não dependência de runtime/teste.
+- Esta etapa foi de verificação contratual: os testes passaram na primeira execução porque o comportamento já havia sido implementado pelas Tasks 2, 6 e 8; nenhum código de produção foi alterado.
+- Revisão da etapa: qualquer mudança futura incompatível nessa fixture deve introduzir nova `schema_version`, não adaptação silenciosa do v1.
+- Verificação final da etapa: suíte completa com 133 testes verdes, incluindo integrações PostgreSQL e warnings tratados como erro.
 
 ## Task 11 — Preparação de deploy na Vercel
 
