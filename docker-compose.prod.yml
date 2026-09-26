@@ -1,0 +1,26 @@
+name: alertam-prod
+
+services:
+  api:
+    build:
+      context: ./api
+      target: prod
+    env_file:
+      - path: ./api/.env.prod
+        required: false
+    environment:
+      ENVIRONMENT: production
+      PERSISTENCE_BACKEND: supabase
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${PROD_FRONTEND_PORT:-8080}:80"
+    restart: unless-stopped

@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.core.config import Settings
 from app.repositories.devices import DeviceAuthRecord, DevicesRepository
 from app.repositories.memory import MemoryDeviceRepository
+from app.repositories.postgres import PostgresDeviceRepository
 from app.repositories.supabase import SupabaseDeviceRepository
 from app.security.credentials import hash_secret
 
@@ -13,6 +14,9 @@ def create_devices_repository(settings: Settings) -> DevicesRepository:
             settings.supabase_url,
             settings.supabase_server_key,
         )
+
+    if settings.persistence_backend == "postgres":
+        return PostgresDeviceRepository(settings.database_url)
 
     repository = MemoryDeviceRepository()
     if settings.mock_seed_device:

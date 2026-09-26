@@ -15,8 +15,9 @@ class Settings(BaseSettings):
     )
 
     environment: Literal["development", "test", "production"] = "development"
-    persistence_backend: Literal["memory", "supabase"] = "memory"
+    persistence_backend: Literal["memory", "postgres", "supabase"] = "memory"
 
+    database_url: str = Field(default="", repr=False)
     supabase_url: str = ""
     supabase_secret_key: str = Field(default="", repr=False)
     supabase_service_role_key: str = Field(default="", repr=False)
@@ -55,11 +56,16 @@ class Settings(BaseSettings):
     def validate_persistence_credentials(self) -> "Settings":
         if (
             self.environment == "production"
-            and self.persistence_backend == "memory"
+            and self.persistence_backend != "supabase"
         ):
             raise ValueError(
-                "Ambiente de produção não pode usar persistência memory."
+                "Ambiente de produção exige persistência supabase."
             )
+
+        if self.persistence_backend == "postgres":
+            if not self.database_url.strip():
+                raise ValueError("Postgres requer: DATABASE_URL")
+            return self
 
         if self.persistence_backend != "supabase":
             return self

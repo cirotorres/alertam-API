@@ -1,0 +1,133 @@
+name: alertam-dev
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: alertam
+      POSTGRES_PASSWORD: alertam
+      POSTGRES_DB: alertam_dev
+    ports:
+      - "${DEV_DB_PORT:-55431}:5432"
+    volumes:
+      - alertam_dev_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alertam -d alertam_dev"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+
+  db-migrate:
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://alertam:alertam@db:5432/alertam_dev
+    volumes:
+      - ./api/supabase/migrations:/migrations:ro
+      - ./api/scripts/migrate_local.sh:/scripts/migrate_local.sh:ro
+    command: ["/bin/sh", "/scripts/migrate_local.sh"]
+    restart: "no"
+
+  db-seed:
+    image: postgres:16-alpine
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://alertam:alertam@db:5432/alertam_dev
+    volumes:
+      - ./api/supabase/local/seed_dev.sql:/seed/seed_dev.sql:ro
+    command:
+      - /bin/sh
+      - -c
+      - psql "$$DATABASE_URL" -v ON_ERROR_STOP=1 -f /seed/seed_dev.sql
+    restart: "no"
+
+  api:
+    build:
+      context: ./api
+      target: dev
+    depends_on:
+      db-seed:
+        condition: service_completed_successfully
+    environment:
+      ENVIRONMENT: development
+      PERSISTENCE_BACKEND: postgres
+      DATABASE_URL: postgresql://alertam:alertam@db:5432/alertam_dev
+      STALE_AFTER_SECONDS: "120"
+      ALLOWED_ORIGINS: ""
+      LOG_LEVEL: INFO
+      MOCK_SEED_DEVICE: "false"
+    ports:
+      - "${DEV_API_PORT:-8000}:8000"
+    volumes:
+      - ./api:/app
+      - api_dev_venv:/app/.venv
+    command:
+      - uvicorn
+      - main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${DEV_FRONTEND_PORT:-5173}:80"
+    restart: unless-stopped
+
+  db-test:
+    image: postgres:16-alpine
+    profiles: ["test"]
+    environment:
+      POSTGRES_USER: alertam_test
+      POSTGRES_PASSWORD: alertam_test
+      POSTGRES_DB: alertam_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alertam_test -d alertam_test"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+      start_period: 2s
+
+  tests:
+    build:
+      context: ./api
+      target: dev
+    profiles: ["test"]
+    depends_on:
+      db-test:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: test
+      PERSISTENCE_BACKEND: memory
+      MOCK_SEED_DEVICE: "false"
+      TEST_POSTGRES_DSN: postgresql://alertam_test:alertam_test@db-test:5432/alertam_test
+    volumes:
+      - ./api:/app
+      - api_test_venv:/app/.venv
+      - ./vercel.json:/vercel.json:ro
+    command:
+      - pytest
+      - -W
+      - error
+      - -o
+      - addopts=
+      - -q
+
+volumes:
+  alertam_dev_postgres:
+  api_dev_venv:
+  api_test_venv:
