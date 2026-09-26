@@ -4,6 +4,9 @@
     "api": {
       "root": "api/",
       "entrypoint": "main:app"
+    },
+    "frontend": {
+      "root": "frontend/"
     }
   },
   "rewrites": [
@@ -11,6 +14,12 @@
       "source": "/api/v1/:path*",
       "destination": {
         "service": "api"
+      }
+    },
+    {
+      "source": "/:path*",
+      "destination": {
+        "service": "frontend"
       }
     }
   ]

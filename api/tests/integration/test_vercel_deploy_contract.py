@@ -36,10 +36,19 @@ def test_vercel_services_config_points_to_same_fastapi_entrypoint():
         "root": "api/",
         "entrypoint": "main:app",
     }
-    assert {
-        "source": "/api/v1/:path*",
-        "destination": {"service": "api"},
-    } in config["rewrites"]
+    assert config["services"]["frontend"] == {
+        "root": "frontend/",
+    }
+    assert config["rewrites"] == [
+        {
+            "source": "/api/v1/:path*",
+            "destination": {"service": "api"},
+        },
+        {
+            "source": "/:path*",
+            "destination": {"service": "frontend"},
+        },
+    ]
 
 
 def test_vercel_config_never_contains_server_credentials():

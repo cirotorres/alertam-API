@@ -18,6 +18,7 @@ services:
   frontend:
     build:
       context: ./frontend
+      target: prod
     depends_on:
       api:
         condition: service_healthy

@@ -79,7 +79,7 @@ dev-ps:
 	$(DEV_COMPOSE) ps
 
 dev-config:
-	$(DEV_COMPOSE) config
+	$(DEV_COMPOSE) config --quiet
 
 dev-info:
 	@printf '%s\n' \
@@ -216,7 +216,7 @@ prod-ps:
 	$(PROD_COMPOSE) ps
 
 prod-config: prod-check
-	$(PROD_COMPOSE) config
+	$(PROD_COMPOSE) config --quiet
 
 prod-rebuild: prod-check
 	$(PROD_COMPOSE) build --no-cache

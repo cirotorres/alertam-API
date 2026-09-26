@@ -1,11 +1,23 @@
 import react from "@vitejs/plugin-react";
+import { loadEnv } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { defineConfig } from "vitest/config";
 
 import { API_RUNTIME_CACHING } from "./src/features/install/pwaConfig";
 
-export default defineConfig({
-  plugins: [
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, ".", "");
+
+  return {
+    server: {
+      proxy: {
+        "/api": {
+          target: env.VITE_DEV_API_TARGET || "http://localhost:8000",
+          changeOrigin: false,
+        },
+      },
+    },
+    plugins: [
     react(),
     VitePWA({
       registerType: "autoUpdate",
@@ -32,9 +44,10 @@ export default defineConfig({
       },
     }),
   ],
-  test: {
-    environment: "jsdom",
-    setupFiles: "./src/test/setup.ts",
-    globals: true,
-  },
+    test: {
+      environment: "jsdom",
+      setupFiles: "./src/test/setup.ts",
+      globals: true,
+    },
+  };
 });

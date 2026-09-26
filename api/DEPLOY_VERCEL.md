@@ -1,26 +1,30 @@
-# Deploy da API — Vercel + Supabase
+# Deploy do AlertaM — Vercel + Supabase
 
-Atualizado em 2026-09-25.
+Atualizado em 2026-09-26.
 
-Este runbook prepara apenas a API. O frontend Vite será adicionado depois como
-um segundo Vercel Service no mesmo monorepo/projeto.
+Este runbook cobre a FastAPI e o frontend Vite/PWA como Services do mesmo
+monorepo/projeto Vercel. O frontend nunca recebe credenciais administrativas do
+Supabase.
 
 ## Arquitetura de deploy
 
 A raiz do monorepo contém `vercel.json`.
 
-O serviço atual é:
+Os Services definidos são:
 
-- service: `api`
-- root: `api/`
-- entrypoint: `main:app`
-- rota pública: `/api/v1/:path*`
+- `api`: root `api/`, entrypoint `main:app`;
+- `frontend`: root `frontend/`, autodetectado como Vite.
+
+A ordem de roteamento é obrigatória:
+
+1. `/api/v1/:path*` → service `api`;
+2. `/:path*` → service `frontend`.
 
 `api/main.py` não cria outra aplicação. Ele reexporta exatamente a instância
 `app` de `app.main`.
 
-Quando o frontend existir, ele será adicionado ao mesmo `vercel.json`; a regra
-de `/api/v1/:path*` deve continuar antes do catch-all do frontend.
+Essa ordem preserva a origem única: o PWA chama paths relativos `/api/v1/*` e
+não precisa conhecer uma URL separada da API.
 
 ## 1. Criar o Supabase
 
@@ -99,8 +103,12 @@ Importar o repositório GitHub do monorepo:
 
 `cirotorres/alertam-API`
 
-O `vercel.json` da raiz define o Vercel Service da API. O serviço usa o
-`pyproject.toml` e o Python fixado em `api/.python-version`.
+O `vercel.json` da raiz define os Services `api` e `frontend`. A API usa
+o `pyproject.toml` e o Python fixado em `api/.python-version`; o frontend usa
+`frontend/package.json` e o build Vite.
+
+Nenhuma variável `SUPABASE_SECRET_KEY`, `SUPABASE_DB_URL` ou
+`ALERTAM_DEVICE_SECRET` deve ser configurada/exposta ao service frontend.
 
 Nenhum `vercel.json` legado com builders ou redirects é necessário.
 
@@ -133,6 +141,9 @@ Supabase.
 
 ## Estado atual
 
-A preparação de deploy pode ser testada localmente sem Supabase real.
-O deploy de produção propriamente dito depende da criação do projeto Supabase e
-do preenchimento das variáveis acima.
+A API já possui infraestrutura de produção com Supabase. A configuração local da
+SPEC 020 adiciona o service `frontend` e mantém `/api/v1/*` prioritário.
+
+O deploy público do novo frontend e o smoke real Desktop → QR → PWA → API ainda
+devem ser executados no gate final da SPEC 020 antes de marcar a feature como
+concluída.

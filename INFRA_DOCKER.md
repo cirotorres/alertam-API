@@ -5,7 +5,7 @@
 O stack de desenvolvimento usa PostgreSQL local de verdade:
 
 ```text
-frontend/nginx :5173
+frontend/Vite :5173
       │
       ├── /api/* ──► api:8000
       │                 │
@@ -15,7 +15,7 @@ frontend/nginx :5173
       │       migrations 001 → 003
       │                 │
       │              seed DEV
-      └── placeholder frontend
+      └── React + TypeScript + PWA (HMR)
 ```
 
 Subir em foreground:
@@ -97,9 +97,20 @@ não estiver configurado, a aplicação falha cedo.
 
 ## Frontend
 
-O diretório `frontend/` ainda é apenas um placeholder Nginx para validar a
-infraestrutura e o proxy same-origin. Ele será substituído pelo projeto Vite
-quando a implementação mobile começar.
+O diretório `frontend/` contém o PWA React + TypeScript + Vite da SPEC 020.
+
+No ambiente DEV, o Compose usa o target `dev` do Dockerfile, monta o código-fonte
+e um volume separado para `node_modules`, publica o Vite em `:5173` e define
+`VITE_DEV_API_TARGET=http://api:8000`. Assim, requests para `/api/*` permanecem
+same-origin no navegador e são encaminhados pelo proxy do Vite para a FastAPI.
+
+No ambiente PROD-like, o target `prod` gera o bundle estático e o Nginx serve a
+SPA em `:8080`, com fallback para `index.html` e proxy de `/api/*` para a API.
+`sw.js` e `manifest.webmanifest` recebem `Cache-Control: no-cache`; assets
+versionados continuam sendo cacheados normalmente pelo navegador/service worker.
+
+O `frontend/.dockerignore` exclui `node_modules`, `dist`, relatórios e arquivos
+locais de ambiente do contexto Docker.
 
 ## Verificação da etapa — 2026-09-25
 
@@ -118,6 +129,19 @@ Foram executados e validados:
 - stack production com Supabase fictício apenas para startup: API healthy e proxy em `:8080/api/v1/health`.
 
 Nenhuma chamada ao Supabase real foi feita e nenhum segredo de produção foi criado.
+
+## Verificação do frontend — 2026-09-26
+
+Durante a implementação da SPEC 020 foram validados:
+
+- `make dev-config` e `make prod-config` em modo silencioso (`config --quiet`);
+- build do frontend Vite/PWA;
+- stack DEV real com target Vite + HMR;
+- `GET http://localhost:5173/` servindo o frontend;
+- `GET http://localhost:5173/api/v1/health` retornando `{"ok":true}` via proxy same-origin;
+- teardown completo do stack após o smoke.
+
+O deploy público do frontend na Vercel ainda pertence ao gate final da SPEC 020.
 
 ## Migrations
 
