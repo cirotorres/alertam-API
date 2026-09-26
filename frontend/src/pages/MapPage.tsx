@@ -33,37 +33,42 @@ export function MapPage() {
   }, [active, snapshot]);
 
   return (
-    <>
+    <div className="map-page">
       <h1 className="sr-only">Mapa operacional</h1>
-      {snapshot ? (
-        <PortMap snapshot={snapshot} onSelectVessel={selectVessel} />
-      ) : (
-        <section className="port-map" aria-label="Mapa do porto">
-          <div className="port-map__canvas">
-            <img
-              className="port-map__background"
-              src="/assets/piers.png"
-              alt="Mapa esquemático dos berços do Porto do Pecém"
-            />
-          </div>
-        </section>
-      )}
 
-      <StatusCards status={snapshotState.status} data={snapshotState.data} />
-
-      <section className="operational-list" aria-live="polite">
-        <h2 className="sr-only">{tabTitle(active)}</h2>
-        {content.length === 0 ? (
-          <p className="empty-state">Nenhum item disponível nesta categoria.</p>
+      <div className="map-page__fixed">
+        {snapshot ? (
+          <PortMap snapshot={snapshot} onSelectVessel={selectVessel} />
         ) : (
-          <ul>
-            {content.map((item) =>
-              renderItem(active, item, snapshot, selectVessel),
-            )}
-          </ul>
+          <section className="port-map" aria-label="Mapa do porto">
+            <div className="port-map__canvas">
+              <img
+                className="port-map__background"
+                src="/assets/piers.png"
+                alt="Mapa esquemático dos berços do Porto do Pecém"
+              />
+            </div>
+          </section>
         )}
-      </section>
-    </>
+      </div>
+
+      <div className="map-page__lower">
+        <StatusCards status={snapshotState.status} data={snapshotState.data} />
+
+        <section className="operational-list" aria-live="polite">
+          <h2 className="sr-only">{tabTitle(active)}</h2>
+          {content.length === 0 ? (
+            <p className="empty-state">Nenhum item disponível nesta categoria.</p>
+          ) : (
+            <ul>
+              {content.map((item) =>
+                renderItem(active, item, snapshot, selectVessel),
+              )}
+            </ul>
+          )}
+        </section>
+      </div>
+    </div>
   );
 }
 

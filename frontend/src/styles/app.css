@@ -1193,3 +1193,174 @@ textarea {
     height: 38px;
   }
 }
+
+
+/* Ajustes de validação mobile: sprites transparentes + mapa fixo */
+.mobile-app {
+  height: 100dvh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mobile-header {
+  flex: 0 0 auto;
+}
+
+.mobile-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: block;
+  overflow: hidden;
+  padding: 0;
+}
+
+.map-page {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.map-page__fixed {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  overflow: hidden;
+  background: #0c6fa8;
+}
+
+.map-page__fixed .port-map {
+  width: 100%;
+  margin: 0 auto;
+}
+
+.map-page__lower {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.65rem 0.75rem 0;
+  overflow: hidden;
+  background: #f4f7f9;
+}
+
+.map-page__lower .status-stack {
+  flex: 0 0 auto;
+}
+
+.map-page__lower .operational-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(5.8rem + env(safe-area-inset-bottom));
+}
+
+/* Neutraliza a regra antiga ".port-map__vessel span" que criava a bolha branca. */
+.port-map__vessel .port-map__sprite,
+.port-map__vessel .port-map__berth {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.port-map__sprite {
+  overflow: visible;
+}
+
+.port-map__vessel .port-map__ship-base,
+.port-map__vessel .port-map__ship-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.port-map__vessel .port-map__ship-base {
+  z-index: 1;
+  opacity: 1;
+  filter: drop-shadow(0 2px 2px rgb(0 0 0 / 28%));
+}
+
+.port-map__vessel .port-map__ship-overlay {
+  z-index: 2;
+  opacity: 0;
+  filter: none;
+}
+
+/* Alternância real: navio normal → colorido → normal. */
+.port-map__vessel--arriving .port-map__ship-overlay,
+.port-map__vessel--departing .port-map__ship-overlay {
+  animation: alertam-ship-color-cycle 1.45s ease-in-out infinite;
+}
+
+.port-map__vessel--arriving .port-map__sprite::before,
+.port-map__vessel--departing .port-map__sprite::before {
+  animation: alertam-status-ring 1.45s ease-out infinite;
+}
+
+/* Cancela a animação antiga aplicada a todo <img>. */
+.port-map__vessel--arriving .port-map__ship-base,
+.port-map__vessel--departing .port-map__ship-base {
+  animation: none;
+}
+
+@keyframes alertam-ship-color-cycle {
+  0%,
+  20%,
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+
+  48%,
+  72% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+.page-stack {
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  margin: 0.75rem;
+  padding-bottom: calc(5.8rem + env(safe-area-inset-bottom));
+}
+
+@media (max-height: 650px) {
+  .map-page__fixed .port-map {
+    width: min(100%, 46dvh);
+  }
+}
+
+@media (min-width: 700px) {
+  .map-page__fixed .port-map {
+    width: min(100%, 52dvh);
+    margin-inline: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .port-map__vessel--arriving .port-map__ship-overlay,
+  .port-map__vessel--departing .port-map__ship-overlay,
+  .port-map__vessel--arriving .port-map__sprite::before,
+  .port-map__vessel--departing .port-map__sprite::before {
+    animation: none;
+  }
+
+  .port-map__vessel--arriving .port-map__ship-overlay,
+  .port-map__vessel--departing .port-map__ship-overlay {
+    opacity: 0.7;
+    transform: scale(1.05);
+  }
+}

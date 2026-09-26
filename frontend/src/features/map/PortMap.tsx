@@ -23,21 +23,38 @@ export function PortMap({ snapshot, onSelectVessel }: PortMapProps) {
           src="/assets/piers.png"
           alt="Mapa esquemático dos berços do Porto do Pecém"
         />
-        {vessels.map(({ berth, vessel, sprite, position }) => (
-          <button
-            key={berth}
-            type="button"
-            className={`port-map__vessel${movementClass(vessel)}`}
-            style={{ left: `${position.xPct}%`, top: `${position.yPct}%` }}
-            aria-label={`${vessel.name}, Berço ${berth}`}
-            onClick={() => onSelectVessel(vessel)}
-          >
-            <span className="port-map__sprite" aria-hidden="true">
-              <img src={sprite} alt="" />
-            </span>
-            <span className="port-map__berth">{berth}</span>
-          </button>
-        ))}
+        {vessels.map(({ berth, vessel, sprite, position }) => {
+          const moving =
+            vessel.status === "ATRACANDO" ||
+            vessel.status === "DESATRACANDO";
+
+          return (
+            <button
+              key={berth}
+              type="button"
+              className={`port-map__vessel${movementClass(vessel)}`}
+              style={{ left: `${position.xPct}%`, top: `${position.yPct}%` }}
+              aria-label={`${vessel.name}, Berço ${berth}`}
+              onClick={() => onSelectVessel(vessel)}
+            >
+              <span className="port-map__sprite" aria-hidden="true">
+                <img
+                  className="port-map__ship-base"
+                  src={moving ? "/assets/navio.png" : sprite}
+                  alt=""
+                />
+                {moving ? (
+                  <img
+                    className="port-map__ship-overlay"
+                    src={sprite}
+                    alt=""
+                  />
+                ) : null}
+              </span>
+              <span className="port-map__berth">{berth}</span>
+            </button>
+          );
+        })}
         <div className="port-map__location">
           <span aria-hidden="true">📍</span>
           <span>{snapshot.port.name} - CE</span>

@@ -243,21 +243,32 @@ test("demo mode shows mocked maneuvers without calling the real api", async ({ p
 
   await expect(arriving).toBeVisible();
   await expect(departing).toBeVisible();
-  await expect(arriving.locator("img")).toHaveAttribute(
+  await expect(arriving.locator(".port-map__ship-base")).toHaveAttribute(
+    "src",
+    "/assets/navio.png",
+  );
+  await expect(arriving.locator(".port-map__ship-overlay")).toHaveAttribute(
     "src",
     "/assets/navio_green.png",
   );
-  await expect(departing.locator("img")).toHaveAttribute(
+  await expect(departing.locator(".port-map__ship-base")).toHaveAttribute(
+    "src",
+    "/assets/navio.png",
+  );
+  await expect(departing.locator(".port-map__ship-overlay")).toHaveAttribute(
     "src",
     "/assets/navio_red.png",
   );
 
-  const arrivingAnimation = await arriving.locator("img").evaluate(
-    (element) => getComputedStyle(element).animationName,
-  );
-  const departingAnimation = await departing.locator("img").evaluate(
-    (element) => getComputedStyle(element).animationName,
-  );
+  const spriteBackground = await arriving
+    .locator(".port-map__sprite")
+    .evaluate((element) => getComputedStyle(element).backgroundColor);
+  const arrivingAnimation = await arriving
+    .locator(".port-map__ship-overlay")
+    .evaluate((element) => getComputedStyle(element).animationName);
+  const departingAnimation = await departing
+    .locator(".port-map__ship-overlay")
+    .evaluate((element) => getComputedStyle(element).animationName);
   const arrivingRingAnimation = await arriving
     .locator(".port-map__sprite")
     .evaluate((element) => getComputedStyle(element, "::before").animationName);
@@ -265,10 +276,31 @@ test("demo mode shows mocked maneuvers without calling the real api", async ({ p
     .locator(".port-map__sprite")
     .evaluate((element) => getComputedStyle(element, "::before").animationName);
 
-  expect(arrivingAnimation).toContain("alertam-status-sprite");
-  expect(departingAnimation).toContain("alertam-status-sprite");
+  expect(spriteBackground).toBe("rgba(0, 0, 0, 0)");
+  expect(arrivingAnimation).toContain("alertam-ship-color-cycle");
+  expect(departingAnimation).toContain("alertam-ship-color-cycle");
   expect(arrivingRingAnimation).toContain("alertam-status-ring");
   expect(departingRingAnimation).toContain("alertam-status-ring");
+
+  const fixedMapBefore = await page.locator(".map-page__fixed").boundingBox();
+  const statusBefore = await page.locator(".status-stack").boundingBox();
+  const scrollArea = page.locator(".operational-list");
+  const windowScrollBefore = await page.evaluate(() => window.scrollY);
+
+  await scrollArea.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+
+  const fixedMapAfter = await page.locator(".map-page__fixed").boundingBox();
+  const statusAfter = await page.locator(".status-stack").boundingBox();
+  const windowScrollAfter = await page.evaluate(() => window.scrollY);
+  const listScrollTop = await scrollArea.evaluate((element) => element.scrollTop);
+
+  expect(windowScrollBefore).toBe(0);
+  expect(windowScrollAfter).toBe(0);
+  expect(fixedMapBefore?.y).toBe(fixedMapAfter?.y);
+  expect(statusBefore?.y).toBe(statusAfter?.y);
+  expect(listScrollTop).toBeGreaterThan(0);
 
   await page.getByRole("button", { name: "Prev. desatracação" }).click();
   await expect(

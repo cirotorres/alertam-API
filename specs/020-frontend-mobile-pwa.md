@@ -950,6 +950,26 @@ Requisitos:
 
 O frontend não precisa de variável pública com URL da API quando estiver same-origin.
 
+### Evidência parcial de deploy — 2026-09-26
+
+O commit `bda223b` recebeu status **Vercel: success / Deployment has completed** no GitHub e possui
+preview da branch em:
+
+```text
+https://alertam-api-git-feat-api-bootstrap-cirotorres-projects.vercel.app
+```
+
+O preview está protegido por autenticação Vercel. Sem login, a URL redireciona para a tela de acesso da
+Vercel, portanto o conteúdo do frontend ainda não foi validado externamente nesta spec.
+
+No domínio de produção já existente:
+
+- `GET https://alertam-api.vercel.app/api/v1/health` responde HTTP 200 com `{"ok":true}`;
+- `GET https://alertam-api.vercel.app/` ainda responde HTTP 404.
+
+Consequentemente, o critério de deploy público do frontend permanece aberto até promoção/publicação do
+frontend no domínio final e smoke same-origin real.
+
 ## Handoff para SPEC 021 — Web Push
 
 A arquitetura desta spec deve deixar espaço para Web Push sem implementá-lo.
