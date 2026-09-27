@@ -9,7 +9,9 @@ from app.api.v1.access import create_access_router
 from app.api.v1.health import create_health_router
 from app.api.v1.mobile_session import create_mobile_session_router
 from app.api.v1.snapshots import create_snapshot_router
+from app.api.v1.vessel_photos import create_vessel_photo_router
 from app.repositories.devices import DevicesRepository
+from app.services.vessel_photo_service import VesselPhotoLookup
 
 
 def create_v1_router(
@@ -17,6 +19,7 @@ def create_v1_router(
     *,
     stale_after_seconds: int,
     cookie_secure: bool,
+    vessel_photo_service: VesselPhotoLookup,
     clock: Callable[[], datetime] | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
@@ -32,6 +35,13 @@ def create_v1_router(
         create_snapshot_router(
             repository,
             stale_after_seconds=stale_after_seconds,
+            clock=clock,
+        )
+    )
+    router.include_router(
+        create_vessel_photo_router(
+            repository,
+            vessel_photo_service,
             clock=clock,
         )
     )

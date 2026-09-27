@@ -168,12 +168,33 @@ textarea {
   letter-spacing: 0.06em;
 }
 
+.vessel-sheet__photo-wrap {
+  margin: var(--space-3) 0 0;
+}
+
 .vessel-sheet__photo {
+  display: block;
   width: 100%;
   max-height: 14rem;
-  margin-top: var(--space-3);
   object-fit: cover;
   border-radius: var(--radius-md);
+}
+
+.vessel-sheet__photo-credit {
+  margin-top: 0.35rem;
+  color: var(--alertam-muted);
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.vessel-sheet__photo-credit a {
+  color: inherit;
+}
+
+.vessel-sheet__photo-status {
+  margin: var(--space-3) 0 0;
+  color: var(--alertam-muted);
+  font-size: 0.78rem;
 }
 
 .vessel-sheet__details {

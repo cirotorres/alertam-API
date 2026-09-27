@@ -17,6 +17,10 @@ from app.core.logging import (
 )
 from app.repositories.devices import DevicesRepository
 from app.repositories.factory import create_devices_repository
+from app.services.vessel_photo_service import (
+    VesselPhotoLookup,
+    VesselPhotoService,
+)
 
 
 def create_app(
@@ -25,6 +29,7 @@ def create_app(
     settings: Settings | None = None,
     stale_after_seconds: int | None = None,
     clock: Callable[[], datetime] | None = None,
+    vessel_photo_service: VesselPhotoLookup | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings()
     resolved_stale_after = (
@@ -45,11 +50,17 @@ def create_app(
         else create_devices_repository(resolved_settings)
     )
 
+    resolved_photo_service = vessel_photo_service or VesselPhotoService(
+        timeout=resolved_settings.vessel_photo_timeout_seconds,
+        user_agent=resolved_settings.vessel_photo_user_agent,
+    )
+
     application.include_router(
         create_v1_router(
             devices_repository,
             stale_after_seconds=resolved_stale_after,
             cookie_secure=resolved_settings.environment == "production",
+            vessel_photo_service=resolved_photo_service,
             clock=clock,
         )
     )

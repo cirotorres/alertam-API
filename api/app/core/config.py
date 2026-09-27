@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     stale_after_seconds: int = 120
     allowed_origins: str = ""
     log_level: str = "INFO"
+    vessel_photo_timeout_seconds: float = 8.0
+    vessel_photo_user_agent: str = "AlertaM-Mobile/0.1"
 
     mock_seed_device: bool = True
     mock_device_id: str = "pecem-01"

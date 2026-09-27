@@ -101,3 +101,43 @@ test("install_action_opens_browser_specific_help_when_native_prompt_is_unavailab
   ).toBeInTheDocument();
   expect(screen.getByText(/não está disponível neste navegador/i)).toBeInTheDocument();
 });
+
+test("vessel_photo_is_fetched_on_open_and_reused_from_local_cache", async () => {
+  localStorage.clear();
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        imo: "1234567",
+        photo_url: "https://upload.wikimedia.org/navio.jpg",
+        author: "Jane Doe",
+        license: "CC BY-SA 4.0",
+        source_url: "https://commons.wikimedia.org/wiki/File:Navio.jpg",
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp();
+  const vessel = await screen.findByRole("button", { name: /NAVIO A, Berço 2/i });
+  expect(fetchMock).not.toHaveBeenCalled();
+
+  fireEvent.click(vessel);
+  expect(
+    await screen.findByRole("img", { name: /Foto de NAVIO A/i }),
+  ).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+
+  fireEvent.click(screen.getByRole("button", { name: "Fechar ficha do navio" }));
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog", { name: /Ficha do navio NAVIO A/i })).not.toBeInTheDocument(),
+  );
+
+  fireEvent.click(vessel);
+  expect(
+    await screen.findByRole("img", { name: /Foto de NAVIO A/i }),
+  ).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+
+  vi.unstubAllGlobals();
+});

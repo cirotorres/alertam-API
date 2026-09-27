@@ -19,6 +19,7 @@ import type { Pairing } from "../features/pairing/pairing";
 import { useSnapshotState } from "../features/snapshot/SnapshotProvider";
 import type { SnapshotState } from "../features/snapshot/useSnapshotPolling";
 import { VesselSheet } from "../features/vessels/VesselSheet";
+import { useVesselPhoto } from "../features/vessels/useVesselPhoto";
 
 type AppShellProps = {
   pairing: Pairing;
@@ -95,6 +96,13 @@ export function AppShell({
     return () => window.clearTimeout(timeoutId);
   }, [renderedVessel, selectedVessel]);
 
+  const vesselPhoto = useVesselPhoto({
+    pairing,
+    vessel: renderedVessel,
+    open: selectedVessel !== null,
+    demoMode,
+  });
+
   const lastCollectionAt =
     snapshotState.data?.snapshot.collector.last_collection_at ?? null;
 
@@ -159,6 +167,8 @@ export function AppShell({
           vessel={renderedVessel}
           open={selectedVessel !== null}
           onClose={closeVessel}
+          photo={vesselPhoto.photo}
+          photoLoading={vesselPhoto.loading}
         />
       ) : null}
     </div>

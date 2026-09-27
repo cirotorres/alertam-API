@@ -31,6 +31,31 @@ test("renders_real_vessel_fields_without_fake_photo", () => {
   expect(onClose).toHaveBeenCalledTimes(1);
 });
 
+
+test("renders_vessel_photo_with_commons_credit", () => {
+  render(
+    <VesselSheet
+      vessel={vessel}
+      open
+      onClose={() => undefined}
+      photo={{
+        imo: "1234567",
+        photo_url: "https://upload.wikimedia.org/navio.jpg",
+        author: "Jane Doe",
+        license: "CC BY-SA 4.0",
+        source_url: "https://commons.wikimedia.org/wiki/File:Navio.jpg",
+      }}
+    />,
+  );
+
+  expect(screen.getByRole("img", { name: /Foto de NAVIO A/i })).toHaveAttribute(
+    "src",
+    "https://upload.wikimedia.org/navio.jpg",
+  );
+  expect(screen.getByText(/Jane Doe/)).toBeInTheDocument();
+  expect(screen.getByText(/CC BY-SA 4.0/)).toBeInTheDocument();
+});
+
 test("does_not_render_when_closed", () => {
   render(<VesselSheet vessel={vessel} open={false} onClose={() => undefined} />);
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

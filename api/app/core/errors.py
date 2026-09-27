@@ -81,3 +81,21 @@ class SnapshotNotAvailableError(ApiError):
             code="snapshot_not_available",
             message="Ainda não há snapshot disponível.",
         )
+
+
+class VesselNotInSnapshotError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=404,
+            code="vessel_not_in_snapshot",
+            message="Navio não está disponível no snapshot atual.",
+        )
+
+
+class VesselPhotoUnavailableError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=503,
+            code="vessel_photo_unavailable",
+            message="Foto do navio temporariamente indisponível.",
+        )

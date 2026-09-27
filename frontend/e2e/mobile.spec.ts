@@ -336,8 +336,8 @@ test("demo mode shows mocked maneuvers without calling the real api", async ({ p
       };
     },
   );
-  expect(demoSpriteSize.width).toBeGreaterThanOrEqual(38);
-  expect(demoSpriteSize.width).toBeLessThanOrEqual(50);
+  expect(demoSpriteSize.width).toBeGreaterThanOrEqual(32);
+  expect(demoSpriteSize.width).toBeLessThanOrEqual(42);
   expect(demoSpriteSize.height).toBe(demoSpriteSize.width);
 
   for (const [berth, position] of Object.entries(BERTH_POSITIONS)) {

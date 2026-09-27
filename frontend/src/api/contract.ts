@@ -146,10 +146,21 @@ const SnapshotReadResponseSchema = z
   })
   .strict();
 
+const VesselPhotoResponseSchema = z
+  .object({
+    imo: z.string(),
+    photo_url: z.string().url().nullable(),
+    author: z.string().nullable(),
+    license: z.string().nullable(),
+    source_url: z.string().url().nullable(),
+  })
+  .strict();
+
 export type VesselV1 = z.infer<typeof VesselSchema>;
 export type ManeuverV1 = z.infer<typeof ManeuverSchema>;
 export type MobileSnapshotV1 = z.infer<typeof MobileSnapshotSchema>;
 export type SnapshotReadResponse = z.infer<typeof SnapshotReadResponseSchema>;
+export type VesselPhotoResponse = z.infer<typeof VesselPhotoResponseSchema>;
 
 export function parseSnapshotReadResponse(input: unknown): SnapshotReadResponse {
   if (
@@ -167,6 +178,14 @@ export function parseSnapshotReadResponse(input: unknown): SnapshotReadResponse 
   const parsed = SnapshotReadResponseSchema.safeParse(input);
   if (!parsed.success) {
     throw new Error("Resposta de snapshot inválida.");
+  }
+  return parsed.data;
+}
+
+export function parseVesselPhotoResponse(input: unknown): VesselPhotoResponse {
+  const parsed = VesselPhotoResponseSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error("Resposta de foto do navio inválida.");
   }
   return parsed.data;
 }

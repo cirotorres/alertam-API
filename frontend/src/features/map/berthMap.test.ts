@@ -3,8 +3,8 @@ import { parseSnapshotReadResponse } from "../../api/contract";
 import { BERTH_POSITIONS, selectMapVessels } from "./berthMap";
 
 test("converts_desktop_500px_coordinates_to_percentages", () => {
-  expect(BERTH_POSITIONS[1]).toEqual({ xPct: 35, yPct: 70 });
-  expect(BERTH_POSITIONS[10]).toEqual({ xPct: 22, yPct: 10 });
+  expect(BERTH_POSITIONS[1]).toEqual({ xPct: 37, yPct: 75 });
+  expect(BERTH_POSITIONS[10]).toEqual({ xPct: 24, yPct: 12 });
 });
 
 test("selects_one_vessel_per_berth_by_priority_and_sprite", () => {

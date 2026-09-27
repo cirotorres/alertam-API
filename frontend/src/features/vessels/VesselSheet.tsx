@@ -1,13 +1,14 @@
 import { useCallback, useEffect } from "react";
 
-import type { VesselV1 } from "../../api/contract";
+import type { VesselPhotoResponse, VesselV1 } from "../../api/contract";
 import { useDismissDrag } from "../../hooks/useDismissDrag";
 
 type VesselSheetProps = {
   vessel: VesselV1;
   open: boolean;
   onClose: () => void;
-  imageUrl?: string;
+  photo?: VesselPhotoResponse | null;
+  photoLoading?: boolean;
 };
 
 function Detail({ label, value }: { label: string; value: string | number | null }) {
@@ -24,7 +25,8 @@ export function VesselSheet({
   vessel,
   open,
   onClose,
-  imageUrl,
+  photo = null,
+  photoLoading = false,
 }: VesselSheetProps) {
   const canStartDrag = useCallback((target: EventTarget | null) => {
     return (
@@ -103,7 +105,38 @@ export function VesselSheet({
           ×
         </button>
       </header>
-      {imageUrl ? <img className="vessel-sheet__photo" src={imageUrl} alt="" /> : null}
+      {photo?.photo_url ? (
+        <figure className="vessel-sheet__photo-wrap">
+          <img
+            className="vessel-sheet__photo"
+            src={photo.photo_url}
+            alt={`Foto de ${vessel.name}`}
+            loading="lazy"
+          />
+          <figcaption className="vessel-sheet__photo-credit">
+            Foto{photo.author ? `: ${photo.author}` : ""}
+            {photo.license ? ` · ${photo.license}` : ""}
+            {photo.source_url ? (
+              <>
+                {" · "}
+                <a
+                  href={photo.source_url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Wikimedia Commons
+                </a>
+              </>
+            ) : (
+              " · Wikimedia Commons"
+            )}
+          </figcaption>
+        </figure>
+      ) : photoLoading ? (
+        <p className="vessel-sheet__photo-status" role="status">
+          Buscando foto…
+        </p>
+      ) : null}
       <dl className="vessel-sheet__details">
         <Detail label="IMO" value={vessel.imo} />
         <Detail label="Situação" value={vessel.status} />
