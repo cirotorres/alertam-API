@@ -32,3 +32,28 @@ test("fetches_photo_with_same_mobile_credentials", async () => {
     }),
   );
 });
+
+
+test("pwa_cookie_session_fetches_photo_without_bearer_header", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    imo: "1234567",
+    photo_url: "https://upload.wikimedia.org/navio.jpg",
+    author: "Autor",
+    license: "CC BY-SA 4.0",
+    source_url: "https://commons.wikimedia.org/wiki/File:Navio.jpg",
+  }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await getVesselPhoto(
+    { ...pairing, viewSecret: null },
+    "1234567",
+  );
+
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/v1/devices/pecem-01/vessels/1234567/photo",
+    expect.objectContaining({
+      credentials: "same-origin",
+      headers: undefined,
+    }),
+  );
+});

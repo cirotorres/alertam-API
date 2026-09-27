@@ -48,10 +48,12 @@ test("renders_vessel_photo_with_commons_credit", () => {
     />,
   );
 
-  expect(screen.getByRole("img", { name: /Foto de NAVIO A/i })).toHaveAttribute(
+  const image = screen.getByRole("img", { name: /Foto de NAVIO A/i });
+  expect(image).toHaveAttribute(
     "src",
     "https://upload.wikimedia.org/navio.jpg",
   );
+  expect(image).toHaveAttribute("loading", "eager");
   expect(screen.getByText(/Jane Doe/)).toBeInTheDocument();
   expect(screen.getByText(/CC BY-SA 4.0/)).toBeInTheDocument();
 });

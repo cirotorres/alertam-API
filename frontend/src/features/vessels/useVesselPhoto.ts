@@ -4,10 +4,7 @@ import { getVesselPhoto } from "../../api/vesselPhotoClient";
 import type { VesselPhotoResponse, VesselV1 } from "../../api/contract";
 import type { Pairing } from "../pairing/pairing";
 import {
-  clearVesselPhotoFailure,
-  hasRecentVesselPhotoFailure,
   readVesselPhotoCache,
-  rememberVesselPhotoFailure,
   writeVesselPhotoCache,
 } from "./vesselPhotoCache";
 
@@ -43,24 +40,17 @@ export function useVesselPhoto({
       return;
     }
 
-    if (hasRecentVesselPhotoFailure(imo)) {
-      setPhoto(null);
-      setLoading(false);
-      return;
-    }
 
     const controller = new AbortController();
     setPhoto(null);
     setLoading(true);
     getVesselPhoto(pairing, imo, controller.signal)
       .then((result) => {
-        clearVesselPhotoFailure(imo);
         writeVesselPhotoCache(result);
         setPhoto(result);
       })
       .catch((error) => {
         if (!(error instanceof Error && error.name === "AbortError")) {
-          rememberVesselPhotoFailure(imo);
           setPhoto(null);
         }
       })

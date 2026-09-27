@@ -3,8 +3,6 @@ import { parseVesselPhotoResponse } from "../../api/contract";
 
 const CACHE_PREFIX = "alertam-vessel-photo-v1:";
 const TTL_MS = 30 * 24 * 60 * 60 * 1_000;
-const FAILURE_PREFIX = "alertam-vessel-photo-failure-v1:";
-const FAILURE_TTL_MS = 60 * 60 * 1_000;
 
 type CachedPhoto = {
   expiresAt: number;
@@ -46,45 +44,5 @@ export function writeVesselPhotoCache(
     localStorage.setItem(key(value.imo), JSON.stringify(cached));
   } catch {
     // Cache é otimização; falha de storage não deve bloquear a ficha.
-  }
-}
-
-export function hasRecentVesselPhotoFailure(
-  imo: string,
-  now = Date.now(),
-): boolean {
-  try {
-    const raw = localStorage.getItem(`${FAILURE_PREFIX}${imo}`);
-    if (!raw) return false;
-    const expiresAt = Number(raw);
-    if (!Number.isFinite(expiresAt) || expiresAt <= now) {
-      localStorage.removeItem(`${FAILURE_PREFIX}${imo}`);
-      return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function rememberVesselPhotoFailure(
-  imo: string,
-  now = Date.now(),
-): void {
-  try {
-    localStorage.setItem(
-      `${FAILURE_PREFIX}${imo}`,
-      String(now + FAILURE_TTL_MS),
-    );
-  } catch {
-    // Cache é otimização.
-  }
-}
-
-export function clearVesselPhotoFailure(imo: string): void {
-  try {
-    localStorage.removeItem(`${FAILURE_PREFIX}${imo}`);
-  } catch {
-    // Cache é otimização.
   }
 }

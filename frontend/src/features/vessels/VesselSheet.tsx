@@ -111,7 +111,7 @@ export function VesselSheet({
             className="vessel-sheet__photo"
             src={photo.photo_url}
             alt={`Foto de ${vessel.name}`}
-            loading="lazy"
+            loading="eager"
           />
           <figcaption className="vessel-sheet__photo-credit">
             Foto{photo.author ? `: ${photo.author}` : ""}
