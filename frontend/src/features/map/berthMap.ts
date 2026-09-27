@@ -2,16 +2,16 @@ import type { MobileSnapshotV1, VesselV1 } from "../../api/contract";
 import { vesselByBerth } from "../vessels/projections";
 
 export const BERTH_POSITIONS: Record<number, { xPct: number; yPct: number }> = {
-  1: { xPct: 35, yPct: 70 },
-  2: { xPct: 41, yPct: 64 },
-  3: { xPct: 46, yPct: 60 },
-  4: { xPct: 52, yPct: 56 },
-  5: { xPct: 59, yPct: 50 },
-  6: { xPct: 51, yPct: 42 },
-  7: { xPct: 43, yPct: 34 },
-  8: { xPct: 36, yPct: 26 },
-  9: { xPct: 29, yPct: 18 },
-  10: { xPct: 22, yPct: 10 },
+  1: { xPct: 37, yPct: 75 },
+  2: { xPct: 43, yPct: 69 },
+  3: { xPct: 49, yPct: 64 },
+  4: { xPct: 55, yPct: 59 },
+  5: { xPct: 62, yPct: 54 },
+  6: { xPct: 53, yPct: 44 },
+  7: { xPct: 45, yPct: 36 },
+  8: { xPct: 38, yPct: 28 },
+  9: { xPct: 31, yPct: 20 },
+  10: { xPct: 24, yPct: 12 },
 };
 
 export type MapVessel = {
