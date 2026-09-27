@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { vi } from "vitest";
 import fixture from "../../test/fixtures/mobile_snapshot_v1.json";
 import { parseSnapshotReadResponse } from "../../api/contract";
+import { BERTH_POSITIONS } from "./berthMap";
 import { PortMap } from "./PortMap";
 
 test("positions_vessel_with_percentages_and_emits_selection", () => {
@@ -15,7 +16,10 @@ test("positions_vessel_with_percentages_and_emits_selection", () => {
 
   const pin = screen.getByRole("button", { name: /NAVIO A.*Berço 2/i });
   expect(pin).toHaveClass("port-map__vessel--arriving");
-  expect(pin).toHaveStyle({ left: "41%", top: "64%" });
+  expect(pin).toHaveStyle({
+    left: `${BERTH_POSITIONS[2].xPct}%`,
+    top: `${BERTH_POSITIONS[2].yPct}%`,
+  });
   expect(pin.style.left).not.toContain("px");
   expect(screen.getByRole("img", { name: /Mapa esquemático/i })).toHaveAttribute("src", "/assets/piers.png");
   expect(screen.getByText("Porto do Pecém - CE")).toBeInTheDocument();

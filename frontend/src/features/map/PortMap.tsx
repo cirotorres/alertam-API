@@ -25,13 +25,10 @@ function portLocationLabel(name: string): string {
 
 export function PortMap({ snapshot, onSelectVessel }: PortMapProps) {
   const vessels = selectMapVessels(snapshot);
-  const dense = vessels.length >= 8;
 
   return (
     <section className="port-map" aria-label="Mapa do porto">
-      <div
-        className={`port-map__canvas${dense ? " port-map__canvas--dense" : ""}`}
-      >
+      <div className="port-map__canvas">
         <img
           className="port-map__background"
           src="/assets/piers.png"

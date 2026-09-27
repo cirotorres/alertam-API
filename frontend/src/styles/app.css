@@ -777,8 +777,8 @@ textarea {
   position: relative;
   display: grid;
   place-items: center;
-  width: clamp(38px, 10vw, 50px);
-  height: clamp(38px, 10vw, 50px);
+  width: clamp(32px, 8vw, 42px);
+  height: clamp(32px, 8vw, 42px);
 }
 
 .port-map__sprite::before {
@@ -1677,19 +1677,4 @@ textarea {
   .vessel-sheet-backdrop.is-drag-interacted {
     transition: none !important;
   }
-}
-
-/* Modo denso: preserva leitura quando muitos berços estão ocupados. */
-.port-map__canvas--dense .port-map__vessel {
-  min-width: 44px;
-  min-height: 46px;
-}
-
-.port-map__canvas--dense .port-map__sprite {
-  width: clamp(30px, 8vw, 36px);
-  height: clamp(30px, 8vw, 36px);
-}
-
-.port-map__canvas--dense .port-map__berth {
-  font-size: clamp(0.66rem, 2.9vw, 0.76rem);
 }
