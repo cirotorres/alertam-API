@@ -58,6 +58,64 @@ test("renders_vessel_photo_with_commons_credit", () => {
   expect(screen.getByText(/CC BY-SA 4.0/)).toBeInTheDocument();
 });
 
+
+test("long_downward_drag_from_sheet_body_dismisses_when_at_top", async () => {
+  const onClose = vi.fn();
+  render(<VesselSheet vessel={vessel} open onClose={onClose} />);
+  const sheet = screen.getByRole("dialog", { name: /NAVIO A/i });
+  const bodyTarget = screen.getByText("Situação");
+
+  fireEvent.pointerDown(bodyTarget, {
+    pointerId: 3,
+    isPrimary: true,
+    button: 0,
+    clientY: 180,
+  });
+  fireEvent.pointerMove(sheet, { pointerId: 3, clientY: 330 });
+  fireEvent.pointerUp(sheet, { pointerId: 3, clientY: 330 });
+
+  await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+});
+
+test("drag_from_interactive_control_does_not_start_sheet_dismiss", () => {
+  const onClose = vi.fn();
+  render(<VesselSheet vessel={vessel} open onClose={onClose} />);
+  const sheet = screen.getByRole("dialog", { name: /NAVIO A/i });
+  const close = screen.getByRole("button", { name: "Fechar ficha do navio" });
+
+  fireEvent.pointerDown(close, {
+    pointerId: 4,
+    isPrimary: true,
+    button: 0,
+    clientY: 100,
+  });
+  fireEvent.pointerMove(sheet, { pointerId: 4, clientY: 280 });
+  fireEvent.pointerUp(sheet, { pointerId: 4, clientY: 280 });
+
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+
+test("downward_drag_does_not_dismiss_while_sheet_content_is_scrolled", () => {
+  const onClose = vi.fn();
+  render(<VesselSheet vessel={vessel} open onClose={onClose} />);
+  const sheet = screen.getByRole("dialog", { name: /NAVIO A/i });
+  const bodyTarget = screen.getByText("Situação");
+  Object.defineProperty(sheet, "scrollTop", { value: 80, writable: true });
+  fireEvent.scroll(sheet);
+
+  fireEvent.pointerDown(bodyTarget, {
+    pointerId: 5,
+    isPrimary: true,
+    button: 0,
+    clientY: 180,
+  });
+  fireEvent.pointerMove(sheet, { pointerId: 5, clientY: 340 });
+  fireEvent.pointerUp(sheet, { pointerId: 5, clientY: 340 });
+
+  expect(onClose).not.toHaveBeenCalled();
+});
+
 test("does_not_render_when_closed", () => {
   render(<VesselSheet vessel={vessel} open={false} onClose={() => undefined} />);
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

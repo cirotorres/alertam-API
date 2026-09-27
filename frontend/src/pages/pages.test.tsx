@@ -80,3 +80,49 @@ test("alerts_and_history_keep_operational_footer_and_tab_returns_to_map", async 
     await screen.findByRole("heading", { name: "Previsão de atracação" }),
   ).toBeInTheDocument();
 });
+
+
+test("weather_page_renders_atmospheric_and_marine_snapshot_data", async () => {
+  renderRoute("/tempo");
+
+  expect(await screen.findByRole("heading", { name: "Tempo e mar" })).toBeInTheDocument();
+  expect(screen.getByText("29,5 °C")).toBeInTheDocument();
+  expect(screen.getByText("12,3 kn")).toBeInTheDocument();
+  expect(screen.getAllByText("1,2 m")).toHaveLength(2);
+  expect(screen.getByText("28 °C")).toBeInTheDocument();
+  expect(screen.getByText("Pecém - CE")).toBeInTheDocument();
+  expect(screen.getByText(/API Open-Meteo/)).toBeInTheDocument();
+  expect(screen.getByText(/valores aproximados/i)).toBeInTheDocument();
+  expect(screen.getByText("Altura da ondulação")).toBeInTheDocument();
+  expect(screen.queryByText(/swell/i)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Tempo" })).toHaveAttribute("aria-current", "page");
+});
+
+
+test("weather_page_tolerates_empty_weather_blocks", async () => {
+  const emptyResponse = parseSnapshotReadResponse({
+    snapshot: { ...fixture, weather: {}, marine: {} },
+    meta: { received_at: "2026-09-25T13:40:15-03:00", age_seconds: 3, collector_online: true, stale_after_seconds: 120 },
+  });
+  render(
+    <SnapshotProvider pairing={pairing} fetcher={vi.fn().mockResolvedValue(emptyResponse)}>
+      <MemoryRouter initialEntries={["/tempo"]}>
+        <AppRoutes pairing={pairing} />
+      </MemoryRouter>
+    </SnapshotProvider>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "Tempo e mar" })).toBeInTheDocument();
+  expect(screen.getByText(/Dados meteorológicos ainda não estão disponíveis/)).toBeInTheDocument();
+  expect(screen.getByText(/Dados marítimos ainda não estão disponíveis/)).toBeInTheDocument();
+});
+
+
+test("footer_weather_tab_opens_weather_page", async () => {
+  renderRoute("/");
+
+  fireEvent.click(await screen.findByRole("button", { name: "Tempo" }));
+
+  expect(await screen.findByRole("heading", { name: "Tempo e mar" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Tempo" })).toHaveAttribute("aria-current", "page");
+});

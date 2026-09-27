@@ -481,7 +481,7 @@ textarea {
   left: 50%;
   bottom: 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   width: min(100%, 48rem);
   padding:
     var(--space-2)
@@ -1698,4 +1698,120 @@ textarea {
   .vessel-sheet-backdrop.is-drag-interacted {
     transition: none !important;
   }
+}
+
+/* Tempo e mar: leitura direta dos blocos weather/marine do snapshot. */
+.weather-page {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  padding-bottom: max(var(--space-5), env(safe-area-inset-bottom));
+}
+
+.weather-page__header h1,
+.weather-page__header p,
+.weather-section h2,
+.weather-section p,
+.weather-section dl {
+  margin-top: 0;
+}
+
+.weather-section {
+  border-top: 1px solid var(--alertam-border);
+  padding-top: 0.9rem;
+}
+
+.weather-section__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.weather-section__heading h2 {
+  margin-bottom: 0.15rem;
+  color: var(--alertam-blue-900);
+  font-size: 1rem;
+}
+
+.weather-section__heading small {
+  color: var(--alertam-muted);
+  font-size: 0.7rem;
+}
+
+.weather-section__primary {
+  color: var(--alertam-blue-900);
+  font-size: clamp(1.35rem, 6vw, 1.8rem);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.weather-condition {
+  margin: 0.65rem 0 0.8rem;
+  color: var(--alertam-text);
+  font-weight: 650;
+}
+
+.weather-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  border-top: 1px solid var(--alertam-border);
+}
+
+.weather-metric {
+  min-width: 0;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--alertam-border);
+}
+
+.weather-metric:nth-child(odd) {
+  padding-right: 0.75rem;
+}
+
+.weather-metric:nth-child(even) {
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--alertam-border);
+}
+
+.weather-metric dt {
+  color: var(--alertam-muted);
+  font-size: 0.7rem;
+}
+
+.weather-metric dd {
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+/* No topo, swipe para baixo pertence à ficha; após rolar, a rolagem volta a ser livre. */
+.vessel-sheet {
+  touch-action: pan-y;
+}
+
+.vessel-sheet.is-at-scroll-top {
+  touch-action: none;
+}
+
+.weather-page__title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.weather-page__location {
+  flex: 0 0 auto;
+  color: var(--alertam-muted);
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.weather-page .page-intro {
+  max-width: 42rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
 }

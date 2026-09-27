@@ -1,18 +1,28 @@
 export type BottomTab = "maneuvers" | "arrivals" | "departures" | "anchored";
+export type BottomNavItem = BottomTab | "weather";
 
 type BottomNavProps = {
-  active: BottomTab;
-  onChange: (value: BottomTab) => void;
+  active: BottomNavItem;
+  onChange: (value: BottomNavItem) => void;
 };
 
-const ITEMS: Array<{ value: BottomTab; label: string }> = [
+const ITEMS: Array<{ value: BottomNavItem; label: string }> = [
   { value: "maneuvers", label: "Manobras confirmadas" },
   { value: "arrivals", label: "Prev. atracação" },
   { value: "departures", label: "Prev. desatracação" },
   { value: "anchored", label: "Fundeados" },
+  { value: "weather", label: "Tempo" },
 ];
 
-function NavIcon({ type }: { type: BottomTab }) {
+function NavIcon({ type }: { type: BottomNavItem }) {
+  if (type === "weather") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M7.2 18.2h10.2a4.1 4.1 0 0 0 .5-8.2 6 6 0 0 0-11.4 1.7A3.3 3.3 0 0 0 7.2 18.2Z" />
+      </svg>
+    );
+  }
+
   if (type === "anchored") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -49,7 +59,7 @@ function NavIcon({ type }: { type: BottomTab }) {
 
 export function BottomNav({ active, onChange }: BottomNavProps) {
   return (
-    <nav className="bottom-nav" aria-label="Consultas operacionais">
+    <nav className="bottom-nav" aria-label="Navegação inferior">
       {ITEMS.map((item) => (
         <button
           key={item.value}

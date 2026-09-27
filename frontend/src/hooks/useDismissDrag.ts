@@ -13,7 +13,10 @@ type UseDismissDragOptions = {
   axis: DragAxis;
   direction: DragDirection;
   onDismiss: () => void;
-  canStart?: (target: EventTarget | null) => boolean;
+  canStart?: (
+    target: EventTarget | null,
+    currentTarget: HTMLElement,
+  ) => boolean;
 };
 
 type DragStart = {
@@ -81,7 +84,7 @@ export function useDismissDrag({
       if (
         event.isPrimary === false ||
         event.button !== 0 ||
-        canStart?.(event.target) === false
+        canStart?.(event.target, event.currentTarget) === false
       ) {
         return;
       }

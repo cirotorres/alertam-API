@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { VesselPhotoResponse, VesselV1 } from "../../api/contract";
 import { useDismissDrag } from "../../hooks/useDismissDrag";
@@ -28,10 +28,17 @@ export function VesselSheet({
   photo = null,
   photoLoading = false,
 }: VesselSheetProps) {
-  const canStartDrag = useCallback((target: EventTarget | null) => {
-    return (
+  const [atScrollTop, setAtScrollTop] = useState(true);
+  const touchStartYRef = useRef<number | null>(null);
+  const touchScrollModeRef = useRef(false);
+  const canStartDrag = useCallback((
+    target: EventTarget | null,
+    currentTarget: HTMLElement,
+  ) => {
+    if (currentTarget.scrollTop > 0) return false;
+    return !(
       target instanceof Element &&
-      target.closest(".vessel-sheet__drag-zone") !== null
+      target.closest("a, button, input, select, textarea")
     );
   }, []);
   const drag = useDismissDrag({
@@ -80,13 +87,59 @@ export function VesselSheet({
         onClick={onClose}
       />
       <aside
-        className={`vessel-sheet ${open ? "is-open" : "is-closing"} ${dragClasses}`}
+        className={`vessel-sheet ${open ? "is-open" : "is-closing"} ${atScrollTop ? "is-at-scroll-top" : ""} ${dragClasses}`}
         style={sheetStyle}
         role="dialog"
         aria-modal="true"
         aria-hidden={!open}
         aria-label={`Ficha do navio ${vessel.name}`}
-        {...drag.pointerHandlers}
+        onPointerDown={(event) => {
+          if (
+            event.pointerType === "touch" &&
+            canStartDrag(event.target, event.currentTarget)
+          ) {
+            touchStartYRef.current = event.clientY;
+            touchScrollModeRef.current = false;
+          }
+          drag.pointerHandlers.onPointerDown(event);
+        }}
+        onPointerMove={(event) => {
+          const touchStartY = touchStartYRef.current;
+          if (event.pointerType === "touch" && touchStartY !== null) {
+            const signedDelta = event.clientY - touchStartY;
+            if (touchScrollModeRef.current || signedDelta < -6) {
+              if (!touchScrollModeRef.current) {
+                touchScrollModeRef.current = true;
+                drag.reset();
+              }
+              event.currentTarget.scrollTop = Math.max(0, -signedDelta);
+              setAtScrollTop(event.currentTarget.scrollTop <= 0);
+              return;
+            }
+          }
+          drag.pointerHandlers.onPointerMove(event);
+        }}
+        onPointerUp={(event) => {
+          if (touchScrollModeRef.current) {
+            if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }
+          } else {
+            drag.pointerHandlers.onPointerUp(event);
+          }
+          touchStartYRef.current = null;
+          touchScrollModeRef.current = false;
+        }}
+        onPointerCancel={(event) => {
+          if (!touchScrollModeRef.current) {
+            drag.pointerHandlers.onPointerCancel(event);
+          } else {
+            drag.reset();
+          }
+          touchStartYRef.current = null;
+          touchScrollModeRef.current = false;
+        }}
+        onScroll={(event) => setAtScrollTop(event.currentTarget.scrollTop <= 0)}
       >
         <div className="vessel-sheet__drag-zone" aria-hidden="true">
           <div className="vessel-sheet__handle" />

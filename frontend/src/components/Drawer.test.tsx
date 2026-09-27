@@ -44,3 +44,9 @@ test("long_left_drag_dismisses_drawer", async () => {
 
   await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
 });
+
+
+test("drawer_keeps_weather_out_of_general_navigation", () => {
+  renderDrawer();
+  expect(screen.queryByRole("link", { name: "Tempo" })).not.toBeInTheDocument();
+});

@@ -12,7 +12,7 @@ import {
 } from "react-router-dom";
 
 import type { VesselV1 } from "../api/contract";
-import { BottomNav, type BottomTab } from "../components/BottomNav";
+import { BottomNav, type BottomNavItem, type BottomTab } from "../components/BottomNav";
 import { Drawer } from "../components/Drawer";
 import { Header } from "../components/Header";
 import type { Pairing } from "../features/pairing/pairing";
@@ -125,9 +125,17 @@ export function AppShell({
     rootPath,
     routePath("/alertas"),
     routePath("/historico"),
+    routePath("/tempo"),
   ].includes(location.pathname);
 
-  const handleBottomTabChange = (tab: BottomTab) => {
+  const handleBottomTabChange = (tab: BottomNavItem) => {
+    if (tab === "weather") {
+      if (location.pathname !== routePath("/tempo")) {
+        navigate(routePath("/tempo"));
+      }
+      return;
+    }
+
     setActiveBottomTab(tab);
     if (location.pathname !== rootPath) {
       navigate(rootPath);
@@ -158,7 +166,7 @@ export function AppShell({
       </main>
       {showBottomNav ? (
         <BottomNav
-          active={activeBottomTab}
+          active={location.pathname === routePath("/tempo") ? "weather" : activeBottomTab}
           onChange={handleBottomTabChange}
         />
       ) : null}
