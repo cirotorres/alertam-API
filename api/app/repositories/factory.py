@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from app.core.config import Settings
-from app.repositories.devices import DeviceAuthRecord, DevicesRepository
+from app.repositories.devices import DeviceAuthRecord
+from app.repositories.events import AlertaRepository
 from app.repositories.memory import MemoryDeviceRepository
 from app.repositories.postgres import PostgresDeviceRepository
 from app.repositories.supabase import SupabaseDeviceRepository
 from app.security.credentials import hash_secret
 
 
-def create_devices_repository(settings: Settings) -> DevicesRepository:
+def create_devices_repository(settings: Settings) -> AlertaRepository:
     if settings.persistence_backend == "supabase":
         return SupabaseDeviceRepository(
             settings.supabase_url,

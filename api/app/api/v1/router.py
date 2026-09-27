@@ -7,23 +7,35 @@ from fastapi import APIRouter
 
 from app.api.v1.access import create_access_router
 from app.api.v1.health import create_health_router
+from app.api.v1.maneuver_events import create_maneuver_event_router
+from app.api.v1.mobile_events import create_mobile_events_router
 from app.api.v1.mobile_session import create_mobile_session_router
 from app.api.v1.snapshots import create_snapshot_router
 from app.api.v1.vessel_photos import create_vessel_photo_router
-from app.repositories.devices import DevicesRepository
+from app.repositories.events import AlertaRepository, StoredManeuverEvent
 from app.services.vessel_photo_service import VesselPhotoLookup
 
 
 def create_v1_router(
-    repository: DevicesRepository,
+    repository: AlertaRepository,
     *,
     stale_after_seconds: int,
     cookie_secure: bool,
     vessel_photo_service: VesselPhotoLookup,
     clock: Callable[[], datetime] | None = None,
+    dispatch_event: Callable[[StoredManeuverEvent], None] | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
     router.include_router(create_health_router())
+    router.include_router(
+        create_maneuver_event_router(
+            repository,
+            dispatch_event=dispatch_event,
+        )
+    )
+    router.include_router(
+        create_mobile_events_router(repository, clock=clock)
+    )
     router.include_router(
         create_mobile_session_router(
             repository,

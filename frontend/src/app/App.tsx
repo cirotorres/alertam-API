@@ -1,6 +1,7 @@
 import { BrowserRouter, useLocation } from "react-router-dom";
 
 import { DemoMode } from "../features/demo/DemoMode";
+import { EventProvider } from "../features/events/EventProvider";
 import { PairingGate } from "../features/pairing/PairingGate";
 import { SnapshotProvider } from "../features/snapshot/SnapshotProvider";
 import { AppRoutes } from "./router";
@@ -25,15 +26,20 @@ function AppContent() {
 
   return (
     <PairingGate>
-      {(pairing, resetPairing) => (
+      {(pairing, resetPairing, sessionReady) => (
         <SnapshotProvider
           pairing={pairing}
           onAccessRevoked={resetPairing}
         >
-          <AppRoutes
-            pairing={pairing}
-            onPairingCleared={resetPairing}
-          />
+          <EventProvider
+            sessionReady={sessionReady}
+            onAccessRevoked={resetPairing}
+          >
+            <AppRoutes
+              pairing={pairing}
+              onPairingCleared={resetPairing}
+            />
+          </EventProvider>
         </SnapshotProvider>
       )}
     </PairingGate>

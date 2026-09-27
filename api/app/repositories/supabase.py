@@ -6,6 +6,7 @@ from uuid import UUID
 
 import httpx
 
+from app.models.maneuver_event import ManeuverEventIn
 from app.repositories.devices import (
     AcceptSnapshotResult,
     AcceptSnapshotStatus,
@@ -13,6 +14,16 @@ from app.repositories.devices import (
     PersistenceUnavailableError,
     SnapshotCandidate,
     StoredSnapshot,
+)
+from app.repositories.events import (
+    AcceptEventResult,
+    AcceptEventStatus,
+    EventPage,
+    PushDelivery,
+    PushDeliveryStatus,
+    PushInstallation,
+    PushPreferences,
+    StoredManeuverEvent,
 )
 
 
@@ -219,3 +230,414 @@ class SupabaseDeviceRepository:
         if parsed.tzinfo is None:
             raise ValueError("received_at sem timezone.")
         return parsed
+
+    def accept_maneuver_event_atomic(
+        self,
+        device_id: str,
+        event: ManeuverEventIn,
+    ) -> AcceptEventResult:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/accept_maneuver_event",
+                headers=self._headers(),
+                json={
+                    "p_device_id": device_id,
+                    "p_event": event.canonical_payload(),
+                },
+            )
+            response.raise_for_status()
+            row = self._extract_row(response.json())
+            status = AcceptEventStatus(str(row["status"]))
+            stored = None
+            if row.get("ingestion_id") is not None:
+                ingested_at = self._parse_datetime(row.get("ingested_at"))
+                if ingested_at is None:
+                    raise ValueError("ingested_at ausente")
+                stored = StoredManeuverEvent(
+                    ingestion_id=int(row["ingestion_id"]),
+                    device_id=device_id,
+                    event=ManeuverEventIn.model_validate(row["event_payload"]),
+                    ingested_at=ingested_at,
+                )
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+        return AcceptEventResult(status=status, stored=stored)
+
+    def list_maneuver_events(
+        self,
+        device_id: str,
+        *,
+        after: int | None = None,
+        before: int | None = None,
+        limit: int = 50,
+    ) -> EventPage:
+        if after is not None and before is not None:
+            raise ValueError("after e before são mutuamente exclusivos")
+        if not 1 <= limit <= 100:
+            raise ValueError("limit deve estar entre 1 e 100")
+
+        descending = after is None
+        params: dict[str, str] = {
+            "select": "ingestion_id,device_id,event_payload,ingested_at",
+            "device_id": f"eq.{device_id}",
+            "order": "ingestion_id.desc" if descending else "ingestion_id.asc",
+            "limit": str(limit + 1 if descending else limit),
+        }
+        if after is not None:
+            params["ingestion_id"] = f"gt.{after}"
+        elif before is not None:
+            params["ingestion_id"] = f"lt.{before}"
+
+        try:
+            response = self._client.get(
+                f"{self._base_url}/rest/v1/maneuver_events",
+                headers=self._headers(),
+                params=params,
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise TypeError("Resposta de eventos inválida.")
+            has_more_before = descending and len(data) > limit
+            rows = data[:limit]
+            if descending:
+                rows = list(reversed(rows))
+            events = tuple(
+                self._stored_event_from_mapping(row)
+                for row in rows
+            )
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+        return EventPage(
+            events=events,
+            oldest_cursor=events[0].ingestion_id if events else None,
+            newest_cursor=events[-1].ingestion_id if events else None,
+            has_more_before=has_more_before,
+        )
+
+    def _stored_event_from_mapping(self, row: Any) -> StoredManeuverEvent:
+        if not isinstance(row, dict):
+            raise TypeError("Evento persistido inválido.")
+        ingested_at = self._parse_datetime(row.get("ingested_at"))
+        if ingested_at is None:
+            raise ValueError("ingested_at ausente")
+        return StoredManeuverEvent(
+            ingestion_id=int(row["ingestion_id"]),
+            device_id=str(row["device_id"]),
+            event=ManeuverEventIn.model_validate(row["event_payload"]),
+            ingested_at=ingested_at,
+        )
+
+    def upsert_push_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        *,
+        endpoint: str,
+        p256dh: str,
+        auth: str,
+    ) -> PushInstallation | None:
+        return self._push_installation_rpc(
+            "upsert_push_installation",
+            {
+                "p_device_id": device_id,
+                "p_installation_id": str(installation_id),
+                "p_endpoint": endpoint,
+                "p_p256dh": p256dh,
+                "p_auth": auth,
+            },
+        )
+
+    def get_push_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> PushInstallation | None:
+        try:
+            response = self._client.get(
+                f"{self._base_url}/rest/v1/push_installations",
+                headers=self._headers(),
+                params={
+                    "select": "*",
+                    "device_id": f"eq.{device_id}",
+                    "installation_id": f"eq.{installation_id}",
+                    "limit": "1",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise TypeError("Resposta de instalação inválida.")
+            if not data:
+                return None
+            if len(data) != 1:
+                raise ValueError("Resposta de instalação inválida.")
+            return self._push_installation_from_mapping(data[0])
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def update_push_preferences(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        preferences: PushPreferences,
+    ) -> PushInstallation | None:
+        return self._push_installation_rpc(
+            "update_push_preferences",
+            {
+                "p_device_id": device_id,
+                "p_installation_id": str(installation_id),
+                "p_confirmed": preferences.confirmed,
+                "p_updated": preferences.updated,
+                "p_completed": preferences.completed,
+                "p_cancelled": preferences.cancelled,
+            },
+        )
+
+    def touch_push_foreground(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> PushInstallation | None:
+        return self._push_installation_rpc(
+            "touch_push_foreground",
+            {
+                "p_device_id": device_id,
+                "p_installation_id": str(installation_id),
+            },
+        )
+
+    def deactivate_push_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> bool:
+        return self._push_boolean_rpc(
+            "deactivate_push_installation",
+            {
+                "p_device_id": device_id,
+                "p_installation_id": str(installation_id),
+            },
+            "updated",
+        )
+
+    def list_active_push_installations(
+        self,
+        device_id: str,
+    ) -> tuple[PushInstallation, ...]:
+        try:
+            response = self._client.get(
+                f"{self._base_url}/rest/v1/push_installations",
+                headers=self._headers(),
+                params={
+                    "select": "*",
+                    "device_id": f"eq.{device_id}",
+                    "active": "eq.true",
+                    "order": "created_at.asc,installation_id.asc",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise TypeError("Resposta de instalações inválida.")
+            return tuple(
+                self._push_installation_from_mapping(row)
+                for row in data
+            )
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def claim_push_delivery(
+        self,
+        event_id: str | UUID,
+        installation_id: UUID,
+        *,
+        lease_seconds: int = 8,
+    ) -> bool:
+        return self._push_boolean_rpc(
+            "claim_push_delivery",
+            {
+                "p_event_id": str(event_id),
+                "p_installation_id": str(installation_id),
+                "p_lease_seconds": lease_seconds,
+            },
+            "claimed",
+        )
+
+    def set_push_delivery_status(
+        self,
+        event_id: str | UUID,
+        installation_id: UUID,
+        status: PushDeliveryStatus,
+    ) -> None:
+        self._push_boolean_rpc(
+            "set_push_delivery_status",
+            {
+                "p_event_id": str(event_id),
+                "p_installation_id": str(installation_id),
+                "p_status": status.value,
+            },
+            "updated",
+        )
+
+    def get_push_delivery(
+        self,
+        event_id: str | UUID,
+        installation_id: UUID,
+    ) -> PushDelivery | None:
+        try:
+            response = self._client.get(
+                f"{self._base_url}/rest/v1/push_deliveries",
+                headers=self._headers(),
+                params={
+                    "select": (
+                        "event_id,installation_id,status,"
+                        "claimed_at,updated_at"
+                    ),
+                    "event_id": f"eq.{event_id}",
+                    "installation_id": f"eq.{installation_id}",
+                    "limit": "1",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise TypeError("Resposta de delivery inválida.")
+            if not data:
+                return None
+            if len(data) != 1 or not isinstance(data[0], dict):
+                raise ValueError("Resposta de delivery inválida.")
+            row = data[0]
+            claimed_at = self._parse_datetime(row.get("claimed_at"))
+            updated_at = self._parse_datetime(row.get("updated_at"))
+            if claimed_at is None or updated_at is None:
+                raise ValueError("Timestamps de delivery ausentes.")
+            return PushDelivery(
+                event_id=UUID(str(row["event_id"])),
+                installation_id=UUID(str(row["installation_id"])),
+                status=PushDeliveryStatus(str(row["status"])),
+                claimed_at=claimed_at,
+                updated_at=updated_at,
+            )
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def _push_installation_rpc(
+        self,
+        name: str,
+        payload: dict[str, Any],
+    ) -> PushInstallation | None:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/{name}",
+                headers=self._headers(),
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise TypeError("Resposta RPC de instalação inválida.")
+            if not data:
+                return None
+            if len(data) != 1:
+                raise ValueError("Resposta RPC de instalação inválida.")
+            return self._push_installation_from_mapping(data[0])
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def _push_boolean_rpc(
+        self,
+        name: str,
+        payload: dict[str, Any],
+        field: str,
+    ) -> bool:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/{name}",
+                headers=self._headers(),
+                json=payload,
+            )
+            response.raise_for_status()
+            row = self._extract_row(response.json())
+            value = row[field]
+            if not isinstance(value, bool):
+                raise TypeError("Resposta booleana RPC inválida.")
+            return value
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def _push_installation_from_mapping(
+        self,
+        row: Any,
+    ) -> PushInstallation:
+        if not isinstance(row, dict):
+            raise TypeError("Instalação persistida inválida.")
+        push_enabled_at = self._parse_datetime(row.get("push_enabled_at"))
+        last_seen_at = self._parse_datetime(row.get("last_seen_at"))
+        last_foreground_at = self._parse_datetime(
+            row.get("last_foreground_at")
+        )
+        created_at = self._parse_datetime(row.get("created_at"))
+        updated_at = self._parse_datetime(row.get("updated_at"))
+        if (
+            push_enabled_at is None
+            or last_seen_at is None
+            or created_at is None
+            or updated_at is None
+        ):
+            raise ValueError("Timestamps de instalação ausentes.")
+        return PushInstallation(
+            installation_id=UUID(str(row["installation_id"])),
+            device_id=str(row["device_id"]),
+            endpoint=None if row.get("endpoint") is None else str(row["endpoint"]),
+            p256dh=None if row.get("p256dh") is None else str(row["p256dh"]),
+            auth=None if row.get("auth") is None else str(row["auth"]),
+            preferences=PushPreferences(
+                confirmed=bool(row["pref_confirmed"]),
+                updated=bool(row["pref_updated"]),
+                completed=bool(row["pref_completed"]),
+                cancelled=bool(row["pref_cancelled"]),
+            ),
+            push_enabled_at=push_enabled_at,
+            last_seen_at=last_seen_at,
+            last_foreground_at=last_foreground_at,
+            active=bool(row["active"]),
+            created_at=created_at,
+            updated_at=updated_at,
+        )

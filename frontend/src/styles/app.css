@@ -1815,3 +1815,27 @@ textarea {
   font-size: 0.75rem;
   line-height: 1.45;
 }
+
+
+.timeline li.timeline__item--highlight {
+  border-color: var(--alertam-blue-700);
+  box-shadow: 0 0 0 0.15rem rgb(18 63 91 / 12%);
+}
+
+.maneuver-cycle__events {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2) 0 0;
+  margin: 0;
+  list-style: none;
+}
+
+.maneuver-cycle__events li {
+  padding: var(--space-2);
+  background: rgb(18 63 91 / 3%);
+}
+
+.timeline time {
+  color: var(--alertam-muted);
+  font-size: 0.78rem;
+}

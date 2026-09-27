@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from threading import Lock
 from typing import Callable, Iterable
 
+from app.models.maneuver_event import ManeuverEventIn
 from app.repositories.devices import (
     AcceptSnapshotResult,
     AcceptSnapshotStatus,
@@ -12,6 +13,16 @@ from app.repositories.devices import (
     DeviceAuthRecord,
     SnapshotCandidate,
     StoredSnapshot,
+)
+from app.repositories.events import (
+    AcceptEventResult,
+    AcceptEventStatus,
+    EventPage,
+    PushDelivery,
+    PushDeliveryStatus,
+    PushInstallation,
+    PushPreferences,
+    StoredManeuverEvent,
 )
 
 
@@ -30,6 +41,10 @@ class MemoryDeviceRepository:
     ) -> None:
         self._devices = {item.device_id: item for item in devices}
         self._snapshots = {item.device_id: item for item in snapshots}
+        self._events_by_id: dict[str, StoredManeuverEvent] = {}
+        self._event_ingestion_sequence = 0
+        self._push_installations: dict[object, PushInstallation] = {}
+        self._push_deliveries: dict[tuple[str, object], PushDelivery] = {}
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._lock = Lock()
 
@@ -55,14 +70,30 @@ class MemoryDeviceRepository:
         device_id: str,
         view_secret_hash: str,
     ) -> bool:
-        current = self._devices.get(device_id)
-        if current is None:
-            return False
-        self._devices[device_id] = replace(
-            current,
-            view_secret_hash=view_secret_hash,
-        )
-        return True
+        with self._lock:
+            current = self._devices.get(device_id)
+            if current is None:
+                return False
+            self._devices[device_id] = replace(
+                current,
+                view_secret_hash=view_secret_hash,
+            )
+            now = self._clock()
+            for installation_id, installation in tuple(
+                self._push_installations.items()
+            ):
+                if installation.device_id != device_id:
+                    continue
+                self._push_installations[installation_id] = replace(
+                    installation,
+                    endpoint=None,
+                    p256dh=None,
+                    auth=None,
+                    active=False,
+                    last_seen_at=now,
+                    updated_at=now,
+                )
+            return True
 
     def accept_snapshot_atomic(
         self,
@@ -106,3 +137,310 @@ class MemoryDeviceRepository:
                 status=AcceptSnapshotStatus.ACCEPTED,
                 received_at=received_at,
             )
+
+    def accept_maneuver_event_atomic(
+        self,
+        device_id: str,
+        event: ManeuverEventIn,
+    ) -> AcceptEventResult:
+        with self._lock:
+            if device_id not in self._devices:
+                return AcceptEventResult(AcceptEventStatus.DEVICE_NOT_FOUND)
+
+            event_id = str(event.event_id)
+            existing = self._events_by_id.get(event_id)
+            if existing is not None:
+                same = (
+                    existing.device_id == device_id
+                    and existing.event.canonical_payload()
+                    == event.canonical_payload()
+                )
+                return AcceptEventResult(
+                    AcceptEventStatus.IDEMPOTENT
+                    if same
+                    else AcceptEventStatus.PAYLOAD_MISMATCH,
+                    existing,
+                )
+
+            self._event_ingestion_sequence += 1
+            stored = StoredManeuverEvent(
+                ingestion_id=self._event_ingestion_sequence,
+                device_id=device_id,
+                event=event,
+                ingested_at=self._clock(),
+            )
+            self._events_by_id[event_id] = stored
+            return AcceptEventResult(AcceptEventStatus.ACCEPTED, stored)
+
+    def list_maneuver_events(
+        self,
+        device_id: str,
+        *,
+        after: int | None = None,
+        before: int | None = None,
+        limit: int = 50,
+    ) -> EventPage:
+        if after is not None and before is not None:
+            raise ValueError("after e before são mutuamente exclusivos")
+        if not 1 <= limit <= 100:
+            raise ValueError("limit deve estar entre 1 e 100")
+
+        with self._lock:
+            items = sorted(
+                (
+                    item
+                    for item in self._events_by_id.values()
+                    if item.device_id == device_id
+                ),
+                key=lambda item: item.ingestion_id,
+            )
+
+        if after is not None:
+            selected = [item for item in items if item.ingestion_id > after][:limit]
+            has_more_before = False
+        else:
+            eligible = (
+                [item for item in items if item.ingestion_id < before]
+                if before is not None
+                else items
+            )
+            has_more_before = len(eligible) > limit
+            selected = eligible[-limit:]
+
+        if not selected:
+            return EventPage((), None, None, has_more_before)
+
+        return EventPage(
+            events=tuple(selected),
+            oldest_cursor=selected[0].ingestion_id,
+            newest_cursor=selected[-1].ingestion_id,
+            has_more_before=has_more_before,
+        )
+
+    def upsert_push_installation(
+        self,
+        device_id,
+        installation_id,
+        *,
+        endpoint: str,
+        p256dh: str,
+        auth: str,
+    ):
+        with self._lock:
+            if device_id not in self._devices:
+                return None
+            now = self._clock()
+            current = self._push_installations.get(installation_id)
+            if current is not None and current.device_id != device_id:
+                return None
+            if current is None:
+                installation = PushInstallation(
+                    installation_id=installation_id,
+                    device_id=device_id,
+                    endpoint=endpoint,
+                    p256dh=p256dh,
+                    auth=auth,
+                    preferences=PushPreferences(),
+                    push_enabled_at=now,
+                    last_seen_at=now,
+                    last_foreground_at=None,
+                    active=True,
+                    created_at=now,
+                    updated_at=now,
+                )
+            else:
+                installation = replace(
+                    current,
+                    endpoint=endpoint,
+                    p256dh=p256dh,
+                    auth=auth,
+                    push_enabled_at=(
+                        current.push_enabled_at if current.active else now
+                    ),
+                    last_seen_at=now,
+                    active=True,
+                    updated_at=now,
+                )
+            self._push_installations[installation_id] = installation
+            return installation
+
+    def get_push_installation(
+        self,
+        device_id,
+        installation_id,
+    ):
+        with self._lock:
+            installation = self._push_installations.get(installation_id)
+            if installation is None or installation.device_id != device_id:
+                return None
+            return installation
+
+    def update_push_preferences(
+        self,
+        device_id,
+        installation_id,
+        preferences: PushPreferences,
+    ):
+        with self._lock:
+            current = self._push_installations.get(installation_id)
+            if current is None or current.device_id != device_id:
+                return None
+            now = self._clock()
+            updated = replace(
+                current,
+                preferences=preferences,
+                last_seen_at=now,
+                updated_at=now,
+            )
+            self._push_installations[installation_id] = updated
+            return updated
+
+    def touch_push_foreground(
+        self,
+        device_id,
+        installation_id,
+    ):
+        with self._lock:
+            current = self._push_installations.get(installation_id)
+            if (
+                current is None
+                or current.device_id != device_id
+                or not current.active
+            ):
+                return None
+            now = self._clock()
+            updated = replace(
+                current,
+                last_seen_at=now,
+                last_foreground_at=now,
+                updated_at=now,
+            )
+            self._push_installations[installation_id] = updated
+            return updated
+
+    def deactivate_push_installation(
+        self,
+        device_id,
+        installation_id,
+    ) -> bool:
+        with self._lock:
+            current = self._push_installations.get(installation_id)
+            if current is None or current.device_id != device_id:
+                return False
+            now = self._clock()
+            self._push_installations[installation_id] = replace(
+                current,
+                endpoint=None,
+                p256dh=None,
+                auth=None,
+                active=False,
+                last_seen_at=now,
+                updated_at=now,
+            )
+            return True
+
+    def list_active_push_installations(
+        self,
+        device_id: str,
+    ) -> tuple[PushInstallation, ...]:
+        with self._lock:
+            return tuple(
+                installation
+                for installation in self._push_installations.values()
+                if installation.device_id == device_id
+                and installation.active
+            )
+
+    def claim_push_delivery(
+        self,
+        event_id,
+        installation_id,
+        *,
+        lease_seconds: int = 8,
+    ) -> bool:
+        with self._lock:
+            event_key = str(event_id)
+            installation = self._push_installations.get(installation_id)
+            if (
+                event_key not in self._events_by_id
+                or installation is None
+                or not installation.active
+            ):
+                return False
+            key = (event_key, installation_id)
+            now = self._clock()
+            current = self._push_deliveries.get(key)
+            if current is None:
+                self._push_deliveries[key] = PushDelivery(
+                    event_id=current_event_id(event_key),
+                    installation_id=installation_id,
+                    status=PushDeliveryStatus.SENDING,
+                    claimed_at=now,
+                    updated_at=now,
+                )
+                return True
+
+            recoverable = (
+                current.status is PushDeliveryStatus.RETRY_PENDING
+                or (
+                    current.status is PushDeliveryStatus.SENDING
+                    and (now - current.claimed_at).total_seconds()
+                    >= lease_seconds
+                )
+            )
+            if not recoverable:
+                return False
+            self._push_deliveries[key] = replace(
+                current,
+                status=PushDeliveryStatus.SENDING,
+                claimed_at=now,
+                updated_at=now,
+            )
+            return True
+
+    def set_push_delivery_status(
+        self,
+        event_id,
+        installation_id,
+        status: PushDeliveryStatus,
+    ) -> None:
+        with self._lock:
+            event_key = str(event_id)
+            key = (event_key, installation_id)
+            now = self._clock()
+            current = self._push_deliveries.get(key)
+            if current is None:
+                if (
+                    event_key not in self._events_by_id
+                    or installation_id not in self._push_installations
+                ):
+                    return
+                self._push_deliveries[key] = PushDelivery(
+                    event_id=current_event_id(event_key),
+                    installation_id=installation_id,
+                    status=status,
+                    claimed_at=now,
+                    updated_at=now,
+                )
+                return
+            self._push_deliveries[key] = replace(
+                current,
+                status=status,
+                updated_at=now,
+            )
+
+    def get_push_delivery(
+        self,
+        event_id,
+        installation_id,
+    ):
+        with self._lock:
+            return self._push_deliveries.get(
+                (str(event_id), installation_id)
+            )
+
+
+def current_event_id(value: str):
+    from uuid import UUID
+
+    return UUID(value)

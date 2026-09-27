@@ -189,3 +189,119 @@ export function parseVesselPhotoResponse(input: unknown): VesselPhotoResponse {
   }
   return parsed.data;
 }
+
+
+const PobChangeSchema = z
+  .object({
+    from: z.string().nullable(),
+    to: z.string().nullable(),
+  })
+  .strict();
+
+const BerthChangeSchema = z
+  .object({
+    from: z.number().int().nullable(),
+    to: z.number().int().nullable(),
+  })
+  .strict();
+
+const ManeuverChangesSchema = z
+  .object({
+    pob: PobChangeSchema.optional(),
+    berth: BerthChangeSchema.optional(),
+  })
+  .strict()
+  .refine((value) => value.pob !== undefined || value.berth !== undefined, {
+    message: "UPDATED exige ao menos uma alteração.",
+  });
+
+export const ManeuverEventSchema = z
+  .object({
+    event_id: z.string().uuid(),
+    maneuver_id: z.string().uuid(),
+    vessel_identity: z.string().min(1),
+    vessel_imo: z.string().nullable(),
+    vessel_name: z.string().min(1),
+    maneuver_type: z.enum(["ATRACACAO", "DESATRACACAO"]),
+    event_type: z.enum(["CONFIRMED", "UPDATED", "COMPLETED", "CANCELLED"]),
+    berth: z.number().int().nullable(),
+    pob: z.string().nullable(),
+    occurred_at: awareDateTime,
+    changes: ManeuverChangesSchema.nullable(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.event_type === "UPDATED" && value.changes === null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["changes"],
+        message: "UPDATED exige changes.",
+      });
+    }
+    if (value.event_type !== "UPDATED" && value.changes !== null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["changes"],
+        message: "Somente UPDATED aceita changes.",
+      });
+    }
+  });
+
+export type ManeuverEventV1 = z.infer<typeof ManeuverEventSchema>;
+
+
+const ManeuverEventFeedItemSchema = z
+  .object({
+    event_id: z.string().uuid(),
+    maneuver_id: z.string().uuid(),
+    vessel_identity: z.string().min(1),
+    vessel_imo: z.string().nullable(),
+    vessel_name: z.string().min(1),
+    maneuver_type: z.enum(["ATRACACAO", "DESATRACACAO"]),
+    event_type: z.enum(["CONFIRMED", "UPDATED", "COMPLETED", "CANCELLED"]),
+    berth: z.number().int().nullable(),
+    pob: z.string().nullable(),
+    occurred_at: awareDateTime,
+    changes: ManeuverChangesSchema.nullable(),
+    ingestion_id: z.number().int().positive(),
+    ingested_at: awareDateTime,
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.event_type === "UPDATED" && value.changes === null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["changes"],
+        message: "UPDATED exige changes.",
+      });
+    }
+    if (value.event_type !== "UPDATED" && value.changes !== null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["changes"],
+        message: "Somente UPDATED aceita changes.",
+      });
+    }
+  });
+
+const ManeuverEventFeedResponseSchema = z
+  .object({
+    events: z.array(ManeuverEventFeedItemSchema),
+    oldest_cursor: z.number().int().positive().nullable(),
+    newest_cursor: z.number().int().positive().nullable(),
+    has_more_before: z.boolean(),
+  })
+  .strict();
+
+export type ManeuverEventFeedItem = z.infer<typeof ManeuverEventFeedItemSchema>;
+export type ManeuverEventFeedResponse = z.infer<typeof ManeuverEventFeedResponseSchema>;
+
+export function parseManeuverEventFeedResponse(
+  input: unknown,
+): ManeuverEventFeedResponse {
+  const parsed = ManeuverEventFeedResponseSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error("Resposta de eventos inválida.");
+  }
+  return parsed.data;
+}

@@ -99,3 +99,21 @@ class VesselPhotoUnavailableError(ApiError):
             code="vessel_photo_unavailable",
             message="Foto do navio temporariamente indisponível.",
         )
+
+
+class EventIdPayloadMismatchError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=409,
+            code="event_id_payload_mismatch",
+            message="event_id já existe com conteúdo diferente.",
+        )
+
+
+class InvalidEventCursorError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=422,
+            code="invalid_event_cursor",
+            message="Use after ou before, nunca os dois juntos.",
+        )

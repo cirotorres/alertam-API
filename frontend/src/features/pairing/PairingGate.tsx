@@ -37,7 +37,11 @@ type PairingGateProps = {
   sessionCreator?: (pairing: Pairing) => Promise<void>;
   sessionRecoverer?: () => Promise<Pairing | null>;
   sessionClearer?: () => Promise<void>;
-  children: (pairing: Pairing, reset: () => void) => ReactNode;
+  children: (
+    pairing: Pairing,
+    reset: () => void,
+    sessionReady: boolean,
+  ) => ReactNode;
 };
 export function PairingGate({
   fetcher = getSnapshot,
@@ -49,6 +53,7 @@ export function PairingGate({
   const [active, setActive] = useState<Pairing | null>(() => loadPairing());
   const [candidate, setCandidate] = useState<Pairing | null>(null);
   const [mode, setMode] = useState<GateMode>("idle");
+  const [sessionReady, setSessionReady] = useState(false);
   const skipNextRecoveryRef = useRef(false);
   const syncedSessionRef = useRef<string | null>(null);
 
@@ -57,15 +62,17 @@ export function PairingGate({
     syncedSessionRef.current = null;
     clearPairing();
     void sessionClearer();
+    setSessionReady(false);
     setActive(null);
     setCandidate(null);
     setMode("idle");
   }, [sessionClearer]);
 
-  const promote = useCallback((next: Pairing) => {
+  const promote = useCallback((next: Pairing, ready = true) => {
     if (next.viewSecret) {
       savePairing(next);
     }
+    setSessionReady(ready);
     setActive(next);
     setCandidate(null);
     setMode("idle");
@@ -122,11 +129,15 @@ export function PairingGate({
       if (active?.viewSecret) {
         const sessionKey = `${active.deviceId}:${active.viewSecret}`;
         if (syncedSessionRef.current !== sessionKey) {
+          setSessionReady(false);
           void sessionCreator(active)
             .then(() => {
               syncedSessionRef.current = sessionKey;
+              setSessionReady(true);
             })
-            .catch(() => undefined);
+            .catch(() => {
+              setSessionReady(false);
+            });
         }
         return;
       }
@@ -189,7 +200,7 @@ export function PairingGate({
   }
 
   if (active) {
-    return <>{children(active, reset)}</>;
+    return <>{children(active, reset, sessionReady)}</>;
   }
 
   return (

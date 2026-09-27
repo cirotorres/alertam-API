@@ -202,3 +202,59 @@ test("reset_does_not_immediately_recover_the_same_cookie_session", async () => {
   expect(clearer).toHaveBeenCalledTimes(1);
   expect(recoverer).not.toHaveBeenCalled();
 });
+
+
+test("stored_pairing_exposes_session_ready_only_after_cookie_sync", async () => {
+  const previous: Pairing = {
+    deviceId: "pecem-01",
+    viewSecret: TOKEN,
+    pairedAt: "2026-09-26T15:00:00-03:00",
+  };
+  savePairing(previous);
+  let resolveSession!: () => void;
+  const creator = vi.fn(
+    () => new Promise<void>((resolve) => {
+      resolveSession = resolve;
+    }),
+  );
+
+  render(
+    <PairingGate
+      fetcher={vi.fn().mockResolvedValue(response)}
+      sessionCreator={creator}
+      sessionRecoverer={vi.fn().mockResolvedValue(null)}
+      sessionClearer={vi.fn().mockResolvedValue(undefined)}
+    >
+      {(pairing, _reset, sessionReady) => (
+        <div>APP {pairing.deviceId} {sessionReady ? "READY" : "WAIT"}</div>
+      )}
+    </PairingGate>,
+  );
+
+  expect(await screen.findByText("APP pecem-01 WAIT")).toBeInTheDocument();
+  resolveSession();
+  expect(await screen.findByText("APP pecem-01 READY")).toBeInTheDocument();
+});
+
+test("cookie_recovery_enters_app_with_session_ready", async () => {
+  const recovered: Pairing = {
+    deviceId: "pecem-cookie",
+    viewSecret: null,
+    pairedAt: "2026-09-26T15:00:00-03:00",
+  };
+
+  render(
+    <PairingGate
+      fetcher={vi.fn().mockResolvedValue(response)}
+      sessionCreator={vi.fn().mockResolvedValue(undefined)}
+      sessionRecoverer={vi.fn().mockResolvedValue(recovered)}
+      sessionClearer={vi.fn().mockResolvedValue(undefined)}
+    >
+      {(pairing, _reset, sessionReady) => (
+        <div>APP {pairing.deviceId} {sessionReady ? "READY" : "WAIT"}</div>
+      )}
+    </PairingGate>,
+  );
+
+  expect(await screen.findByText("APP pecem-cookie READY")).toBeInTheDocument();
+});

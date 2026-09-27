@@ -33,3 +33,42 @@ test("rejects_unknown_schema_version", () => {
     "Versão de snapshot não suportada.",
   );
 });
+
+
+import maneuverEventFixture from "../../../api/tests/fixtures/maneuver_event_v1.json";
+import { ManeuverEventSchema } from "./contract";
+
+test("parses_real_desktop_maneuver_event_v1", () => {
+  const parsed = ManeuverEventSchema.parse(maneuverEventFixture);
+
+  expect(parsed.event_type).toBe("UPDATED");
+  expect(parsed.changes?.pob?.from).toBe("27/09 10:00");
+  expect(parsed.changes?.berth?.to).toBe(5);
+});
+
+test("maneuver_event_contract_rejects_extra_fields_and_invalid_changes", () => {
+  expect(() =>
+    ManeuverEventSchema.parse({
+      ...maneuverEventFixture,
+      extra: "forbidden",
+    }),
+  ).toThrow();
+
+  expect(() =>
+    ManeuverEventSchema.parse({
+      ...maneuverEventFixture,
+      changes: {
+        eta: { from: "10:00", to: "10:30" },
+      },
+    }),
+  ).toThrow();
+});
+
+test("maneuver_event_contract_requires_null_changes_outside_updated", () => {
+  expect(() =>
+    ManeuverEventSchema.parse({
+      ...maneuverEventFixture,
+      event_type: "CONFIRMED",
+    }),
+  ).toThrow();
+});

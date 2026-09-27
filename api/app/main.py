@@ -15,7 +15,7 @@ from app.core.logging import (
     HttpRequestLoggingMiddleware,
     configure_logging,
 )
-from app.repositories.devices import DevicesRepository
+from app.repositories.events import AlertaRepository, StoredManeuverEvent
 from app.repositories.factory import create_devices_repository
 from app.services.vessel_photo_service import (
     VesselPhotoLookup,
@@ -24,12 +24,13 @@ from app.services.vessel_photo_service import (
 
 
 def create_app(
-    repository: DevicesRepository | None = None,
+    repository: AlertaRepository | None = None,
     *,
     settings: Settings | None = None,
     stale_after_seconds: int | None = None,
     clock: Callable[[], datetime] | None = None,
     vessel_photo_service: VesselPhotoLookup | None = None,
+    dispatch_event: Callable[[StoredManeuverEvent], None] | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings()
     resolved_stale_after = (
@@ -62,6 +63,7 @@ def create_app(
             cookie_secure=resolved_settings.environment == "production",
             vessel_photo_service=resolved_photo_service,
             clock=clock,
+            dispatch_event=dispatch_event,
         )
     )
 
