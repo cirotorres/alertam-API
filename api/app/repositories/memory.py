@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from threading import Lock
 from typing import Callable, Iterable
+from uuid import UUID
 
 from app.models.maneuver_event import ManeuverEventIn
 from app.repositories.devices import (
@@ -18,6 +19,7 @@ from app.repositories.events import (
     AcceptEventResult,
     AcceptEventStatus,
     EventPage,
+    ManeuverEventDetail,
     PushDelivery,
     PushDeliveryStatus,
     PushInstallation,
@@ -215,6 +217,31 @@ class MemoryDeviceRepository:
             oldest_cursor=selected[0].ingestion_id,
             newest_cursor=selected[-1].ingestion_id,
             has_more_before=has_more_before,
+        )
+
+    def get_maneuver_event_detail(
+        self,
+        device_id: str,
+        event_id: UUID,
+    ) -> ManeuverEventDetail | None:
+        with self._lock:
+            selected = self._events_by_id.get(str(event_id))
+            if selected is None or selected.device_id != device_id:
+                return None
+            maneuver_id = selected.event.maneuver_id
+            events = tuple(sorted(
+                (
+                    item
+                    for item in self._events_by_id.values()
+                    if item.device_id == device_id
+                    and item.event.maneuver_id == maneuver_id
+                ),
+                key=lambda item: item.ingestion_id,
+            ))
+        return ManeuverEventDetail(
+            selected_event_id=event_id,
+            maneuver_id=maneuver_id,
+            events=events,
         )
 
     def upsert_push_installation(

@@ -49,6 +49,8 @@ class ManeuverEventIn(ContractModel):
     berth: StrictInt | None
     pob: str | None
     occurred_at: AwareDatetime
+    pob_at: AwareDatetime | None = None
+    first_observed_at: AwareDatetime | None = None
     changes: ManeuverChanges | None
 
     @model_validator(mode="after")
@@ -86,3 +88,9 @@ class ManeuverEventFeedResponse(BaseModel):
     oldest_cursor: int | None
     newest_cursor: int | None
     has_more_before: bool
+
+
+class ManeuverEventDetailResponse(BaseModel):
+    selected_event_id: UUID
+    maneuver_id: UUID
+    events: list[ManeuverEventFeedItem]

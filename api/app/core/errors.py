@@ -119,6 +119,15 @@ class InvalidEventCursorError(ApiError):
         )
 
 
+class ManeuverEventNotFoundError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=404,
+            code="maneuver_event_not_found",
+            message="Este alerta não está mais disponível no histórico recente.",
+        )
+
+
 class PushInstallationNotFoundError(ApiError):
     def __init__(self) -> None:
         super().__init__(

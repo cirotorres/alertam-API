@@ -19,6 +19,7 @@ from app.repositories.events import (
     AcceptEventResult,
     AcceptEventStatus,
     EventPage,
+    ManeuverEventDetail,
     PushDelivery,
     PushDeliveryStatus,
     PushInstallation,
@@ -324,6 +325,70 @@ class SupabaseDeviceRepository:
             oldest_cursor=events[0].ingestion_id if events else None,
             newest_cursor=events[-1].ingestion_id if events else None,
             has_more_before=has_more_before,
+        )
+
+    def get_maneuver_event_detail(
+        self,
+        device_id: str,
+        event_id: UUID,
+    ) -> ManeuverEventDetail | None:
+        try:
+            selected_response = self._client.get(
+                f"{self._base_url}/rest/v1/maneuver_events",
+                headers=self._headers(),
+                params={
+                    "select": "event_id,maneuver_id",
+                    "device_id": f"eq.{device_id}",
+                    "event_id": f"eq.{event_id}",
+                    "limit": "1",
+                },
+            )
+            selected_response.raise_for_status()
+            selected_rows = selected_response.json()
+            if not isinstance(selected_rows, list):
+                raise TypeError("Resposta de detalhe inválida.")
+            if not selected_rows:
+                return None
+            if len(selected_rows) != 1 or not isinstance(selected_rows[0], dict):
+                raise ValueError("Resposta de detalhe inválida.")
+            maneuver_id = UUID(str(selected_rows[0]["maneuver_id"]))
+
+            cycle_response = self._client.get(
+                f"{self._base_url}/rest/v1/maneuver_events",
+                headers=self._headers(),
+                params={
+                    "select": (
+                        "ingestion_id,device_id,event_payload,ingested_at"
+                    ),
+                    "device_id": f"eq.{device_id}",
+                    "maneuver_id": f"eq.{maneuver_id}",
+                    "order": "ingestion_id.asc",
+                },
+            )
+            cycle_response.raise_for_status()
+            cycle_rows = cycle_response.json()
+            if not isinstance(cycle_rows, list):
+                raise TypeError("Resposta de detalhe inválida.")
+            events = tuple(
+                self._stored_event_from_mapping(row)
+                for row in cycle_rows
+            )
+            if not events or not any(
+                item.event.event_id == event_id for item in events
+            ):
+                return None
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+        return ManeuverEventDetail(
+            selected_event_id=event_id,
+            maneuver_id=maneuver_id,
+            events=events,
         )
 
     def _stored_event_from_mapping(self, row: Any) -> StoredManeuverEvent:

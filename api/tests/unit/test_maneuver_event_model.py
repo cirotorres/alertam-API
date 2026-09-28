@@ -81,3 +81,15 @@ def test_change_types_are_specific_to_field():
 
     with pytest.raises(ValidationError):
         ManeuverEventIn.model_validate(raw)
+
+
+def test_legacy_event_without_optional_timestamps_remains_valid():
+    raw = payload()
+    raw.pop("pob_at")
+    raw.pop("first_observed_at")
+
+    event = ManeuverEventIn.model_validate(raw)
+
+    assert event.pob_at is None
+    assert event.first_observed_at is None
+    assert event.canonical_payload() == raw

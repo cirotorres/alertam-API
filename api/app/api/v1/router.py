@@ -8,6 +8,7 @@ from fastapi import APIRouter
 from app.api.v1.access import create_access_router
 from app.api.v1.health import create_health_router
 from app.api.v1.maneuver_events import create_maneuver_event_router
+from app.api.v1.mobile_event_details import create_mobile_event_details_router
 from app.api.v1.mobile_events import create_mobile_events_router
 from app.api.v1.mobile_session import create_mobile_session_router
 from app.api.v1.push import create_push_router
@@ -38,6 +39,9 @@ def create_v1_router(
     )
     router.include_router(
         create_mobile_events_router(repository, clock=clock)
+    )
+    router.include_router(
+        create_mobile_event_details_router(repository, clock=clock)
     )
     router.include_router(
         create_push_router(

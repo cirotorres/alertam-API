@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
+from uuid import UUID
 
 import psycopg
 import pytest
@@ -36,7 +37,11 @@ def reset_database():
         _ensure_roles(conn)
         conn.execute("drop schema if exists public cascade")
         conn.execute("create schema public")
-        for name in ("001_devices.sql", "004_maneuver_events.sql"):
+        for name in (
+            "001_devices.sql",
+            "004_maneuver_events.sql",
+            "007_maneuver_event_detail_index.sql",
+        ):
             conn.execute((MIGRATIONS / name).read_text(encoding="utf-8"))
     yield
 
@@ -48,10 +53,13 @@ def _repo() -> PostgresDeviceRepository:
     return repo
 
 
-def _event() -> ManeuverEventIn:
+def _event(
+    event_id: str = "00000000-0000-4000-8000-000000000402",
+    maneuver_id: str = "00000000-0000-4000-8000-000000000401",
+) -> ManeuverEventIn:
     return ManeuverEventIn.model_validate({
-        "event_id": "00000000-0000-4000-8000-000000000402",
-        "maneuver_id": "00000000-0000-4000-8000-000000000401",
+        "event_id": event_id,
+        "maneuver_id": maneuver_id,
         "vessel_identity": "NAME:NAVIO A",
         "vessel_imo": None,
         "vessel_name": "NAVIO A",
@@ -88,3 +96,28 @@ def test_postgres_event_repository_concurrent_retry_creates_one_row():
         AcceptEventStatus.IDEMPOTENT,
     }
     assert len(repo.list_maneuver_events("pecem-01").events) == 1
+
+
+def test_postgres_event_detail_is_device_scoped_and_cycle_ordered():
+    repo = _repo()
+    repo.create_device(DeviceAuthRecord("other-01", "hash"))
+    maneuver_a = "00000000-0000-4000-8000-000000000451"
+    maneuver_b = "00000000-0000-4000-8000-000000000452"
+    e1 = "00000000-0000-4000-8000-000000000461"
+    e2 = "00000000-0000-4000-8000-000000000462"
+    e3 = "00000000-0000-4000-8000-000000000463"
+    foreign = "00000000-0000-4000-8000-000000000464"
+
+    repo.accept_maneuver_event_atomic("pecem-01", _event(e1, maneuver_a))
+    repo.accept_maneuver_event_atomic("pecem-01", _event(e2, maneuver_b))
+    repo.accept_maneuver_event_atomic("pecem-01", _event(e3, maneuver_a))
+    repo.accept_maneuver_event_atomic("other-01", _event(foreign, maneuver_a))
+
+    detail = repo.get_maneuver_event_detail("pecem-01", UUID(e3))
+
+    assert detail is not None
+    assert [str(item.event.event_id) for item in detail.events] == [e1, e3]
+    assert repo.get_maneuver_event_detail(
+        "pecem-01",
+        UUID(foreign),
+    ) is None

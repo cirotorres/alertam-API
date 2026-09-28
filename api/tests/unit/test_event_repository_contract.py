@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from uuid import UUID
 
 from app.models.maneuver_event import ManeuverEventIn
 from app.repositories.devices import DeviceAuthRecord
@@ -12,10 +13,15 @@ from app.repositories.memory import MemoryDeviceRepository
 NOW = datetime(2026, 9, 27, 16, 0, tzinfo=timezone.utc)
 
 
-def event(event_id: str, *, name: str = "NAVIO A") -> ManeuverEventIn:
+def event(
+    event_id: str,
+    *,
+    name: str = "NAVIO A",
+    maneuver_id: str = "00000000-0000-4000-8000-000000000201",
+) -> ManeuverEventIn:
     return ManeuverEventIn.model_validate({
         "event_id": event_id,
-        "maneuver_id": "00000000-0000-4000-8000-000000000201",
+        "maneuver_id": maneuver_id,
         "vessel_identity": "NAME:NAVIO A",
         "vessel_imo": None,
         "vessel_name": name,
@@ -162,3 +168,54 @@ def test_after_returns_oldest_next_window_for_burst_drain():
 
     assert [x.ingestion_id for x in first.events] == [2, 3]
     assert [x.ingestion_id for x in second.events] == [4, 5]
+
+
+def test_detail_lookup_returns_selected_same_device_cycle_in_ingestion_order():
+    repository = repo()
+    maneuver_a = "00000000-0000-4000-8000-000000000301"
+    maneuver_b = "00000000-0000-4000-8000-000000000302"
+    e1 = "20000000-0000-4000-8000-000000000001"
+    e2 = "20000000-0000-4000-8000-000000000002"
+    e3 = "20000000-0000-4000-8000-000000000003"
+    foreign = "20000000-0000-4000-8000-000000000004"
+
+    repository.accept_maneuver_event_atomic(
+        "pecem-01", event(e1, maneuver_id=maneuver_a)
+    )
+    repository.accept_maneuver_event_atomic(
+        "pecem-01", event(e2, maneuver_id=maneuver_b)
+    )
+    repository.accept_maneuver_event_atomic(
+        "pecem-01", event(e3, maneuver_id=maneuver_a)
+    )
+    repository.accept_maneuver_event_atomic(
+        "other-01", event(foreign, maneuver_id=maneuver_a)
+    )
+
+    detail = repository.get_maneuver_event_detail(
+        "pecem-01",
+        UUID(e3),
+    )
+
+    assert detail is not None
+    assert str(detail.selected_event_id) == e3
+    assert str(detail.maneuver_id) == maneuver_a
+    assert [str(item.event.event_id) for item in detail.events] == [e1, e3]
+
+
+def test_detail_lookup_hides_unknown_and_foreign_event_ids():
+    repository = repo()
+    foreign = "30000000-0000-4000-8000-000000000001"
+    repository.accept_maneuver_event_atomic(
+        "other-01",
+        event(foreign),
+    )
+
+    assert repository.get_maneuver_event_detail(
+        "pecem-01",
+        UUID(foreign),
+    ) is None
+    assert repository.get_maneuver_event_detail(
+        "pecem-01",
+        UUID("30000000-0000-4000-8000-000000000099"),
+    ) is None

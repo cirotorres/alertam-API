@@ -39,6 +39,13 @@ class EventPage:
     has_more_before: bool
 
 
+@dataclass(frozen=True)
+class ManeuverEventDetail:
+    selected_event_id: UUID
+    maneuver_id: UUID
+    events: tuple[StoredManeuverEvent, ...]
+
+
 class ManeuverEventsRepository(Protocol):
     def accept_maneuver_event_atomic(
         self,
@@ -54,6 +61,12 @@ class ManeuverEventsRepository(Protocol):
         before: int | None = None,
         limit: int = 50,
     ) -> EventPage: ...
+
+    def get_maneuver_event_detail(
+        self,
+        device_id: str,
+        event_id: UUID,
+    ) -> ManeuverEventDetail | None: ...
 
 
 @dataclass(frozen=True)

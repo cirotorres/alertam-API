@@ -26,6 +26,8 @@ def test_fixture_generated_by_desktop_matches_event_contract():
         "berth",
         "pob",
         "occurred_at",
+        "pob_at",
+        "first_observed_at",
         "changes",
     }
 

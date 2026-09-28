@@ -22,6 +22,7 @@ from app.repositories.events import (
     AcceptEventResult,
     AcceptEventStatus,
     EventPage,
+    ManeuverEventDetail,
     PushDelivery,
     PushDeliveryStatus,
     PushInstallation,
@@ -325,6 +326,60 @@ class PostgresDeviceRepository:
             oldest_cursor=events[0].ingestion_id if events else None,
             newest_cursor=events[-1].ingestion_id if events else None,
             has_more_before=has_more_before,
+        )
+
+    def get_maneuver_event_detail(
+        self,
+        device_id: str,
+        event_id: UUID,
+    ) -> ManeuverEventDetail | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                selected = conn.execute(
+                    """
+                    select maneuver_id
+                    from public.maneuver_events
+                    where device_id = %s and event_id = %s
+                    """,
+                    (device_id, event_id),
+                ).fetchone()
+                if selected is None:
+                    return None
+                maneuver_id = UUID(str(selected[0]))
+                rows = conn.execute(
+                    """
+                    select ingestion_id, device_id, event_payload, ingested_at
+                    from public.maneuver_events
+                    where device_id = %s and maneuver_id = %s
+                    order by ingestion_id asc
+                    """,
+                    (device_id, maneuver_id),
+                ).fetchall()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+
+        try:
+            events = tuple(
+                StoredManeuverEvent(
+                    ingestion_id=int(row[0]),
+                    device_id=str(row[1]),
+                    event=ManeuverEventIn.model_validate(row[2]),
+                    ingested_at=self._aware_datetime(row[3]),
+                )
+                for row in rows
+            )
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+
+        if not events or not any(
+            item.event.event_id == event_id for item in events
+        ):
+            return None
+
+        return ManeuverEventDetail(
+            selected_event_id=event_id,
+            maneuver_id=maneuver_id,
+            events=events,
         )
 
     def upsert_push_installation(
