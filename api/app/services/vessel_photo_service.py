@@ -41,10 +41,6 @@ def _filename_from_p18(url: str) -> str:
     return urllib.parse.unquote(url.rsplit("/", 1)[-1])
 
 
-def _title_contains_imo(title: str, imo: str) -> bool:
-    return re.search(rf"(?<!\d){re.escape(imo)}(?!\d)", title) is not None
-
-
 def _photo_from_page(
     imo: str,
     page: Mapping[str, Any],
@@ -119,37 +115,6 @@ class VesselPhotoService:
             raise ValueError("Resposta externa inválida.")
         return body
 
-    def _get_commons_photo(self, imo: str) -> VesselPhotoResponse | None:
-        body = self._get_json(
-            COMMONS_API_URL,
-            {
-                "action": "query",
-                "generator": "search",
-                "gsrsearch": imo,
-                "gsrnamespace": "6",
-                "gsrlimit": "10",
-                "prop": "imageinfo",
-                "iiprop": "url|extmetadata",
-                "iiurlwidth": "640",
-                "format": "json",
-            },
-            {"User-Agent": self._user_agent},
-        )
-        pages = body.get("query", {}).get("pages", {})
-        if not isinstance(pages, Mapping):
-            return None
-
-        for page in pages.values():
-            if not isinstance(page, Mapping):
-                continue
-            title = page.get("title")
-            if not isinstance(title, str) or not _title_contains_imo(title, imo):
-                continue
-            photo = _photo_from_page(imo, page)
-            if photo is not None:
-                return photo
-        return None
-
     def _get_wikidata_photo(self, imo: str) -> VesselPhotoResponse | None:
         wikidata = self._get_json(
             SPARQL_URL,
@@ -189,16 +154,7 @@ class VesselPhotoService:
             return VesselPhotoResponse(imo=imo)
 
         try:
-            direct = self._get_commons_photo(imo)
-            if direct is not None:
-                return direct
-        except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError):
-            # O Commons direto é o caminho preferido, mas uma falha nele não
-            # impede o fallback para o dado estruturado do Wikidata.
-            pass
-
-        try:
-            fallback = self._get_wikidata_photo(imo)
-            return fallback or VesselPhotoResponse(imo=imo)
+            photo = self._get_wikidata_photo(imo)
+            return photo or VesselPhotoResponse(imo=imo)
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
             raise VesselPhotoUnavailableError() from exc

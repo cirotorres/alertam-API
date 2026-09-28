@@ -142,6 +142,42 @@ test("short_downward_drag_keeps_vessel_sheet_open", () => {
   expect(onClose).not.toHaveBeenCalled();
 });
 
+test("upward_grab_has_resisted_pull_and_snaps_back_without_dismiss", async () => {
+  const onClose = vi.fn();
+  const { container } = render(
+    <VesselSheet vessel={vessel} open onClose={onClose} />,
+  );
+  const sheet = screen.getByRole("dialog", { name: /NAVIO A/i });
+  const grab = container.querySelector(".vessel-sheet__drag-zone");
+  expect(grab).not.toBeNull();
+
+  fireEvent.pointerDown(grab!, {
+    pointerId: 6,
+    isPrimary: true,
+    button: 0,
+    pointerType: "touch",
+    clientY: 180,
+  });
+  fireEvent.pointerMove(sheet, {
+    pointerId: 6,
+    pointerType: "touch",
+    clientY: 100,
+  });
+
+  expect(sheet.style.transform).toMatch(/translate\(-50%, -\d/);
+
+  fireEvent.pointerUp(sheet, {
+    pointerId: 6,
+    pointerType: "touch",
+    clientY: 100,
+  });
+
+  await vi.waitFor(() => {
+    expect(sheet.style.transform).toContain("0px");
+  });
+  expect(onClose).not.toHaveBeenCalled();
+});
+
 test("long_downward_drag_dismisses_vessel_sheet", async () => {
   const onClose = vi.fn();
   const { container } = render(

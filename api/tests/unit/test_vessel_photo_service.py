@@ -19,20 +19,32 @@ def _commons_page(title: str, thumb: str = "https://upload.wikimedia.org/ship.jp
     }
 
 
-def test_commons_search_prefers_exact_imo_title_and_skips_wikidata():
+def test_photo_uses_wikidata_p18_as_the_only_photo_source():
     calls = []
 
     def get_json(url, params, headers):
         calls.append((url, params, headers))
-        assert "commons.wikimedia.org" in url
+        if "wikidata" in url:
+            return {
+                "results": {
+                    "bindings": [{
+                        "item": {"value": "http://www.wikidata.org/entity/Q123"},
+                        "img": {
+                            "value": (
+                                "http://commons.wikimedia.org/wiki/"
+                                "Special:FilePath/Nike%20IMO%209431032.jpg"
+                            )
+                        },
+                    }]
+                }
+            }
         return {
             "query": {
                 "pages": {
-                    "1": _commons_page("File:Front view of the Nike of Samothrace.jpg"),
                     "2": _commons_page(
-                        "File:Nike IMO 9431032 T Hamburg.jpg",
+                        "File:Nike IMO 9431032.jpg",
                         "https://upload.wikimedia.org/nike-640.jpg",
-                    ),
+                    )
                 }
             }
         }
@@ -42,49 +54,30 @@ def test_commons_search_prefers_exact_imo_title_and_skips_wikidata():
     assert result.photo_url == "https://upload.wikimedia.org/nike-640.jpg"
     assert result.author == "Jane Doe"
     assert result.license == "CC BY-SA 4.0"
-    assert len(calls) == 1
-    assert calls[0][1]["generator"] == "search"
-    assert calls[0][1]["gsrsearch"] == "9431032"
+    assert len(calls) == 2
+    assert "wikidata" in calls[0][0]
+    assert all(call[1].get("generator") != "search" for call in calls)
 
 
-def test_lookup_falls_back_to_wikidata_when_commons_has_no_exact_imo_title():
+def test_lookup_without_wikidata_p18_never_accepts_textual_commons_match():
     calls = []
 
     def get_json(url, params, headers):
-        calls.append(url)
-        if "commons.wikimedia.org" in url and params.get("generator") == "search":
-            return {
-                "query": {
-                    "pages": {
-                        "1": _commons_page("File:Unrelated ship.jpg"),
-                    }
-                }
-            }
-        if "wikidata" in url:
-            return {
-                "results": {
-                    "bindings": [{
-                        "item": {"value": "http://www.wikidata.org/entity/Q123"},
-                        "img": {"value": "http://commons.wikimedia.org/wiki/Special:FilePath/Test%20Ship.jpg"},
-                    }]
-                }
-            }
+        calls.append((url, params))
+        assert "wikidata" in url
         return {
-            "query": {
-                "pages": {
-                    "2": _commons_page(
-                        "File:Test Ship.jpg",
-                        "https://upload.wikimedia.org/test-640.jpg",
-                    )
-                }
+            "results": {
+                "bindings": [{
+                    "item": {"value": "http://www.wikidata.org/entity/Q123"},
+                }]
             }
         }
 
-    result = VesselPhotoService(get_json=get_json).get_photo("1234567")
+    result = VesselPhotoService(get_json=get_json).get_photo("9987366")
 
-    assert result.photo_url == "https://upload.wikimedia.org/test-640.jpg"
-    assert any("wikidata" in call for call in calls)
-    assert len(calls) == 3
+    assert result.photo_url is None
+    assert len(calls) == 1
+    assert calls[0][1].get("generator") is None
 
 
 def test_lookup_without_photo_returns_valid_empty_photo():

@@ -29,8 +29,10 @@ export function VesselSheet({
   photoLoading = false,
 }: VesselSheetProps) {
   const [atScrollTop, setAtScrollTop] = useState(true);
+  const [upwardPull, setUpwardPull] = useState(0);
   const touchStartYRef = useRef<number | null>(null);
   const touchScrollModeRef = useRef(false);
+  const dragFromHandleRef = useRef(false);
   const canStartDrag = useCallback((
     target: EventTarget | null,
     currentTarget: HTMLElement,
@@ -49,13 +51,19 @@ export function VesselSheet({
   });
 
   useEffect(() => {
-    if (open) drag.reset();
+    if (open) {
+      drag.reset();
+      setUpwardPull(0);
+      touchStartYRef.current = null;
+      touchScrollModeRef.current = false;
+      dragFromHandleRef.current = false;
+    }
   }, [open]);
 
   const dragActive = drag.interacted && (open || drag.dismissing);
   const sheetStyle = dragActive
     ? {
-        transform: `translate(-50%, ${drag.offset}px)`,
+        transform: `translate(-50%, ${drag.offset - upwardPull}px)`,
         transition: drag.dragging
           ? "none"
           : "transform 180ms cubic-bezier(0.22, 1, 0.36, 1)",
@@ -100,6 +108,10 @@ export function VesselSheet({
           ) {
             touchStartYRef.current = event.clientY;
             touchScrollModeRef.current = false;
+            dragFromHandleRef.current = Boolean(
+              event.target instanceof Element &&
+              event.target.closest(".vessel-sheet__drag-zone"),
+            );
           }
           drag.pointerHandlers.onPointerDown(event);
         }}
@@ -107,37 +119,43 @@ export function VesselSheet({
           const touchStartY = touchStartYRef.current;
           if (event.pointerType === "touch" && touchStartY !== null) {
             const signedDelta = event.clientY - touchStartY;
-            if (touchScrollModeRef.current || signedDelta < -6) {
-              if (!touchScrollModeRef.current) {
-                touchScrollModeRef.current = true;
-                drag.reset();
-              }
+
+            if (dragFromHandleRef.current && signedDelta < 0) {
+              setUpwardPull(Math.min(36, Math.abs(signedDelta) * 0.24));
+              return;
+            }
+
+            if (
+              touchScrollModeRef.current ||
+              (!dragFromHandleRef.current && signedDelta < -6)
+            ) {
+              touchScrollModeRef.current = true;
+              setUpwardPull(0);
               event.currentTarget.scrollTop = Math.max(0, -signedDelta);
               setAtScrollTop(event.currentTarget.scrollTop <= 0);
               return;
             }
           }
+          setUpwardPull(0);
           drag.pointerHandlers.onPointerMove(event);
         }}
         onPointerUp={(event) => {
-          if (touchScrollModeRef.current) {
-            if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
-              event.currentTarget.releasePointerCapture(event.pointerId);
-            }
+          if (touchScrollModeRef.current || upwardPull > 0) {
+            drag.pointerHandlers.onPointerCancel(event);
           } else {
             drag.pointerHandlers.onPointerUp(event);
           }
+          setUpwardPull(0);
           touchStartYRef.current = null;
           touchScrollModeRef.current = false;
+          dragFromHandleRef.current = false;
         }}
         onPointerCancel={(event) => {
-          if (!touchScrollModeRef.current) {
-            drag.pointerHandlers.onPointerCancel(event);
-          } else {
-            drag.reset();
-          }
+          drag.pointerHandlers.onPointerCancel(event);
+          setUpwardPull(0);
           touchStartYRef.current = null;
           touchScrollModeRef.current = false;
+          dragFromHandleRef.current = false;
         }}
         onScroll={(event) => setAtScrollTop(event.currentTarget.scrollTop <= 0)}
       >

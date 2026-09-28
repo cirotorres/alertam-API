@@ -28,4 +28,20 @@ test("positions_vessel_with_percentages_and_emits_selection", () => {
 
   fireEvent.click(pin);
   expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ name: "NAVIO A" }));
+
+  const quickSelect = screen.getByRole("button", {
+    name: "Atalho do berço 2: selecionar navio",
+  });
+  expect(quickSelect).toHaveTextContent("2");
+  expect(
+    screen.queryByRole("button", {
+      name: "Atalho do berço 7: selecionar navio",
+    }),
+  ).not.toBeInTheDocument();
+
+  fireEvent.click(quickSelect);
+  expect(onSelect).toHaveBeenCalledTimes(2);
+  expect(onSelect).toHaveBeenLastCalledWith(
+    expect.objectContaining({ name: "NAVIO A" }),
+  );
 });

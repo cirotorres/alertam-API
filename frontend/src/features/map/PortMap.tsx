@@ -69,6 +69,31 @@ export function PortMap({ snapshot, onSelectVessel }: PortMapProps) {
             </button>
           );
         })}
+        <div
+          className={`port-map__quick-select${
+            vessels.length > 7 ? " port-map__quick-select--dense" : ""
+          }`}
+          role="group"
+          aria-label="Seleção rápida de navios por berço"
+        >
+          {[...vessels]
+            .sort((a, b) => b.berth - a.berth)
+            .map(({ berth, vessel }) => (
+              <button
+                key={berth}
+                type="button"
+                className={`port-map__quick-button${movementClass(vessel)}`}
+                aria-label={`Atalho do berço ${berth}: selecionar navio`}
+                onClick={() => onSelectVessel(vessel)}
+              >
+                <span>{berth}</span>
+                {vessel.status === "ATRACANDO" ||
+                vessel.status === "DESATRACANDO" ? (
+                  <i aria-hidden="true" />
+                ) : null}
+              </button>
+            ))}
+        </div>
         <div className="port-map__location">
           <span aria-hidden="true">📍</span>
           <span>{portLocationLabel(snapshot.port.name)}</span>

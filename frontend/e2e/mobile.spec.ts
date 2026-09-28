@@ -334,6 +334,28 @@ test("operational navigation, vessel sheet and drawer work together", async ({ p
   await expectNoHorizontalOverflow(page);
 });
 
+test("map quick berth selector opens the matching vessel sheet", async ({ page }, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "mobile-390",
+    "Quick berth selector E2E runs once on the primary mobile viewport.",
+  );
+  await seedPairing(page);
+  await mockSnapshot(page);
+
+  await page.goto("/");
+
+  const quickSelect = page.getByRole("button", {
+    name: "Atalho do berço 2: selecionar navio",
+  });
+  await expect(quickSelect).toBeVisible();
+  await expect(quickSelect).toHaveText("2");
+
+  await quickSelect.click();
+  await expect(
+    page.getByRole("dialog", { name: /Ficha do navio NAVIO A/i }),
+  ).toBeVisible();
+});
+
 test("maneuver feed drives alert deep-link and grouped history", async ({ page }) => {
   test.skip(
     test.info().project.name !== "mobile-390",
@@ -383,6 +405,34 @@ test("maneuver feed drives alert deep-link and grouped history", async ({ page }
   await expect(page.getByText("Atracação confirmada")).toBeVisible();
   await expect(page.getByText("Atracação atualizada")).toBeVisible();
   await expect(page.getByText("Atracação concluída")).toBeVisible();
+});
+
+test("weather scroll finishes above the fixed footer", async ({ page }, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "mobile-390",
+    "Weather layout validation runs once on the primary mobile viewport.",
+  );
+  await seedPairing(page);
+  await mockSnapshot(page);
+  await mockManeuverEvents(page, eventPage([]));
+
+  await page.goto("/tempo");
+  await expect(page.getByRole("heading", { name: "Tempo e mar" })).toBeVisible();
+
+  const weather = page.locator(".weather-page");
+  await weather.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+
+  await expect.poll(async () => {
+    const marine = await page.locator(".weather-section").last().boundingBox();
+    const footer = await page.locator(".bottom-nav").boundingBox();
+    if (!marine || !footer) return -1;
+    return footer.y - (marine.y + marine.height);
+  }).toBeGreaterThanOrEqual(8);
+
+  expect(await weather.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });
 
 test("waiting, stale, revoked and temporary offline states are handled", async ({ page }) => {
@@ -688,6 +738,18 @@ test("demo mode shows mocked maneuvers without calling the real api", async ({ p
   expect(departingRingAnimation).toContain("alertam-status-ring");
 
   await expect(page.locator(".port-map__vessel")).toHaveCount(10);
+  await expect(page.locator(".port-map__quick-button")).toHaveCount(10);
+  await expect(page.locator(".port-map__quick-select")).toHaveClass(
+    /port-map__quick-select--dense/,
+  );
+  const quickRailBox = await page.locator(".port-map__quick-select").boundingBox();
+  const quickMapBox = await page.locator(".port-map__canvas").boundingBox();
+  expect(quickRailBox).not.toBeNull();
+  expect(quickMapBox).not.toBeNull();
+  expect(quickRailBox!.y).toBeGreaterThanOrEqual(quickMapBox!.y);
+  expect(quickRailBox!.y + quickRailBox!.height).toBeLessThanOrEqual(
+    quickMapBox!.y + quickMapBox!.height,
+  );
   await expect(page.locator(".port-map__canvas")).not.toHaveClass(
     /port-map__canvas--dense/,
   );

@@ -1,7 +1,8 @@
 import type { VesselPhotoResponse } from "../../api/contract";
 import { parseVesselPhotoResponse } from "../../api/contract";
 
-const CACHE_PREFIX = "alertam-vessel-photo-v1:";
+const CACHE_PREFIX = "alertam-vessel-photo-v2:";
+const LEGACY_CACHE_PREFIX = "alertam-vessel-photo-v1:";
 const TTL_MS = 30 * 24 * 60 * 60 * 1_000;
 
 type CachedPhoto = {
@@ -18,6 +19,7 @@ export function readVesselPhotoCache(
   now = Date.now(),
 ): VesselPhotoResponse | null {
   try {
+    localStorage.removeItem(`${LEGACY_CACHE_PREFIX}${imo}`);
     const raw = localStorage.getItem(key(imo));
     if (!raw) return null;
     const cached = JSON.parse(raw) as CachedPhoto;

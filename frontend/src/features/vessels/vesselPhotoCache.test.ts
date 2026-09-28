@@ -26,3 +26,18 @@ test("expires_cached_photo_after_thirty_days", () => {
   const afterThirtyDays = 1_000 + 30 * 24 * 60 * 60 * 1_000 + 1;
   expect(readVesselPhotoCache("1234567", afterThirtyDays)).toBeNull();
 });
+
+test("ignores_and_removes_legacy_v1_photo_cache", () => {
+  localStorage.setItem(
+    "alertam-vessel-photo-v1:9987366",
+    JSON.stringify({
+      expiresAt: Date.now() + 60_000,
+      value: { ...photo, imo: "9987366" },
+    }),
+  );
+
+  expect(readVesselPhotoCache("9987366")).toBeNull();
+  expect(
+    localStorage.getItem("alertam-vessel-photo-v1:9987366"),
+  ).toBeNull();
+});
