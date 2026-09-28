@@ -175,3 +175,29 @@ test("vessel_photo_is_fetched_on_open_and_reused_from_local_cache", async () => 
 
   vi.unstubAllGlobals();
 });
+
+test("vessel_photo_temporary_failure_is_visible_in_sheet", async () => {
+  localStorage.clear();
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({ detail: "temporarily unavailable" }),
+      { status: 503, headers: { "Content-Type": "application/json" } },
+    ),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp();
+  const vessel = await screen.findByRole("button", {
+    name: /NAVIO A, Berço 2/i,
+  });
+  fireEvent.click(vessel);
+
+  expect(
+    await screen.findByText("Foto temporariamente indisponível."),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByText("Sem foto disponível para este navio."),
+  ).not.toBeInTheDocument();
+
+  vi.unstubAllGlobals();
+});

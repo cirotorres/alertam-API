@@ -9,6 +9,7 @@ type VesselSheetProps = {
   onClose: () => void;
   photo?: VesselPhotoResponse | null;
   photoLoading?: boolean;
+  photoError?: "temporary" | null;
 };
 
 function Detail({ label, value }: { label: string; value: string | number | null }) {
@@ -27,6 +28,7 @@ export function VesselSheet({
   onClose,
   photo = null,
   photoLoading = false,
+  photoError = null,
 }: VesselSheetProps) {
   const [atScrollTop, setAtScrollTop] = useState(true);
   const [upwardPull, setUpwardPull] = useState(0);
@@ -206,6 +208,14 @@ export function VesselSheet({
       ) : photoLoading ? (
         <p className="vessel-sheet__photo-status" role="status">
           Buscando foto…
+        </p>
+      ) : photoError === "temporary" ? (
+        <p className="vessel-sheet__photo-status" role="status">
+          Foto temporariamente indisponível.
+        </p>
+      ) : photo ? (
+        <p className="vessel-sheet__photo-status" role="status">
+          Sem foto disponível para este navio.
         </p>
       ) : null}
       <dl className="vessel-sheet__details">

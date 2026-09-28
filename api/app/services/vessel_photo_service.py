@@ -3,26 +3,20 @@ from __future__ import annotations
 from html import unescape
 import re
 from typing import Any, Callable, Mapping, Protocol
-import urllib.parse
 
 import httpx
 
 from app.core.errors import VesselPhotoUnavailableError
 from app.models.vessel_photo import VesselPhotoResponse
 
-SPARQL_URL = "https://query.wikidata.org/sparql"
+WIKIDATA_API_URL = "https://www.wikidata.org/w/api.php"
 COMMONS_API_URL = "https://commons.wikimedia.org/w/api.php"
-DEFAULT_USER_AGENT = "AlertaM-Mobile/0.1"
+DEFAULT_USER_AGENT = (
+    "AlertaM-Mobile/0.1 "
+    "(https://github.com/cirotorres/alertam-API)"
+)
 
 JsonGetter = Callable[[str, Mapping[str, str], Mapping[str, str]], dict[str, Any]]
-
-_SPARQL = """
-SELECT ?item ?img WHERE {
-  ?item wdt:P458 "%s" .
-  OPTIONAL { ?item wdt:P18 ?img }
-}
-LIMIT 1
-"""
 
 
 class VesselPhotoLookup(Protocol):
@@ -37,8 +31,42 @@ def _strip_html(value: str | None) -> str | None:
     return normalized or None
 
 
-def _filename_from_p18(url: str) -> str:
-    return urllib.parse.unquote(url.rsplit("/", 1)[-1])
+def _claim_values(
+    entity: Mapping[str, Any],
+    property_id: str,
+) -> list[str]:
+    claims = entity.get("claims")
+    if not isinstance(claims, Mapping):
+        return []
+
+    raw_claims = claims.get(property_id)
+    if not isinstance(raw_claims, list):
+        return []
+
+    values: list[str] = []
+    for claim in raw_claims:
+        if not isinstance(claim, Mapping):
+            continue
+        mainsnak = claim.get("mainsnak")
+        if not isinstance(mainsnak, Mapping):
+            continue
+        datavalue = mainsnak.get("datavalue")
+        if not isinstance(datavalue, Mapping):
+            continue
+        value = datavalue.get("value")
+        if isinstance(value, str):
+            values.append(value)
+    return values
+
+
+def _title_has_explicit_imo(title: str, imo: str) -> bool:
+    return (
+        re.search(
+            rf"(?i)\bIMO(?:[\s:_-]+){re.escape(imo)}(?!\d)",
+            title,
+        )
+        is not None
+    )
 
 
 def _photo_from_page(
@@ -115,24 +143,11 @@ class VesselPhotoService:
             raise ValueError("Resposta externa inválida.")
         return body
 
-    def _get_wikidata_photo(self, imo: str) -> VesselPhotoResponse | None:
-        wikidata = self._get_json(
-            SPARQL_URL,
-            {"query": _SPARQL % imo, "format": "json"},
-            {
-                "User-Agent": self._user_agent,
-                "Accept": "application/sparql-results+json",
-            },
-        )
-        bindings = wikidata["results"]["bindings"]
-        if not bindings:
-            return None
-
-        image = bindings[0].get("img", {}).get("value")
-        if not image:
-            return None
-
-        filename = _filename_from_p18(image)
+    def _get_commons_file(
+        self,
+        imo: str,
+        filename: str,
+    ) -> VesselPhotoResponse | None:
         commons = self._get_json(
             COMMONS_API_URL,
             {
@@ -145,16 +160,120 @@ class VesselPhotoService:
             },
             {"User-Agent": self._user_agent},
         )
-        pages = commons["query"]["pages"]
+        pages = commons.get("query", {}).get("pages", {})
+        if not isinstance(pages, Mapping) or not pages:
+            return None
         page = next(iter(pages.values()))
+        if not isinstance(page, Mapping):
+            return None
         return _photo_from_page(imo, page)
+
+    def _get_wikidata_photo(self, imo: str) -> VesselPhotoResponse | None:
+        headers = {"User-Agent": self._user_agent}
+        search = self._get_json(
+            WIKIDATA_API_URL,
+            {
+                "action": "query",
+                "list": "search",
+                "srsearch": f"haswbstatement:P458={imo}",
+                "srnamespace": "0",
+                "srlimit": "5",
+                "format": "json",
+            },
+            headers,
+        )
+        raw_results = search.get("query", {}).get("search", [])
+        if not isinstance(raw_results, list):
+            return None
+
+        entity_ids = [
+            item["title"]
+            for item in raw_results
+            if isinstance(item, Mapping)
+            and isinstance(item.get("title"), str)
+            and re.fullmatch(r"Q\d+", item["title"])
+        ]
+        if not entity_ids:
+            return None
+
+        entities_body = self._get_json(
+            WIKIDATA_API_URL,
+            {
+                "action": "wbgetentities",
+                "ids": "|".join(entity_ids),
+                "props": "claims",
+                "format": "json",
+            },
+            headers,
+        )
+        entities = entities_body.get("entities", {})
+        if not isinstance(entities, Mapping):
+            return None
+
+        for entity_id in entity_ids:
+            entity = entities.get(entity_id)
+            if not isinstance(entity, Mapping):
+                continue
+            if imo not in _claim_values(entity, "P458"):
+                continue
+            images = _claim_values(entity, "P18")
+            if not images:
+                continue
+            return self._get_commons_file(imo, images[0])
+        return None
+
+    def _get_commons_fallback(self, imo: str) -> VesselPhotoResponse | None:
+        body = self._get_json(
+            COMMONS_API_URL,
+            {
+                "action": "query",
+                "generator": "search",
+                "gsrsearch": f"IMO {imo}",
+                "gsrnamespace": "6",
+                "gsrlimit": "10",
+                "prop": "imageinfo",
+                "iiprop": "url|extmetadata",
+                "iiurlwidth": "640",
+                "format": "json",
+            },
+            {"User-Agent": self._user_agent},
+        )
+        pages = body.get("query", {}).get("pages", {})
+        if not isinstance(pages, Mapping):
+            return None
+
+        for page in pages.values():
+            if not isinstance(page, Mapping):
+                continue
+            title = page.get("title")
+            if not isinstance(title, str):
+                continue
+            if not _title_has_explicit_imo(title, imo):
+                continue
+            photo = _photo_from_page(imo, page)
+            if photo is not None:
+                return photo
+        return None
 
     def get_photo(self, imo: str) -> VesselPhotoResponse:
         if re.fullmatch(r"\d{7}", imo) is None:
             return VesselPhotoResponse(imo=imo)
 
+        structured_failed = False
         try:
             photo = self._get_wikidata_photo(imo)
-            return photo or VesselPhotoResponse(imo=imo)
+            if photo is not None:
+                return photo
+        except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError):
+            structured_failed = True
+
+        try:
+            fallback = self._get_commons_fallback(imo)
+            if fallback is not None:
+                return fallback
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
             raise VesselPhotoUnavailableError() from exc
+
+        if structured_failed:
+            raise VesselPhotoUnavailableError()
+        return VesselPhotoResponse(imo=imo)

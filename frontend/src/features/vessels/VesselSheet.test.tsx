@@ -59,6 +59,45 @@ test("renders_vessel_photo_with_commons_credit", () => {
 });
 
 
+test("shows_no_photo_when_lookup_succeeds_without_safe_image", () => {
+  render(
+    <VesselSheet
+      vessel={vessel}
+      open
+      onClose={() => undefined}
+      photo={{
+        imo: "1234567",
+        photo_url: null,
+        author: null,
+        license: null,
+        source_url: null,
+      }}
+    />,
+  );
+
+  expect(
+    screen.getByText("Sem foto disponível para este navio."),
+  ).toBeInTheDocument();
+});
+
+test("shows_temporary_photo_error_separately_from_no_photo", () => {
+  render(
+    <VesselSheet
+      vessel={vessel}
+      open
+      onClose={() => undefined}
+      photoError="temporary"
+    />,
+  );
+
+  expect(
+    screen.getByText("Foto temporariamente indisponível."),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByText("Sem foto disponível para este navio."),
+  ).not.toBeInTheDocument();
+});
+
 test("long_downward_drag_from_sheet_body_dismisses_when_at_top", async () => {
   const onClose = vi.fn();
   render(<VesselSheet vessel={vessel} open onClose={onClose} />);

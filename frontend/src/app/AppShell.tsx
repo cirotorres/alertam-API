@@ -222,6 +222,7 @@ export function AppShell({
           onClose={closeVessel}
           photo={vesselPhoto.photo}
           photoLoading={vesselPhoto.loading}
+          photoError={vesselPhoto.error}
         />
       ) : null}
     </div>

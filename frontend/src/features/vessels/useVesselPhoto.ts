@@ -23,6 +23,7 @@ export function useVesselPhoto({
 }: UseVesselPhotoOptions) {
   const [photo, setPhoto] = useState<VesselPhotoResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<"temporary" | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -30,6 +31,7 @@ export function useVesselPhoto({
     if (!imo || demoMode) {
       setPhoto(null);
       setLoading(false);
+      setError(null);
       return;
     }
 
@@ -37,21 +39,29 @@ export function useVesselPhoto({
     if (cached) {
       setPhoto(cached);
       setLoading(false);
+      setError(null);
       return;
     }
-
 
     const controller = new AbortController();
     setPhoto(null);
     setLoading(true);
+    setError(null);
     getVesselPhoto(pairing, imo, controller.signal)
       .then((result) => {
         writeVesselPhotoCache(result);
         setPhoto(result);
+        setError(null);
       })
-      .catch((error) => {
-        if (!(error instanceof Error && error.name === "AbortError")) {
+      .catch((requestError) => {
+        if (
+          !(
+            requestError instanceof Error &&
+            requestError.name === "AbortError"
+          )
+        ) {
           setPhoto(null);
+          setError("temporary");
         }
       })
       .finally(() => {
@@ -61,5 +71,5 @@ export function useVesselPhoto({
     return () => controller.abort();
   }, [demoMode, open, pairing.deviceId, pairing.viewSecret, vessel?.imo]);
 
-  return { photo, loading };
+  return { photo, loading, error };
 }
