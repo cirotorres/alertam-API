@@ -227,6 +227,8 @@ export const ManeuverEventSchema = z
     berth: z.number().int().nullable(),
     pob: z.string().nullable(),
     occurred_at: awareDateTime,
+    pob_at: awareDateTime.nullable().default(null),
+    first_observed_at: awareDateTime.nullable().default(null),
     changes: ManeuverChangesSchema.nullable(),
   })
   .strict()
@@ -262,6 +264,8 @@ const ManeuverEventFeedItemSchema = z
     berth: z.number().int().nullable(),
     pob: z.string().nullable(),
     occurred_at: awareDateTime,
+    pob_at: awareDateTime.nullable().default(null),
+    first_observed_at: awareDateTime.nullable().default(null),
     changes: ManeuverChangesSchema.nullable(),
     ingestion_id: z.number().int().positive(),
     ingested_at: awareDateTime,
@@ -293,8 +297,17 @@ const ManeuverEventFeedResponseSchema = z
   })
   .strict();
 
+const ManeuverEventDetailResponseSchema = z
+  .object({
+    selected_event_id: z.string().uuid(),
+    maneuver_id: z.string().uuid(),
+    events: z.array(ManeuverEventFeedItemSchema),
+  })
+  .strict();
+
 export type ManeuverEventFeedItem = z.infer<typeof ManeuverEventFeedItemSchema>;
 export type ManeuverEventFeedResponse = z.infer<typeof ManeuverEventFeedResponseSchema>;
+export type ManeuverEventDetailResponse = z.infer<typeof ManeuverEventDetailResponseSchema>;
 
 export function parseManeuverEventFeedResponse(
   input: unknown,
@@ -302,6 +315,16 @@ export function parseManeuverEventFeedResponse(
   const parsed = ManeuverEventFeedResponseSchema.safeParse(input);
   if (!parsed.success) {
     throw new Error("Resposta de eventos inválida.");
+  }
+  return parsed.data;
+}
+
+export function parseManeuverEventDetailResponse(
+  input: unknown,
+): ManeuverEventDetailResponse {
+  const parsed = ManeuverEventDetailResponseSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error("Resposta de detalhe de evento inválida.");
   }
   return parsed.data;
 }

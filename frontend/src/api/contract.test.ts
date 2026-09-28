@@ -1,6 +1,10 @@
 import fixture from "../test/fixtures/mobile_snapshot_v1.json";
 
-import { parseSnapshotReadResponse } from "./contract";
+import {
+  ManeuverEventSchema,
+  parseManeuverEventDetailResponse,
+  parseSnapshotReadResponse,
+} from "./contract";
 
 function responseWith(snapshot: unknown) {
   return {
@@ -36,7 +40,6 @@ test("rejects_unknown_schema_version", () => {
 
 
 import maneuverEventFixture from "../../../api/tests/fixtures/maneuver_event_v1.json";
-import { ManeuverEventSchema } from "./contract";
 
 test("parses_real_desktop_maneuver_event_v1", () => {
   const parsed = ManeuverEventSchema.parse(maneuverEventFixture);
@@ -69,6 +72,55 @@ test("maneuver_event_contract_requires_null_changes_outside_updated", () => {
     ManeuverEventSchema.parse({
       ...maneuverEventFixture,
       event_type: "CONFIRMED",
+    }),
+  ).toThrow();
+});
+
+
+test("maneuver_event_contract_normalizes_legacy_missing_timestamps_to_null", () => {
+  const {
+    pob_at: _pobAt,
+    first_observed_at: _firstObservedAt,
+    ...legacy
+  } = maneuverEventFixture;
+
+  const parsed = ManeuverEventSchema.parse(legacy);
+
+  expect(parsed.pob_at).toBeNull();
+  expect(parsed.first_observed_at).toBeNull();
+});
+
+test("maneuver_event_contract_accepts_aware_canonical_timestamps", () => {
+  const parsed = ManeuverEventSchema.parse(maneuverEventFixture);
+
+  expect(parsed.pob_at).toBe("2026-09-27T10:30:00-03:00");
+  expect(parsed.first_observed_at).toBe("2026-09-27T10:04:00-03:00");
+});
+
+test("maneuver_event_detail_response_parses_enriched_timeline", () => {
+  const parsed = parseManeuverEventDetailResponse({
+    selected_event_id: maneuverEventFixture.event_id,
+    maneuver_id: maneuverEventFixture.maneuver_id,
+    events: [
+      {
+        ...maneuverEventFixture,
+        ingestion_id: 7,
+        ingested_at: "2026-09-27T13:05:01-03:00",
+      },
+    ],
+  });
+
+  expect(parsed.events[0]?.pob_at).toBe("2026-09-27T10:30:00-03:00");
+  expect(parsed.selected_event_id).toBe(maneuverEventFixture.event_id);
+});
+
+test("maneuver_event_detail_response_rejects_extra_fields", () => {
+  expect(() =>
+    parseManeuverEventDetailResponse({
+      selected_event_id: maneuverEventFixture.event_id,
+      maneuver_id: maneuverEventFixture.maneuver_id,
+      events: [],
+      device_id: "forbidden",
     }),
   ).toThrow();
 });

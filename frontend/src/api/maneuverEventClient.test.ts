@@ -5,7 +5,11 @@ import {
   AccessRevokedError,
   TemporaryApiError,
 } from "./snapshotClient";
-import { getManeuverEvents } from "./maneuverEventClient";
+import {
+  getManeuverEventDetail,
+  getManeuverEvents,
+  ManeuverEventDetailNotFoundError,
+} from "./maneuverEventClient";
 
 const feed = {
   events: [
@@ -71,6 +75,70 @@ test("event_client_maps_server_or_invalid_payload_to_temporary_error", async () 
     vi.fn().mockResolvedValue(new Response("", { status: 503 })),
   );
   await expect(getManeuverEvents({})).rejects.toBeInstanceOf(
+    TemporaryApiError,
+  );
+});
+
+
+const detail = {
+  selected_event_id: maneuverEventFixture.event_id,
+  maneuver_id: maneuverEventFixture.maneuver_id,
+  events: feed.events,
+};
+
+test("detail_client_uses_direct_encoded_path_cookie_and_no_store", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(JSON.stringify(detail), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  const result = await getManeuverEventDetail("event/with space");
+
+  expect(result.maneuver_id).toBe(maneuverEventFixture.maneuver_id);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  const [url, options] = fetchMock.mock.calls[0]!;
+  expect(url).toBe("/api/v1/mobile/events/event%2Fwith%20space/detail");
+  expect(options).toMatchObject({
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+});
+
+test("detail_client_maps_401_404_and_recoverable_errors", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response("", { status: 401 })),
+  );
+  await expect(getManeuverEventDetail("a")).rejects.toBeInstanceOf(
+    AccessRevokedError,
+  );
+
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response("", { status: 404 })),
+  );
+  await expect(getManeuverEventDetail("a")).rejects.toBeInstanceOf(
+    ManeuverEventDetailNotFoundError,
+  );
+
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response("", { status: 503 })),
+  );
+  await expect(getManeuverEventDetail("a")).rejects.toBeInstanceOf(
+    TemporaryApiError,
+  );
+
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ invalid: true }), { status: 200 }),
+    ),
+  );
+  await expect(getManeuverEventDetail("a")).rejects.toBeInstanceOf(
     TemporaryApiError,
   );
 });

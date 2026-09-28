@@ -56,6 +56,8 @@ const EVENT = {
   berth: 4,
   pob: "10:00",
   occurred_at: "2026-09-27T17:59:00Z",
+  pob_at: null,
+  first_observed_at: null,
   changes: null,
   ingestion_id: 1,
   ingested_at: "2026-09-27T18:00:00Z",

@@ -20,6 +20,8 @@ function event(n: number) {
     berth: 4,
     pob: "27/09 10:00",
     occurred_at: "2026-09-27T10:00:00-03:00",
+    pob_at: null,
+    first_observed_at: null,
     changes: null,
     ingestion_id: n,
     ingested_at: "2026-09-27T13:00:00-03:00",
