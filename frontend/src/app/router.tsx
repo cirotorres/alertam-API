@@ -1,5 +1,6 @@
 import { Route, Routes } from "react-router-dom";
 
+import type { AlertDetailFetcher } from "../features/events/useAlertDetail";
 import type { Pairing } from "../features/pairing/pairing";
 import { AlertsPage } from "../pages/AlertsPage";
 import { AboutPage } from "../pages/AboutPage";
@@ -14,6 +15,7 @@ type AppRoutesProps = {
   onPairingCleared?: () => void;
   basePath?: string;
   demoMode?: boolean;
+  alertDetailFetcher?: AlertDetailFetcher;
 };
 
 export function AppRoutes({
@@ -21,6 +23,7 @@ export function AppRoutes({
   onPairingCleared,
   basePath = "",
   demoMode = false,
+  alertDetailFetcher,
 }: AppRoutesProps) {
   const routePath = (suffix: string) =>
     basePath ? `${basePath}${suffix}` : suffix || "/";
@@ -34,6 +37,7 @@ export function AppRoutes({
             onPairingCleared={onPairingCleared}
             basePath={basePath}
             demoMode={demoMode}
+            alertDetailFetcher={alertDetailFetcher}
           />
         }
       >

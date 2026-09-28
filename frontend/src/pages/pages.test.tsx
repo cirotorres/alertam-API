@@ -2,7 +2,13 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 import fixture from "../test/fixtures/mobile_snapshot_v1.json";
-import { parseSnapshotReadResponse, type ManeuverEventFeedResponse } from "../api/contract";
+import {
+  parseSnapshotReadResponse,
+  type ManeuverEventDetailResponse,
+  type ManeuverEventFeedResponse,
+  type ManeuverEventFeedItem,
+} from "../api/contract";
+import type { AlertDetailFetcher } from "../features/events/useAlertDetail";
 import {
   EventProvider,
   StaticEventProvider,
@@ -91,11 +97,29 @@ const response = parseSnapshotReadResponse({
   snapshot: fixture,
   meta: { received_at: "2026-09-25T13:40:15-03:00", age_seconds: 3, collector_online: true, stale_after_seconds: 120 },
 });
+function detailFor(
+  selected: ManeuverEventFeedItem,
+  events: ManeuverEventFeedItem[] = [selected],
+): ManeuverEventDetailResponse {
+  return {
+    selected_event_id: selected.event_id,
+    maneuver_id: selected.maneuver_id,
+    events,
+  };
+}
+
 function renderRoute(
   route: string,
   onPairingCleared = vi.fn(),
   eventFetcher = vi.fn().mockResolvedValue(EVENT_PAGE),
   pushState: PushState = DEFAULT_PUSH_STATE,
+  alertDetailFetcher: AlertDetailFetcher = vi
+    .fn()
+    .mockImplementation(async (eventId: string) => {
+      const selected = EVENT_PAGE.events.find((event) => event.event_id === eventId);
+      if (!selected) throw new Error("detail fixture missing");
+      return detailFor(selected);
+    }),
 ) {
   const view = render(
     <SnapshotProvider pairing={pairing} fetcher={vi.fn().mockResolvedValue(response)}>
@@ -106,13 +130,22 @@ function renderRoute(
       >
         <StaticPushProvider state={pushState}>
           <MemoryRouter initialEntries={[route]}>
-            <AppRoutes pairing={pairing} onPairingCleared={onPairingCleared} />
+            <AppRoutes
+              pairing={pairing}
+              onPairingCleared={onPairingCleared}
+              alertDetailFetcher={alertDetailFetcher}
+            />
           </MemoryRouter>
         </StaticPushProvider>
       </EventProvider>
     </SnapshotProvider>,
   );
-  return { onPairingCleared, eventFetcher, unmount: view.unmount };
+  return {
+    onPairingCleared,
+    eventFetcher,
+    alertDetailFetcher,
+    unmount: view.unmount,
+  };
 }
 
 function renderConfig(
@@ -258,7 +291,7 @@ test("footer_weather_tab_opens_weather_page", async () => {
 });
 
 
-test("alert_deep_link_loads_older_page_highlights_and_scrolls_target", async () => {
+test("alert_deep_link_uses_direct_detail_without_paging_feed_and_close_keeps_page", async () => {
   const targetId = "00000000-0000-4000-8000-000000000899";
   const latest: ManeuverEventFeedResponse = {
     events: [EVENT_PAGE.events[1]!],
@@ -266,35 +299,95 @@ test("alert_deep_link_loads_older_page_highlights_and_scrolls_target", async () 
     newest_cursor: 2,
     has_more_before: true,
   };
-  const target = {
+  const target: ManeuverEventFeedItem = {
     ...EVENT_PAGE.events[0]!,
     event_id: targetId,
     vessel_name: "NAVIO ANTIGO",
     ingestion_id: 1,
   };
-  const older: ManeuverEventFeedResponse = {
-    events: [target],
-    oldest_cursor: 1,
-    newest_cursor: 1,
-    has_more_before: false,
-  };
-  const eventFetcher = vi
-    .fn()
-    .mockResolvedValueOnce(latest)
-    .mockResolvedValueOnce(older);
-  const scrollIntoView = vi.fn();
-  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-    configurable: true,
-    value: scrollIntoView,
-  });
+  const eventFetcher = vi.fn().mockResolvedValue(latest);
+  const alertDetailFetcher = vi.fn().mockResolvedValue(detailFor(target));
 
-  renderRoute(`/alertas?event=${targetId}`, vi.fn(), eventFetcher);
+  renderRoute(
+    `/alertas?event=${targetId}`,
+    vi.fn(),
+    eventFetcher,
+    DEFAULT_PUSH_STATE,
+    alertDetailFetcher,
+  );
 
-  expect(await screen.findByText("NAVIO ANTIGO")).toBeInTheDocument();
-  const item = document.getElementById(`event-${targetId}`);
-  expect(item).toHaveClass("timeline__item--highlight");
-  await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
-  expect(eventFetcher).toHaveBeenCalledTimes(2);
+  expect(
+    await screen.findByRole("dialog", { name: "Detalhes do alerta" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("NAVIO ANTIGO")).toBeInTheDocument();
+  expect(alertDetailFetcher).toHaveBeenCalledWith(
+    targetId,
+    expect.any(AbortSignal),
+  );
+  expect(eventFetcher).toHaveBeenCalledTimes(1);
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Fechar detalhes do alerta" }),
+  );
+  expect(
+    await screen.findByRole("heading", { name: "Alertas" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("dialog", { name: "Detalhes do alerta" }),
+  ).not.toBeInTheDocument();
+  expect(eventFetcher).toHaveBeenCalledTimes(1);
+});
+
+test("alert_row_is_full_area_action_that_opens_global_detail_sheet", async () => {
+  const selected = EVENT_PAGE.events[0]!;
+  const alertDetailFetcher = vi.fn().mockResolvedValue(detailFor(selected));
+  renderRoute(
+    "/alertas",
+    vi.fn(),
+    vi.fn().mockResolvedValue(EVENT_PAGE),
+    DEFAULT_PUSH_STATE,
+    alertDetailFetcher,
+  );
+
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: /NAVIO A.*Atracação confirmada/i,
+    }),
+  );
+
+  expect(
+    await screen.findByRole("dialog", { name: "Detalhes do alerta" }),
+  ).toBeInTheDocument();
+  expect(alertDetailFetcher).toHaveBeenCalledWith(
+    selected.event_id,
+    expect.any(AbortSignal),
+  );
+});
+
+test("history_event_is_actionable_and_opens_selected_event_detail", async () => {
+  const selected = EVENT_PAGE.events[1]!;
+  const alertDetailFetcher = vi.fn().mockResolvedValue(detailFor(selected));
+  renderRoute(
+    "/historico",
+    vi.fn(),
+    vi.fn().mockResolvedValue(EVENT_PAGE),
+    DEFAULT_PUSH_STATE,
+    alertDetailFetcher,
+  );
+
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: /Desatracação concluída/i,
+    }),
+  );
+
+  expect(
+    await screen.findByRole("dialog", { name: "Detalhes do alerta" }),
+  ).toBeInTheDocument();
+  expect(alertDetailFetcher).toHaveBeenCalledWith(
+    selected.event_id,
+    expect.any(AbortSignal),
+  );
 });
 
 

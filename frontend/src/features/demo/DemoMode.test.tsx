@@ -64,3 +64,25 @@ test("demo_navigation_stays_under_demo_prefix", async () => {
   ).toBeInTheDocument();
   expect(window.location.pathname).toBe("/demo");
 });
+
+
+test("demo_alert_detail_is_resolved_locally_without_real_api_call", async () => {
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+  render(<App />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Abrir menu" }));
+  fireEvent.click(screen.getByRole("link", { name: "Alertas" }));
+
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: /ATLANTIC DAWN.*Atracação confirmada/i,
+    }),
+  );
+
+  expect(
+    await screen.findByRole("dialog", { name: "Detalhes do alerta" }),
+  ).toBeInTheDocument();
+  expect(screen.getAllByText("ATLANTIC DAWN")).toHaveLength(2);
+  expect(fetchMock).not.toHaveBeenCalled();
+});

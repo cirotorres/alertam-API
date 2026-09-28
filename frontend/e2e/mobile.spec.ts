@@ -144,6 +144,48 @@ async function mockManeuverEvents(
   });
 }
 
+function eventDetail(
+  selectedEventId: string,
+  events: ReturnType<typeof maneuverEvent>[],
+) {
+  const selected = events.find((event) => event.event_id === selectedEventId);
+  if (!selected) throw new Error("selected E2E detail fixture missing");
+  return {
+    selected_event_id: selected.event_id,
+    maneuver_id: selected.maneuver_id,
+    events,
+  };
+}
+
+async function mockManeuverEventDetails(
+  page: Page,
+  details: Record<string, ReturnType<typeof eventDetail>>,
+) {
+  await page.route("**/api/v1/mobile/events/*/detail", async (route) => {
+    const segments = new URL(route.request().url()).pathname.split("/").filter(Boolean);
+    const eventId = segments.at(-2);
+    const detail = eventId ? details[eventId] : undefined;
+    if (!detail) {
+      await route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({
+          detail: {
+            code: "maneuver_event_not_found",
+            message: "Este alerta não está mais disponível no histórico recente.",
+          },
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(detail),
+    });
+  });
+}
+
 type PushApiMockState = {
   active: boolean;
   installationId: string | null;
@@ -356,55 +398,120 @@ test("map quick berth selector opens the matching vessel sheet", async ({ page }
   ).toBeVisible();
 });
 
-test("maneuver feed drives alert deep-link and grouped history", async ({ page }) => {
+test("direct event detail deep-link is independent from feed pagination and reused by history", async ({ page }) => {
   test.skip(
     test.info().project.name !== "mobile-390",
-    "Event feed E2E runs once on the primary mobile viewport.",
+    "Event detail E2E runs once on the primary mobile viewport.",
   );
   await seedPairing(page);
   await mockSnapshot(page);
 
   const maneuverId = "81000000-0000-4000-8000-000000000001";
   const confirmedId = "81000000-0000-4000-8000-000000000011";
+  const updatedId = "81000000-0000-4000-8000-000000000012";
+  const completedId = "81000000-0000-4000-8000-000000000013";
   const confirmed = maneuverEvent(1, confirmedId, "CONFIRMED", {
     maneuverId,
     vesselName: "NAVIO CICLO",
   });
-  const updated = maneuverEvent(
-    2,
-    "81000000-0000-4000-8000-000000000012",
-    "UPDATED",
-    { maneuverId, vesselName: "NAVIO CICLO" },
-  );
-  const completed = maneuverEvent(
-    3,
-    "81000000-0000-4000-8000-000000000013",
-    "COMPLETED",
-    { maneuverId, vesselName: "NAVIO CICLO" },
-  );
-  await mockManeuverEvents(
-    page,
-    eventPage([updated, completed], true),
-    eventPage([confirmed]),
-  );
+  const updated = maneuverEvent(2, updatedId, "UPDATED", {
+    maneuverId,
+    vesselName: "NAVIO CICLO",
+  });
+  const completed = maneuverEvent(3, completedId, "COMPLETED", {
+    maneuverId,
+    vesselName: "NAVIO CICLO",
+  });
+  const cycle = [confirmed, updated, completed];
+  await mockManeuverEvents(page, eventPage([updated, completed], true));
+  await mockManeuverEventDetails(page, {
+    [confirmedId]: eventDetail(confirmedId, cycle),
+    [updatedId]: eventDetail(updatedId, cycle),
+    [completedId]: eventDetail(completedId, cycle),
+  });
+
+  let olderFeedRequests = 0;
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (
+      url.pathname.endsWith("/mobile/maneuver-events") &&
+      url.searchParams.has("before")
+    ) {
+      olderFeedRequests += 1;
+    }
+  });
 
   await page.goto(`/alertas?event=${confirmedId}`);
 
   await expect(page.getByRole("heading", { name: "Alertas" })).toBeVisible();
-  await expect(page.locator(`#event-${confirmedId}`)).toHaveClass(
-    /timeline__item--highlight/,
-  );
-  await expect(page.getByText("Atracação atualizada")).toBeVisible();
-  await expect(page.getByText("Atracação concluída")).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "Detalhes do alerta" }),
+  ).toBeVisible();
+  const detailDialog = page.getByRole("dialog", {
+    name: "Detalhes do alerta",
+  });
+  await expect(
+    detailDialog.getByRole("heading", { name: "NAVIO CICLO" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("alert-timeline-event")).toHaveCount(3);
+  expect(olderFeedRequests).toBe(0);
+
+  await page.getByRole("button", {
+    name: "Fechar detalhes do alerta",
+    exact: true,
+  }).click();
+  await expect(page).toHaveURL(/\/alertas$/);
+  await expect(
+    page.getByRole("dialog", { name: "Detalhes do alerta" }),
+  ).toHaveCount(0);
 
   await page.getByRole("button", { name: "Abrir menu" }).click();
   await page.getByRole("link", { name: "Histórico" }).click();
-
   await expect(page.getByRole("heading", { name: "Histórico" })).toBeVisible();
-  await expect(page.getByText("NAVIO CICLO")).toHaveCount(1);
-  await expect(page.getByText("Atracação confirmada")).toBeVisible();
-  await expect(page.getByText("Atracação atualizada")).toBeVisible();
-  await expect(page.getByText("Atracação concluída")).toBeVisible();
+
+  await page.getByRole("button", { name: /Atracação atualizada/i }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Detalhes do alerta" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("alert-timeline-event")).toHaveCount(3);
+});
+
+test("alert detail retries a temporary endpoint failure", async ({ page }) => {
+  test.skip(
+    test.info().project.name !== "mobile-390",
+    "Event detail retry E2E runs once on the primary mobile viewport.",
+  );
+  await seedPairing(page);
+  await mockSnapshot(page);
+  const eventId = "83000000-0000-4000-8000-000000000001";
+  const selected = maneuverEvent(1, eventId, "CONFIRMED", {
+    vesselName: "NAVIO RETRY",
+  });
+  await mockManeuverEvents(page, eventPage([selected]));
+
+  let detailCalls = 0;
+  await page.route(`**/api/v1/mobile/events/${eventId}/detail`, async (route) => {
+    detailCalls += 1;
+    if (detailCalls === 1) {
+      await route.fulfill({ status: 503, body: "" });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(eventDetail(eventId, [selected])),
+    });
+  });
+
+  await page.goto(`/alertas?event=${eventId}`);
+  await expect(
+    page.getByText("Não foi possível carregar os detalhes agora."),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Tentar novamente" }).click();
+
+  await expect(page.getByText("NAVIO RETRY")).toHaveCount(2);
+  expect(detailCalls).toBe(2);
 });
 
 test("weather scroll finishes above the fixed footer", async ({ page }, testInfo) => {

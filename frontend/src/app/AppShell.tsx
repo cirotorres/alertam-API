@@ -14,6 +14,11 @@ import {
 import type { VesselV1 } from "../api/contract";
 import { BottomNav, type BottomNavItem, type BottomTab } from "../components/BottomNav";
 import { useEventState } from "../features/events/EventProvider";
+import { AlertDetailSheet } from "../features/events/AlertDetailSheet";
+import {
+  useAlertDetail,
+  type AlertDetailFetcher,
+} from "../features/events/useAlertDetail";
 import { Drawer } from "../components/Drawer";
 import { Header } from "../components/Header";
 import type { Pairing } from "../features/pairing/pairing";
@@ -29,7 +34,10 @@ type AppShellProps = {
   onPairingCleared?: () => void;
   basePath?: string;
   demoMode?: boolean;
+  alertDetailFetcher?: AlertDetailFetcher;
 };
+
+const noop = () => undefined;
 
 export type ShellOutletContext = {
   pairing: Pairing;
@@ -43,15 +51,22 @@ export type ShellOutletContext = {
 };
 export function AppShell({
   pairing,
-  onPairingCleared = () => undefined,
+  onPairingCleared = noop,
   basePath = "",
   demoMode = false,
+  alertDetailFetcher,
 }: AppShellProps) {
   const snapshotState = useSnapshotState();
   const eventState = useEventState();
   const pushState = usePush();
   const navigate = useNavigate();
   const location = useLocation();
+  const eventId = new URLSearchParams(location.search).get("event");
+  const alertDetail = useAlertDetail(
+    eventId,
+    alertDetailFetcher,
+    onPairingCleared,
+  );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [documentVisible, setDocumentVisible] = useState(
     () => document.visibilityState === "visible",
@@ -96,6 +111,21 @@ export function AppShell({
     vesselTriggerRef.current = null;
     queueMicrotask(() => trigger?.focus());
   }, []);
+
+  const closeAlertDetail = useCallback(() => {
+    const params = new URLSearchParams(location.search);
+    params.delete("event");
+    const search = params.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: search ? `?${search}` : "",
+        hash: location.hash,
+      },
+      { replace: true },
+    );
+  }, [location.hash, location.pathname, location.search, navigate]);
+
   const selectVessel = useCallback((vessel: VesselV1) => {
     vesselTriggerRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -112,6 +142,18 @@ export function AppShell({
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
   }, [closeVessel, drawerOpen, selectedVessel]);
+
+  useEffect(() => {
+    if (eventId === null) return;
+    setDrawerOpen(false);
+    setSelectedVessel(null);
+    vesselTriggerRef.current = null;
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeAlertDetail();
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [closeAlertDetail, eventId]);
 
   useEffect(() => {
     if (selectedVessel || !renderedVessel) return;
@@ -225,6 +267,13 @@ export function AppShell({
           photoError={vesselPhoto.error}
         />
       ) : null}
+      <AlertDetailSheet
+        open={eventId !== null}
+        state={alertDetail}
+        selectedEventId={eventId}
+        onClose={closeAlertDetail}
+        onRetry={alertDetail.retry}
+      />
     </div>
   );
 }

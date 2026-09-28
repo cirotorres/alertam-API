@@ -3,7 +3,11 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import fixture from "../test/fixtures/mobile_snapshot_v1.json";
-import { parseSnapshotReadResponse } from "../api/contract";
+import {
+  parseSnapshotReadResponse,
+  type ManeuverEventDetailResponse,
+} from "../api/contract";
+import type { AlertDetailFetcher } from "../features/events/useAlertDetail";
 import {
   StaticEventProvider,
 } from "../features/events/EventProvider";
@@ -86,12 +90,23 @@ const basePushState: PushState = {
   updatePreference: vi.fn().mockResolvedValue(undefined),
 };
 
+function detailForEvent(): ManeuverEventDetailResponse {
+  return {
+    selected_event_id: EVENT.event_id,
+    maneuver_id: EVENT.maneuver_id,
+    events: [EVENT],
+  };
+}
+
 function renderShell(options: {
   eventState?: EventState;
   pushState?: PushState;
   onPairingCleared?: () => void;
+  alertDetailFetcher?: AlertDetailFetcher;
 } = {}) {
   const reset = options.onPairingCleared ?? vi.fn();
+  const alertDetailFetcher =
+    options.alertDetailFetcher ?? vi.fn().mockResolvedValue(detailForEvent());
   render(
     <StaticSnapshotProvider state={snapshotState}>
       <StaticEventProvider state={options.eventState ?? baseEventState}>
@@ -100,6 +115,7 @@ function renderShell(options: {
             <AppRoutes
               pairing={pairing}
               onPairingCleared={reset}
+              alertDetailFetcher={alertDetailFetcher}
             />
           </MemoryRouter>
         </StaticPushProvider>
@@ -135,19 +151,21 @@ test("active_push_enables_foreground_heartbeat", () => {
     reset,
   );
 });
-test("visible_new_event_shows_internal_notice_and_opens_alert", async () => {
+test("visible_new_event_shows_internal_notice_and_opens_global_alert_detail", async () => {
   const requestPermission = vi.fn();
   vi.stubGlobal("Notification", {
     permission: "granted",
     requestPermission,
   });
 
+  const alertDetailFetcher = vi.fn().mockResolvedValue(detailForEvent());
   renderShell({
     eventState: {
       ...baseEventState,
       events: [EVENT],
       newEvent: EVENT,
     },
+    alertDetailFetcher,
   });
 
   const notice = await screen.findByRole("status", {
@@ -163,9 +181,11 @@ test("visible_new_event_shows_internal_notice_and_opens_alert", async () => {
   expect(
     await screen.findByRole("heading", { name: "Alertas" }),
   ).toBeInTheDocument();
-  await waitFor(() => {
-    expect(
-      document.getElementById("event-" + EVENT.event_id),
-    ).toHaveClass("timeline__item--highlight");
-  });
+  expect(
+    await screen.findByRole("dialog", { name: "Detalhes do alerta" }),
+  ).toBeInTheDocument();
+  expect(alertDetailFetcher).toHaveBeenCalledWith(
+    EVENT.event_id,
+    expect.any(AbortSignal),
+  );
 });

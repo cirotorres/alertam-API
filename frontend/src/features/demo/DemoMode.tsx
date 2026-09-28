@@ -6,6 +6,8 @@ import {
   StaticPushProvider,
   type PushState,
 } from "../push/PushProvider";
+import { ManeuverEventDetailNotFoundError } from "../../api/maneuverEventClient";
+import type { AlertDetailFetcher } from "../events/useAlertDetail";
 import type { EventState } from "../events/useEventPolling";
 import { StaticSnapshotProvider } from "../snapshot/SnapshotProvider";
 import type { SnapshotState } from "../snapshot/useSnapshotPolling";
@@ -117,6 +119,22 @@ const DEMO_EVENT_STATE: EventState = {
   ],
 };
 
+const DEMO_ALERT_DETAIL_FETCHER: AlertDetailFetcher = async (eventId) => {
+  const selected = DEMO_EVENT_STATE.events.find(
+    (event) => event.event_id === eventId,
+  );
+  if (!selected) {
+    throw new ManeuverEventDetailNotFoundError();
+  }
+  return {
+    selected_event_id: selected.event_id,
+    maneuver_id: selected.maneuver_id,
+    events: DEMO_EVENT_STATE.events.filter(
+      (event) => event.maneuver_id === selected.maneuver_id,
+    ),
+  };
+};
+
 export function DemoMode() {
   return (
     <StaticSnapshotProvider state={DEMO_STATE}>
@@ -126,6 +144,7 @@ export function DemoMode() {
             pairing={DEMO_PAIRING}
             basePath="/demo"
             demoMode
+            alertDetailFetcher={DEMO_ALERT_DETAIL_FETCHER}
           />
         </StaticPushProvider>
       </StaticEventProvider>
