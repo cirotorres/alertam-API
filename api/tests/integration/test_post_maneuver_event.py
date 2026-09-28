@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 from pathlib import Path
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 
+from app.core.config import Settings
 from app.main import create_app
 from app.repositories.devices import DeviceAuthRecord, PersistenceUnavailableError
+from app.repositories.events import PushDeliveryStatus
 from app.repositories.memory import MemoryDeviceRepository
 from app.security.credentials import hash_secret
 
@@ -110,3 +114,72 @@ def test_post_event_repository_failure_is_503():
 
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "persistence_unavailable"
+
+
+class RecordingPushGateway:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def send(self, installation, push_payload) -> None:
+        self.calls.append((installation, push_payload))
+
+
+def test_enabled_web_push_dispatches_once_across_idempotent_post_retry():
+    current = [
+        datetime(2026, 9, 27, 13, 0, tzinfo=timezone.utc)
+    ]
+    repository = MemoryDeviceRepository(clock=lambda: current[0])
+    repository.create_device(
+        DeviceAuthRecord(DEVICE_ID, hash_secret(DEVICE_SECRET))
+    )
+    installation_id = UUID(
+        "90000000-0000-4000-8000-000000000001"
+    )
+    repository.upsert_push_installation(
+        DEVICE_ID,
+        installation_id,
+        endpoint="https://push.example/a",
+        p256dh="p",
+        auth="a",
+    )
+    gateway = RecordingPushGateway()
+    settings = Settings(
+        _env_file=None,
+        web_push_enabled=True,
+        vapid_public_key="public-vapid",
+        vapid_private_key="private-vapid",
+        vapid_subject="mailto:alerts@example.com",
+    )
+    client = TestClient(
+        create_app(
+            repository=repository,
+            settings=settings,
+            clock=lambda: current[0],
+            web_push_gateway=gateway,
+        )
+    )
+    request = {
+        "headers": {"Authorization": f"Device {DEVICE_SECRET}"},
+        "json": payload(),
+    }
+
+    first = client.post(
+        f"/api/v1/devices/{DEVICE_ID}/maneuver-events",
+        **request,
+    )
+    retry = client.post(
+        f"/api/v1/devices/{DEVICE_ID}/maneuver-events",
+        **request,
+    )
+    assert first.status_code == 200
+    assert first.json()["status"] == "accepted"
+    assert retry.status_code == 200
+    assert retry.json()["status"] == "idempotent"
+    assert len(gateway.calls) == 1
+    event_id = UUID(payload()["event_id"])
+    delivery = repository.get_push_delivery(
+        event_id,
+        installation_id,
+    )
+    assert delivery is not None
+    assert delivery.status is PushDeliveryStatus.DELIVERED

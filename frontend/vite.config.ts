@@ -3,7 +3,9 @@ import { loadEnv } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { defineConfig } from "vitest/config";
 
-import { API_RUNTIME_CACHING } from "./src/features/install/pwaConfig";
+import {
+  PWA_INJECT_MANIFEST_CONFIG,
+} from "./src/features/install/pwaConfig";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, ".", "");
@@ -20,7 +22,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
     react(),
     VitePWA({
-      registerType: "autoUpdate",
+      ...PWA_INJECT_MANIFEST_CONFIG,
       includeAssets: ["icons/apple-touch-icon.png"],
       manifest: {
         name: "Alerta de Movimentações Marítimas",
@@ -37,10 +39,8 @@ export default defineConfig(({ mode }) => {
           { src: "/icons/pwa-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
       },
-      workbox: {
+      injectManifest: {
         globPatterns: ["**/*.{js,css,html,png,ico,svg}"],
-        navigateFallbackDenylist: [/^\/api\//],
-        runtimeCaching: [API_RUNTIME_CACHING],
       },
     }),
   ],

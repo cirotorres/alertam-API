@@ -3,7 +3,7 @@
 | ID | Documento | Status | Resumo |
 |---|---|---|---|
 | 020 | [Frontend mobile responsivo e PWA](020-frontend-mobile-pwa.md) | Em validação final | React/Vite read-only, pareamento por QR, polling 30 s, mapa, drawer, bottom sheet, navegação inferior e instalação PWA |
-| 021 | [Eventos de manobra, feed mobile e Web Push](021-maneuver-events-webpush.md) | Proposto | Persistência idempotente de ManeuverEvent, feed Alertas/Histórico e Web Push por instalação com preferências |
+| 021 | [Eventos de manobra, feed mobile e Web Push](021-maneuver-events-webpush.md) | Implementação local concluída; validação externa pendente | Persistência idempotente de ManeuverEvent, feed Alertas/Histórico e Web Push por instalação com preferências |
 
 ## Dependências cross-repo
 

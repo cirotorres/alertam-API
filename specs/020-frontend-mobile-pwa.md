@@ -4,8 +4,10 @@
 |---|---|
 | Status | Em validação final |
 | Criado em | 2026-09-26 |
-| Atualizado em | 2026-09-26 |
+| Atualizado em | 2026-09-27 |
 | Evidência de conclusão | Gate local 2026-09-26: frontend 65/65 testes; Playwright 21 passed + 3 skips intencionais em 4 viewports; API Docker 147/147; build PWA, service worker, Compose e smoke same-origin verdes. Restam deploy Vercel e smoke real QR → PWA → API. |
+
+> **Supersessão pela SPEC 021:** a partir de 2026-09-27, as seções desta SPEC que tratam Alertas/Histórico via `snapshot.recent_maneuvers`, área futura de push e service worker sem Web Push representam apenas o baseline histórico. O comportamento atual de Alertas, Histórico, Config de notificações, foreground heartbeat e Web Push é definido pela SPEC 021 e usa `ManeuverEvent`.
 
 ## Objetivo
 

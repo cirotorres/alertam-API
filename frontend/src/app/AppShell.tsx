@@ -13,9 +13,12 @@ import {
 
 import type { VesselV1 } from "../api/contract";
 import { BottomNav, type BottomNavItem, type BottomTab } from "../components/BottomNav";
+import { useEventState } from "../features/events/EventProvider";
 import { Drawer } from "../components/Drawer";
 import { Header } from "../components/Header";
 import type { Pairing } from "../features/pairing/pairing";
+import { usePush } from "../features/push/PushProvider";
+import { useForegroundHeartbeat } from "../features/push/useForegroundHeartbeat";
 import { useSnapshotState } from "../features/snapshot/SnapshotProvider";
 import type { SnapshotState } from "../features/snapshot/useSnapshotPolling";
 import { VesselSheet } from "../features/vessels/VesselSheet";
@@ -45,15 +48,36 @@ export function AppShell({
   demoMode = false,
 }: AppShellProps) {
   const snapshotState = useSnapshotState();
+  const eventState = useEventState();
+  const pushState = usePush();
   const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [documentVisible, setDocumentVisible] = useState(
+    () => document.visibilityState === "visible",
+  );
   const [selectedVessel, setSelectedVessel] = useState<VesselV1 | null>(null);
   const [renderedVessel, setRenderedVessel] = useState<VesselV1 | null>(null);
   const [activeBottomTab, setActiveBottomTab] =
     useState<BottomTab>("maneuvers");
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const vesselTriggerRef = useRef<HTMLElement | null>(null);
+
+  useForegroundHeartbeat(
+    pushState.active && !demoMode,
+    undefined,
+    onPairingCleared,
+  );
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      setDocumentVisible(document.visibilityState === "visible");
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, []);
 
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false);
@@ -159,6 +183,27 @@ export function AppShell({
       {demoMode ? (
         <div className="demo-banner" role="note">
           Dados fictícios para validação visual · nenhuma consulta à API real
+        </div>
+      ) : null}
+      {!demoMode && documentVisible && eventState.newEvent ? (
+        <div
+          className="foreground-alert"
+          role="status"
+          aria-label="Novo alerta operacional"
+        >
+          <span>
+            Novo alerta: <strong>{eventState.newEvent.vessel_name}</strong>
+          </span>
+          <button
+            type="button"
+            onClick={() => navigate(
+              routePath(
+                `/alertas?event=${eventState.newEvent!.event_id}`,
+              ),
+            )}
+          >
+            Ver alerta
+          </button>
         </div>
       ) : null}
       <main className="mobile-content">

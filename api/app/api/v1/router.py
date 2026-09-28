@@ -10,6 +10,7 @@ from app.api.v1.health import create_health_router
 from app.api.v1.maneuver_events import create_maneuver_event_router
 from app.api.v1.mobile_events import create_mobile_events_router
 from app.api.v1.mobile_session import create_mobile_session_router
+from app.api.v1.push import create_push_router
 from app.api.v1.snapshots import create_snapshot_router
 from app.api.v1.vessel_photos import create_vessel_photo_router
 from app.repositories.events import AlertaRepository, StoredManeuverEvent
@@ -22,6 +23,8 @@ def create_v1_router(
     stale_after_seconds: int,
     cookie_secure: bool,
     vessel_photo_service: VesselPhotoLookup,
+    web_push_enabled: bool,
+    vapid_public_key: str,
     clock: Callable[[], datetime] | None = None,
     dispatch_event: Callable[[StoredManeuverEvent], None] | None = None,
 ) -> APIRouter:
@@ -35,6 +38,14 @@ def create_v1_router(
     )
     router.include_router(
         create_mobile_events_router(repository, clock=clock)
+    )
+    router.include_router(
+        create_push_router(
+            repository,
+            web_push_enabled=web_push_enabled,
+            vapid_public_key=vapid_public_key,
+            clock=clock,
+        )
     )
     router.include_router(
         create_mobile_session_router(

@@ -2,6 +2,10 @@ import type { Pairing } from "../pairing/pairing";
 import {
   StaticEventProvider,
 } from "../events/EventProvider";
+import {
+  StaticPushProvider,
+  type PushState,
+} from "../push/PushProvider";
 import type { EventState } from "../events/useEventPolling";
 import { StaticSnapshotProvider } from "../snapshot/SnapshotProvider";
 import type { SnapshotState } from "../snapshot/useSnapshotPolling";
@@ -18,6 +22,22 @@ const DEMO_STATE: SnapshotState = {
   status: "online",
   data: DEMO_RESPONSE,
   refresh: () => undefined,
+};
+
+const DEMO_PUSH_STATE: PushState = {
+  supported: false,
+  permission: "default",
+  active: false,
+  preferences: {
+    confirmed: true,
+    updated: true,
+    completed: true,
+    cancelled: true,
+  },
+  error: null,
+  enablePush: async () => undefined,
+  disablePush: async () => undefined,
+  updatePreference: async () => undefined,
 };
 
 const DEMO_EVENT_STATE: EventState = {
@@ -93,11 +113,13 @@ export function DemoMode() {
   return (
     <StaticSnapshotProvider state={DEMO_STATE}>
       <StaticEventProvider state={DEMO_EVENT_STATE}>
-        <AppRoutes
-          pairing={DEMO_PAIRING}
-          basePath="/demo"
-          demoMode
-        />
+        <StaticPushProvider state={DEMO_PUSH_STATE}>
+          <AppRoutes
+            pairing={DEMO_PAIRING}
+            basePath="/demo"
+            demoMode
+          />
+        </StaticPushProvider>
       </StaticEventProvider>
     </StaticSnapshotProvider>
   );

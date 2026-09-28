@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Status | Em implementação — Tasks 1–6 concluídas; Task 7 próxima |
+| Status | Implementação local concluída — validação externa pendente (Postgres/Supabase real + smoke Web Push real) |
 | Criado em | 2026-09-27 |
 | Atualizado em | 2026-09-27 |
 | Escopo | FastAPI/Supabase + PWA React/Vite |
@@ -265,54 +265,64 @@ Novas tabelas/RPCs/índices e ajuste da rotação do VIEW_SECRET para revogar pu
 
 ### API/eventos
 
-- [ ] POST aceita ManeuverEvent com Device auth.
-- [ ] retry idêntico é idempotente.
-- [ ] payload divergente com mesmo event_id retorna conflito.
-- [ ] feed é isolado por device/session.
-- [ ] ordem de ingestão é estável.
-- [ ] retenção de eventos é 30 dias.
-- [ ] push falhar não remove evento.
+- [x] POST aceita ManeuverEvent com Device auth.
+- [x] retry idêntico é idempotente.
+- [x] payload divergente com mesmo event_id retorna conflito.
+- [x] feed é isolado por device/session.
+- [x] ordem de ingestão é estável.
+- [x] retenção de eventos é 30 dias.
+- [x] push falhar não remove evento.
 
 ### Push
 
-- [ ] installation_id independente por PWA.
-- [ ] quatro preferências iniciam ligadas.
-- [ ] preferência desligada impede push da categoria.
-- [ ] push_enabled_at impede replay.
-- [ ] foreground recente evita push de sistema.
-- [ ] background/fechado é elegível.
-- [ ] rotação do VIEW_SECRET desativa todas as instalações.
-- [ ] esquecer aparelho afeta só a instalação atual.
-- [ ] subscription permanentemente inválida fica inativa.
-- [ ] delivery bookkeeping impede duplicação.
+- [x] installation_id independente por PWA.
+- [x] quatro preferências iniciam ligadas.
+- [x] preferência desligada impede push da categoria.
+- [x] push_enabled_at impede replay.
+- [x] foreground recente evita push de sistema.
+- [x] background/fechado é elegível.
+- [x] rotação do VIEW_SECRET desativa todas as instalações.
+- [x] esquecer aparelho afeta só a instalação atual.
+- [x] subscription permanentemente inválida fica inativa.
+- [x] delivery bookkeeping impede duplicação.
 
 ### PWA
 
-- [ ] Alertas consome ManeuverEvent.
-- [ ] /alertas?event=... destaca o evento.
-- [ ] Histórico agrupa por maneuver_id.
-- [ ] Config controla opt-in e quatro categorias.
-- [ ] service worker usa injectManifest.
-- [ ] notificationclick foca/navega ou abre a PWA.
-- [ ] aviso interno aparece para eventos novos em foreground.
-- [ ] nenhuma resposta autenticada da API é cacheada.
+- [x] Alertas consome ManeuverEvent.
+- [x] /alertas?event=... destaca o evento.
+- [x] Histórico agrupa por maneuver_id.
+- [x] Config controla opt-in e quatro categorias.
+- [x] service worker usa injectManifest.
+- [x] notificationclick foca/navega ou abre a PWA.
+- [x] aviso interno aparece para eventos novos em foreground.
+- [x] nenhuma resposta autenticada da API é cacheada.
 
 ## Perguntas em aberto
 
 Nenhuma pergunta de produto bloqueante. Detalhes técnicos fechados no plano de implementação devem respeitar o design canônico.
 
-## Evidência de implementação parcial
+## Evidência de implementação local
 
-Checkpoint após Task 6:
-- contrato ManeuverEvent cross-repo implementado;
-- migrations 004/005 escritas;
-- POST/feed de eventos implementados;
-- EventProvider, Alertas e Histórico migrados para ManeuverEvent;
-- repository de push installations/deliveries implementado;
-- API full suite: exit 0;
-- frontend full suite: 115/115 testes;
-- Task 6 focused gate: 21 pass, 1 skip;
-- `git diff --check`: limpo no checkpoint;
-- migrations 004/005 ainda não validadas em Postgres real nesta sessão por ausência de `TEST_POSTGRES_DSN`.
+Gate local da Etapa 2 em 2026-09-27:
+- contrato ManeuverEvent cross-repo implementado e fixture real do Desktop validada;
+- POST idempotente + feed mobile por `ingestion_id` implementados;
+- roundtrip fixture Desktop → POST → feed passou sem perda;
+- shift com mesmo `occurred_at` preservou `COMPLETED → CONFIRMED` por ordem de ingestão;
+- Alertas usa `event_id`; Histórico agrupa por `maneuver_id`;
+- instalações push, preferências, heartbeat e revogação por `VIEW_SECRET` implementados;
+- gateway VAPID/pywebpush e dispatcher com bookkeeping/claims implementados;
+- service worker usa `injectManifest`, push e `notificationclick`;
+- Config controla opt-in, quatro categorias, disable e forget local-first;
+- migration 006 implementa retenção de 30 dias, removendo deliveries antes de eventos;
+- API: 245 testes coletados, **229 pass + 16 skip**; todos os skips são por `TEST_POSTGRES_DSN` ausente;
+- frontend unit/component: **140/140** após o hardening final;
+- Playwright: **26 pass + 18 skips intencionais**, zero falhas, em quatro viewports;
+- build PWA: exit 0, `injectManifest` e `dist/sw.js` gerado;
+- `git diff --check`: limpo no gate final.
 
-A evidência final de Web Push real, build final, E2E e retenção continua pendente para as Tasks 7–13.
+### Limitações externas ainda abertas
+
+- migrations 004, 005 e 006 **não foram validadas contra Postgres/Supabase real** nesta sessão, pois `TEST_POSTGRES_DSN` não está configurado;
+- o Supabase Cron de retenção ainda precisa ser habilitado somente após essa validação real;
+- **não houve smoke Web Push real** com subscription/browser/provider externo; os testes usam gateway/browser mocks e lógica do service worker;
+- deploy final e smoke em aparelho real continuam necessários antes de declarar validação de produção.

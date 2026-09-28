@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { BERTH_POSITIONS } from "../src/features/map/berthMap";
+import { INSTALLATION_ID_STORAGE_KEY } from "../src/features/push/installationId";
+import { handleNotificationClick } from "../src/features/push/serviceWorkerLogic";
 import {
   onlineResponse,
   PAIRING_KEY,
@@ -84,6 +86,204 @@ async function expectNoHorizontalOverflow(page: Page) {
   }));
   expect(sizes.scroll).toBeLessThanOrEqual(sizes.width);
 }
+
+function maneuverEvent(
+  ingestionId: number,
+  eventId: string,
+  eventType: "CONFIRMED" | "UPDATED" | "COMPLETED" | "CANCELLED",
+  options: {
+    maneuverId?: string;
+    vesselName?: string;
+    maneuverType?: "ATRACACAO" | "DESATRACACAO";
+  } = {},
+) {
+  const maneuverId =
+    options.maneuverId ?? "80000000-0000-4000-8000-000000000001";
+  return {
+    event_id: eventId,
+    maneuver_id: maneuverId,
+    vessel_identity: `NAME:${options.vesselName ?? "NAVIO EVENTO"}`,
+    vessel_imo: null,
+    vessel_name: options.vesselName ?? "NAVIO EVENTO",
+    maneuver_type: options.maneuverType ?? "ATRACACAO",
+    event_type: eventType,
+    berth: 4,
+    pob: "10:00",
+    occurred_at: `2026-09-27T10:0${ingestionId}:00-03:00`,
+    changes:
+      eventType === "UPDATED"
+        ? { pob: { from: "10:00", to: "10:30" } }
+        : null,
+    ingestion_id: ingestionId,
+    ingested_at: `2026-09-27T13:0${ingestionId}:00Z`,
+  };
+}
+
+function eventPage(events: ReturnType<typeof maneuverEvent>[], hasMore = false) {
+  return {
+    events,
+    oldest_cursor: events.at(0)?.ingestion_id ?? null,
+    newest_cursor: events.at(-1)?.ingestion_id ?? null,
+    has_more_before: hasMore,
+  };
+}
+
+async function mockManeuverEvents(
+  page: Page,
+  latest: ReturnType<typeof eventPage>,
+  older: ReturnType<typeof eventPage> | null = null,
+) {
+  await page.route("**/api/v1/mobile/maneuver-events**", async (route) => {
+    const url = new URL(route.request().url());
+    const body = url.searchParams.has("before") && older ? older : latest;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(body),
+    });
+  });
+}
+
+type PushApiMockState = {
+  active: boolean;
+  installationId: string | null;
+  preferences: {
+    confirmed: boolean;
+    updated: boolean;
+    completed: boolean;
+    cancelled: boolean;
+  };
+  puts: number;
+  patches: number;
+  deletes: number;
+};
+
+function pushInstallationPayload(state: PushApiMockState) {
+  return {
+    installation_id: state.installationId,
+    active: state.active,
+    preferences: state.preferences,
+    push_enabled_at: "2026-09-27T18:00:00Z",
+    last_seen_at: "2026-09-27T18:00:00Z",
+    last_foreground_at: null,
+  };
+}
+
+async function mockPushApi(page: Page, state: PushApiMockState) {
+  await page.route("**/api/v1/mobile/push/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const method = request.method();
+    if (url.pathname.endsWith("/vapid-public-key")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ enabled: true, public_key: "AQIDBA" }),
+      });
+      return;
+    }
+
+    const segments = url.pathname.split("/").filter(Boolean);
+    const installationIndex = segments.indexOf("installations");
+    const installationId =
+      installationIndex >= 0 ? segments[installationIndex + 1] ?? null : null;
+    const suffix = segments[installationIndex + 2] ?? null;
+
+    if (method === "GET") {
+      if (!state.active || !state.installationId || installationId !== state.installationId) {
+        await route.fulfill({ status: 404, body: "" });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(pushInstallationPayload(state)),
+      });
+      return;
+    }
+
+    if (method === "PUT" && installationId) {
+      state.installationId = installationId;
+      state.active = true;
+      state.puts += 1;
+    } else if (method === "PATCH" && suffix === "preferences") {
+      state.preferences = {
+        ...state.preferences,
+        ...(request.postDataJSON() as Partial<PushApiMockState["preferences"]>),
+      };
+      state.patches += 1;
+    } else if (method === "DELETE") {
+      state.active = false;
+      state.deletes += 1;
+      await route.fulfill({ status: 204, body: "" });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(pushInstallationPayload(state)),
+    });
+  });
+}
+
+async function mockBrowserPush(page: Page) {
+  await page.addInitScript(() => {
+    let permission: NotificationPermission = "default";
+    let subscription: {
+      toJSON: () => {
+        endpoint: string;
+        keys: { p256dh: string; auth: string };
+      };
+      unsubscribe: () => Promise<boolean>;
+    } | null = null;
+
+    const notification = {
+      requestPermission: async () => {
+        permission = "granted";
+        return permission;
+      },
+    };
+    Object.defineProperty(notification, "permission", {
+      get: () => permission,
+    });
+    Object.defineProperty(window, "Notification", {
+      configurable: true,
+      value: notification,
+    });
+    Object.defineProperty(window, "PushManager", {
+      configurable: true,
+      value: function PushManager() {},
+    });
+
+    const registration = {
+      pushManager: {
+        getSubscription: async () => subscription,
+        subscribe: async () => {
+          subscription = {
+            toJSON: () => ({
+              endpoint: "https://push.example/e2e",
+              keys: { p256dh: "e2e-p256dh", auth: "e2e-auth" },
+            }),
+            unsubscribe: async () => {
+              subscription = null;
+              return true;
+            },
+          };
+          return subscription;
+        },
+      },
+    };
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        ready: Promise.resolve(registration),
+        register: async () => registration,
+      },
+    });
+  });
+}
+
 test("pairing removes token from url and renders operational data", async ({ page }) => {
   await mockSnapshot(page);
   await mockMobileSession(page);
@@ -133,6 +333,58 @@ test("operational navigation, vessel sheet and drawer work together", async ({ p
   await expect(page.getByRole("heading", { name: "Sobre o AlertaM" })).toBeVisible();
   await expectNoHorizontalOverflow(page);
 });
+
+test("maneuver feed drives alert deep-link and grouped history", async ({ page }) => {
+  test.skip(
+    test.info().project.name !== "mobile-390",
+    "Event feed E2E runs once on the primary mobile viewport.",
+  );
+  await seedPairing(page);
+  await mockSnapshot(page);
+
+  const maneuverId = "81000000-0000-4000-8000-000000000001";
+  const confirmedId = "81000000-0000-4000-8000-000000000011";
+  const confirmed = maneuverEvent(1, confirmedId, "CONFIRMED", {
+    maneuverId,
+    vesselName: "NAVIO CICLO",
+  });
+  const updated = maneuverEvent(
+    2,
+    "81000000-0000-4000-8000-000000000012",
+    "UPDATED",
+    { maneuverId, vesselName: "NAVIO CICLO" },
+  );
+  const completed = maneuverEvent(
+    3,
+    "81000000-0000-4000-8000-000000000013",
+    "COMPLETED",
+    { maneuverId, vesselName: "NAVIO CICLO" },
+  );
+  await mockManeuverEvents(
+    page,
+    eventPage([updated, completed], true),
+    eventPage([confirmed]),
+  );
+
+  await page.goto(`/alertas?event=${confirmedId}`);
+
+  await expect(page.getByRole("heading", { name: "Alertas" })).toBeVisible();
+  await expect(page.locator(`#event-${confirmedId}`)).toHaveClass(
+    /timeline__item--highlight/,
+  );
+  await expect(page.getByText("Atracação atualizada")).toBeVisible();
+  await expect(page.getByText("Atracação concluída")).toBeVisible();
+
+  await page.getByRole("button", { name: "Abrir menu" }).click();
+  await page.getByRole("link", { name: "Histórico" }).click();
+
+  await expect(page.getByRole("heading", { name: "Histórico" })).toBeVisible();
+  await expect(page.getByText("NAVIO CICLO")).toHaveCount(1);
+  await expect(page.getByText("Atracação confirmada")).toBeVisible();
+  await expect(page.getByText("Atracação atualizada")).toBeVisible();
+  await expect(page.getByText("Atracação concluída")).toBeVisible();
+});
+
 test("waiting, stale, revoked and temporary offline states are handled", async ({ page }) => {
   await seedPairing(page);
 
@@ -227,6 +479,118 @@ test("forget device clears local pairing and returns to gate", async ({ page }) 
   ).toBeVisible();
   expect(await page.evaluate((key) => localStorage.getItem(key), PAIRING_KEY)).toBeNull();
 });
+
+test("config manages push preferences disable and forget for current installation", async ({ page }) => {
+  test.skip(
+    test.info().project.name !== "mobile-390",
+    "Push lifecycle E2E runs once on the primary mobile viewport.",
+  );
+  await mockBrowserPush(page);
+  await seedPairing(page);
+  await mockSnapshot(page);
+  await mockManeuverEvents(page, eventPage([]));
+
+  const pushState: PushApiMockState = {
+    active: false,
+    installationId: null,
+    preferences: {
+      confirmed: true,
+      updated: true,
+      completed: true,
+      cancelled: true,
+    },
+    puts: 0,
+    patches: 0,
+    deletes: 0,
+  };
+  await mockPushApi(page, pushState);
+
+  await page.goto("/config");
+  await page.getByRole("button", { name: "Ativar notificações" }).click();
+
+  await expect.poll(() => pushState.puts).toBe(1);
+  const installationId = await page.evaluate(
+    (key) => localStorage.getItem(key),
+    INSTALLATION_ID_STORAGE_KEY,
+  );
+  expect(installationId).toBeTruthy();
+
+  for (const label of [
+    "Confirmações",
+    "Atualizações",
+    "Conclusões",
+    "Cancelamentos",
+  ]) {
+    await expect(page.getByRole("checkbox", { name: label })).toBeChecked();
+  }
+
+  await page.getByRole("checkbox", { name: "Confirmações" }).click();
+  await expect.poll(() => pushState.patches).toBe(1);
+  await expect(
+    page.getByRole("checkbox", { name: "Confirmações" }),
+  ).not.toBeChecked();
+
+  await page.getByRole("button", { name: "Desativar notificações" }).click();
+  await expect.poll(() => pushState.deletes).toBe(1);
+  await expect(
+    page.getByRole("button", { name: "Ativar notificações" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate((key) => localStorage.getItem(key), PAIRING_KEY),
+  ).not.toBeNull();
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Esquecer este aparelho" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Alerta de Movimentações Marítimas" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate((key) => localStorage.getItem(key), INSTALLATION_ID_STORAGE_KEY),
+  ).toBeNull();
+  expect(
+    await page.evaluate((key) => localStorage.getItem(key), PAIRING_KEY),
+  ).toBeNull();
+  await expect.poll(() => pushState.deletes).toBeGreaterThanOrEqual(2);
+});
+
+test("notification click focuses and navigates an existing same-origin window", async ({}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "mobile-390",
+    "Notification click logic runs once.",
+  );
+  const navigated: string[] = [];
+  let focused = 0;
+  const opened: string[] = [];
+
+  await handleNotificationClick(
+    {
+      matchAll: async () => [
+        {
+          url: "https://alertam.example/",
+          navigate: async (url) => {
+            navigated.push(url);
+          },
+          focus: async () => {
+            focused += 1;
+          },
+        },
+      ],
+      openWindow: async (url) => {
+        opened.push(url);
+      },
+    },
+    "/alertas?event=82000000-0000-4000-8000-000000000001",
+    "https://alertam.example",
+  );
+
+  expect(navigated).toEqual([
+    "https://alertam.example/alertas?event=82000000-0000-4000-8000-000000000001",
+  ]);
+  expect(focused).toBe(1);
+  expect(opened).toEqual([]);
+});
+
 test("installed shell reloads offline without cached authenticated snapshot", async ({ browser }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile-390", "Service worker offline smoke runs once.");
 

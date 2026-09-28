@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     vessel_photo_timeout_seconds: float = 8.0
     vessel_photo_user_agent: str = "AlertaM-Mobile/0.1"
 
+    web_push_enabled: bool = False
+    vapid_public_key: str = ""
+    vapid_private_key: str = Field(default="", repr=False)
+    vapid_subject: str = ""
+    push_foreground_fresh_seconds: int = Field(default=75, gt=0)
+
     mock_seed_device: bool = True
     mock_device_id: str = "pecem-01"
     mock_device_secret: str = Field(
@@ -56,6 +62,18 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_persistence_credentials(self) -> "Settings":
+        if self.web_push_enabled:
+            missing_push: list[str] = []
+            if not self.vapid_public_key.strip():
+                missing_push.append("VAPID_PUBLIC_KEY")
+            if not self.vapid_private_key.strip():
+                missing_push.append("VAPID_PRIVATE_KEY")
+            if not self.vapid_subject.strip():
+                missing_push.append("VAPID_SUBJECT")
+            if missing_push:
+                joined = ", ".join(missing_push)
+                raise ValueError(f"Web Push requer: {joined}")
+
         if (
             self.environment == "production"
             and self.persistence_backend != "supabase"

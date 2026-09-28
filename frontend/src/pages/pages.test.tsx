@@ -3,10 +3,23 @@ import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 import fixture from "../test/fixtures/mobile_snapshot_v1.json";
 import { parseSnapshotReadResponse, type ManeuverEventFeedResponse } from "../api/contract";
-import { EventProvider } from "../features/events/EventProvider";
+import {
+  EventProvider,
+  StaticEventProvider,
+} from "../features/events/EventProvider";
 import type { Pairing } from "../features/pairing/pairing";
-import { SnapshotProvider } from "../features/snapshot/SnapshotProvider";
-import { savePairing } from "../features/pairing/pairingStorage";
+import {
+  StaticPushProvider,
+  type PushState,
+} from "../features/push/PushProvider";
+import {
+  SnapshotProvider,
+  StaticSnapshotProvider,
+} from "../features/snapshot/SnapshotProvider";
+import {
+  loadPairing,
+  savePairing,
+} from "../features/pairing/pairingStorage";
 import { AppRoutes } from "../app/router";
 import { StatusCards } from "../components/StatusCards";
 
@@ -54,6 +67,22 @@ const EVENT_PAGE: ManeuverEventFeedResponse = {
   has_more_before: false,
 };
 
+const DEFAULT_PUSH_STATE: PushState = {
+  supported: true,
+  permission: "default",
+  active: false,
+  preferences: {
+    confirmed: true,
+    updated: true,
+    completed: true,
+    cancelled: true,
+  },
+  error: null,
+  enablePush: vi.fn().mockResolvedValue(undefined),
+  disablePush: vi.fn().mockResolvedValue(undefined),
+  updatePreference: vi.fn().mockResolvedValue(undefined),
+};
+
 const response = parseSnapshotReadResponse({
   snapshot: fixture,
   meta: { received_at: "2026-09-25T13:40:15-03:00", age_seconds: 3, collector_online: true, stale_after_seconds: 120 },
@@ -62,6 +91,7 @@ function renderRoute(
   route: string,
   onPairingCleared = vi.fn(),
   eventFetcher = vi.fn().mockResolvedValue(EVENT_PAGE),
+  pushState: PushState = DEFAULT_PUSH_STATE,
 ) {
   const view = render(
     <SnapshotProvider pairing={pairing} fetcher={vi.fn().mockResolvedValue(response)}>
@@ -70,13 +100,50 @@ function renderRoute(
         fetcher={eventFetcher}
         onAccessRevoked={onPairingCleared}
       >
-        <MemoryRouter initialEntries={[route]}>
-          <AppRoutes pairing={pairing} onPairingCleared={onPairingCleared} />
-        </MemoryRouter>
+        <StaticPushProvider state={pushState}>
+          <MemoryRouter initialEntries={[route]}>
+            <AppRoutes pairing={pairing} onPairingCleared={onPairingCleared} />
+          </MemoryRouter>
+        </StaticPushProvider>
       </EventProvider>
     </SnapshotProvider>,
   );
   return { onPairingCleared, eventFetcher, unmount: view.unmount };
+}
+
+function renderConfig(
+  pushState: PushState = DEFAULT_PUSH_STATE,
+  onPairingCleared = vi.fn(),
+) {
+  const view = render(
+    <StaticSnapshotProvider
+      state={{
+        status: "online",
+        data: response,
+        refresh: () => undefined,
+      }}
+    >
+      <StaticEventProvider
+        state={{
+          events: EVENT_PAGE.events,
+          status: "online",
+          newEvent: null,
+          hasMore: false,
+          loadOlder: async () => false,
+        }}
+      >
+        <StaticPushProvider state={pushState}>
+          <MemoryRouter initialEntries={["/config"]}>
+            <AppRoutes
+              pairing={pairing}
+              onPairingCleared={onPairingCleared}
+            />
+          </MemoryRouter>
+        </StaticPushProvider>
+      </StaticEventProvider>
+    </StaticSnapshotProvider>,
+  );
+  return { onPairingCleared, unmount: view.unmount };
 }
 
 test("alerts_and_history_use_distinct_views", async () => {
@@ -93,11 +160,13 @@ test("alerts_and_history_use_distinct_views", async () => {
 test("config_shows_device_and_can_forget_pairing", async () => {
   savePairing(pairing);
   vi.spyOn(window, "confirm").mockReturnValue(true);
-  const { onPairingCleared } = renderRoute("/config");
+  const { onPairingCleared } = renderConfig();
 
   expect(await screen.findByText("pecem-01")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Esquecer este aparelho" }));
-  expect(onPairingCleared).toHaveBeenCalledTimes(1);
+  await waitFor(() => {
+    expect(onPairingCleared).toHaveBeenCalledTimes(1);
+  });
 });
 test("about_page_does_not_expose_infrastructure_secrets", async () => {
   renderRoute("/sobre");
@@ -160,9 +229,11 @@ test("weather_page_tolerates_empty_weather_blocks", async () => {
         sessionReady
         fetcher={vi.fn().mockResolvedValue(EVENT_PAGE)}
       >
-        <MemoryRouter initialEntries={["/tempo"]}>
-          <AppRoutes pairing={pairing} />
-        </MemoryRouter>
+        <StaticPushProvider state={DEFAULT_PUSH_STATE}>
+          <MemoryRouter initialEntries={["/tempo"]}>
+            <AppRoutes pairing={pairing} />
+          </MemoryRouter>
+        </StaticPushProvider>
       </EventProvider>
     </SnapshotProvider>,
   );
@@ -220,4 +291,142 @@ test("alert_deep_link_loads_older_page_highlights_and_scrolls_target", async () 
   expect(item).toHaveClass("timeline__item--highlight");
   await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
   expect(eventFetcher).toHaveBeenCalledTimes(2);
+});
+
+
+test("config_controls_push_and_four_independent_preferences", async () => {
+  const enablePush = vi.fn().mockResolvedValue(undefined);
+  const inactiveState: PushState = {
+    ...DEFAULT_PUSH_STATE,
+    enablePush,
+  };
+  const firstEventFetcher = vi.fn().mockResolvedValue(EVENT_PAGE);
+  const { unmount } = renderRoute(
+    "/config",
+    vi.fn(),
+    firstEventFetcher,
+    inactiveState,
+  );
+
+  await screen.findByText("2026-09-25T13:40:15-03:00");
+  await waitFor(() => {
+    expect(firstEventFetcher).toHaveBeenCalledTimes(1);
+  });
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Ativar notificações",
+    }),
+  );
+  await waitFor(() => {
+    expect(enablePush).toHaveBeenCalledTimes(1);
+  });
+  unmount();
+
+  const updatePreference = vi.fn().mockResolvedValue(undefined);
+  const disablePush = vi.fn().mockResolvedValue(undefined);
+  const secondEventFetcher = vi.fn().mockResolvedValue(EVENT_PAGE);
+  renderRoute(
+    "/config",
+    vi.fn(),
+    secondEventFetcher,
+    {
+      ...DEFAULT_PUSH_STATE,
+      permission: "granted",
+      active: true,
+      disablePush,
+      updatePreference,
+    },
+  );
+  await screen.findByText("2026-09-25T13:40:15-03:00");
+  await waitFor(() => {
+    expect(secondEventFetcher).toHaveBeenCalledTimes(1);
+  });
+  for (const label of [
+    "Confirmações",
+    "Atualizações",
+    "Conclusões",
+    "Cancelamentos",
+  ]) {
+    expect(
+      screen.getByRole("checkbox", { name: label }),
+    ).toBeChecked();
+  }
+
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "Confirmações" }),
+  );
+  expect(updatePreference).toHaveBeenCalledWith(
+    "confirmed",
+    false,
+  );
+
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Desativar notificações",
+    }),
+  );
+  expect(disablePush).toHaveBeenCalledTimes(1);
+});
+
+
+test("config_explains_denied_permission_without_prompting_again", async () => {
+  const enablePush = vi.fn().mockResolvedValue(undefined);
+  renderRoute(
+    "/config",
+    vi.fn(),
+    vi.fn().mockResolvedValue(EVENT_PAGE),
+    {
+      ...DEFAULT_PUSH_STATE,
+      permission: "denied",
+      enablePush,
+    },
+  );
+  expect(
+    await screen.findByText(/permissão.*bloqueada/i),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", {
+      name: "Ativar notificações",
+    }),
+  ).not.toBeInTheDocument();
+  expect(enablePush).not.toHaveBeenCalled();
+});
+
+
+test("forget_clears_installation_and_pairing_even_if_push_disable_fails", async () => {
+  const installationKey = "alertam.mobile.installation.v1";
+  localStorage.setItem(
+    installationKey,
+    "11111111-2222-4333-8444-555555555555",
+  );
+  savePairing(pairing);
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+
+  const disablePush = vi.fn().mockRejectedValue(
+    new Error("offline"),
+  );
+  const reset = vi.fn();
+  renderRoute(
+    "/config",
+    reset,
+    vi.fn().mockResolvedValue(EVENT_PAGE),
+    {
+      ...DEFAULT_PUSH_STATE,
+      active: true,
+      permission: "granted",
+      disablePush,
+    },
+  );
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "Esquecer este aparelho",
+    }),
+  );
+
+  await waitFor(() => {
+    expect(disablePush).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(installationKey)).toBeNull();
+    expect(loadPairing()).toBeNull();
+    expect(reset).toHaveBeenCalledTimes(1);
+  });
 });

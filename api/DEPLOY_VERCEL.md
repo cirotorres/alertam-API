@@ -1,6 +1,6 @@
 # Deploy do AlertaM — Vercel + Supabase
 
-Atualizado em 2026-09-26.
+Atualizado em 2026-09-27.
 
 Este runbook cobre a FastAPI e o frontend Vite/PWA como Services do mesmo
 monorepo/projeto Vercel. O frontend nunca recebe credenciais administrativas do
@@ -46,14 +46,34 @@ Executar na ordem:
 1. `supabase/migrations/001_devices.sql`
 2. `supabase/migrations/002_accept_snapshot_rpc.sql`
 3. `supabase/migrations/003_rotate_view_secret_rpc.sql`
+4. `supabase/migrations/004_maneuver_events.sql`
+5. `supabase/migrations/005_push_installations_deliveries.sql`
+6. `supabase/migrations/006_event_retention.sql`
 
 As migrations:
 
-- criam uma linha por dispositivo;
-- habilitam RLS;
-- não criam policy pública;
-- implementam aceitação atômica do snapshot;
-- implementam rotação do hash de VIEW_SECRET.
+- criam uma linha por dispositivo e aceitação atômica do snapshot;
+- persistem `ManeuverEvent` com `ingestion_id` estável/idempotente;
+- persistem instalações push e bookkeeping de deliveries;
+- fazem a rotação de `VIEW_SECRET` desativar todas as instalações do device;
+- criam cleanup explícito de eventos/deliveries com retenção de 30 dias;
+- habilitam RLS e não criam policy pública para essas tabelas.
+
+As migrations 004–006 devem ser validadas em Postgres/Supabase real antes do deploy final. Testes locais com repository em memória/MockTransport não substituem esse gate.
+
+### Agendar a retenção de eventos
+
+Depois de validar a migration 006 no projeto real, agendar no Supabase Cron uma
+execução periódica de:
+
+```sql
+select public.cleanup_event_retention();
+```
+
+A função remove primeiro `push_deliveries` vinculados a eventos com mais de 30
+dias e depois os próprios `maneuver_events`. Ela não remove
+`push_installations`. Não habilitar o cron antes de validar migrations 004–006
+no banco alvo.
 
 ## 3. Provisionar o primeiro dispositivo
 
@@ -88,11 +108,25 @@ LOG_LEVEL=INFO
 ALLOWED_ORIGINS=
 ```
 
+Para habilitar Web Push em produção:
+
+```env
+WEB_PUSH_ENABLED=true
+VAPID_PUBLIC_KEY=<public-key>
+VAPID_PRIVATE_KEY=<private-key>
+VAPID_SUBJECT=mailto:<contato-do-projeto>
+PUSH_FOREGROUND_FRESH_SECONDS=75
+```
+
+`VAPID_PRIVATE_KEY` é segredo exclusivo do backend. O frontend recebe somente
+`VAPID_PUBLIC_KEY` pelo endpoint autenticado e nenhuma das duas chaves deve ser
+registrada em logs.
+
 Enquanto frontend e API estiverem sob a mesma origem, `ALLOWED_ORIGINS` pode
 ficar vazio. Se houver frontend em outra origem, listar explicitamente as
 origens separadas por vírgula.
 
-Marcar `SUPABASE_SECRET_KEY` como variável sensível na Vercel.
+Marcar `SUPABASE_SECRET_KEY` e `VAPID_PRIVATE_KEY` como variáveis sensíveis na Vercel.
 
 A aplicação recusa `ENVIRONMENT=production` com
 `PERSISTENCE_BACKEND=memory`.
@@ -141,9 +175,15 @@ Supabase.
 
 ## Estado atual
 
-A API já possui infraestrutura de produção com Supabase. A configuração local da
-SPEC 020 adiciona o service `frontend` e mantém `/api/v1/*` prioritário.
+A implementação local da SPEC 021 inclui ManeuverEvent, feed mobile, instalações
+push, VAPID/dispatcher, `injectManifest`, heartbeat foreground e retenção de 30
+dias. O roteamento same-origin continua mantendo `/api/v1/*` prioritário.
 
-O deploy público do novo frontend e o smoke real Desktop → QR → PWA → API ainda
-devem ser executados no gate final da SPEC 020 antes de marcar a feature como
-concluída.
+Antes de produção ainda são obrigatórios:
+- aplicar e validar migrations 004–006 em Postgres/Supabase real;
+- habilitar o Cron de retenção somente após essa validação;
+- configurar VAPID real no backend;
+- executar smoke Desktop → API → PWA e Web Push real em aparelho/browser;
+- confirmar que nenhum segredo foi configurado no service frontend.
+
+Os testes locais não substituem esses gates externos.

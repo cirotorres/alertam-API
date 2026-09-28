@@ -86,7 +86,9 @@ class ManeuverEventService:
             return
         try:
             self._dispatch_event(stored)
-        except Exception:  # noqa: BLE001
-            log.exception(
-                "Falha no dispatch pós-persistência de ManeuverEvent"
+        except Exception as exc:  # noqa: BLE001
+            log.error(
+                "Falha no dispatch pós-persistência de ManeuverEvent "
+                "error_type=%s",
+                type(exc).__name__,
             )

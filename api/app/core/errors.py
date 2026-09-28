@@ -117,3 +117,12 @@ class InvalidEventCursorError(ApiError):
             code="invalid_event_cursor",
             message="Use after ou before, nunca os dois juntos.",
         )
+
+
+class PushInstallationNotFoundError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=404,
+            code="push_installation_not_found",
+            message="Instalação push não encontrada.",
+        )

@@ -3,7 +3,13 @@ import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 import fixture from "../test/fixtures/mobile_snapshot_v1.json";
 import { parseSnapshotReadResponse } from "../api/contract";
+import { StaticEventProvider } from "../features/events/EventProvider";
+import type { EventState } from "../features/events/useEventPolling";
 import type { Pairing } from "../features/pairing/pairing";
+import {
+  StaticPushProvider,
+  type PushState,
+} from "../features/push/PushProvider";
 import { SnapshotProvider } from "../features/snapshot/SnapshotProvider";
 import { AppRoutes } from "./router";
 
@@ -11,6 +17,30 @@ const pairing: Pairing = {
   deviceId: "pecem-01",
   viewSecret: "Abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE",
   pairedAt: "2026-09-26T09:40:00-03:00",
+};
+
+const eventState: EventState = {
+  events: [],
+  status: "online",
+  newEvent: null,
+  hasMore: false,
+  loadOlder: async () => false,
+};
+
+const pushState: PushState = {
+  supported: false,
+  permission: "default",
+  active: false,
+  preferences: {
+    confirmed: true,
+    updated: true,
+    completed: true,
+    cancelled: true,
+  },
+  error: null,
+  enablePush: async () => undefined,
+  disablePush: async () => undefined,
+  updatePreference: async () => undefined,
 };
 
 const response = parseSnapshotReadResponse({
@@ -26,9 +56,13 @@ function renderApp(initialEntry = "/") {
   const fetcher = vi.fn().mockResolvedValue(response);
   render(
     <SnapshotProvider pairing={pairing} fetcher={fetcher}>
-      <MemoryRouter initialEntries={[initialEntry]}>
-        <AppRoutes pairing={pairing} />
-      </MemoryRouter>
+      <StaticEventProvider state={eventState}>
+        <StaticPushProvider state={pushState}>
+          <MemoryRouter initialEntries={[initialEntry]}>
+            <AppRoutes pairing={pairing} />
+          </MemoryRouter>
+        </StaticPushProvider>
+      </StaticEventProvider>
     </SnapshotProvider>,
   );
   return { fetcher };

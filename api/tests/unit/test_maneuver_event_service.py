@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -108,3 +109,30 @@ def test_repository_failure_maps_to_503():
 
     with pytest.raises(PersistenceUnavailableApiError):
         service.accept_event(DEVICE_ID, DEVICE_SECRET, event())
+
+
+def test_dispatch_failure_log_never_echoes_sensitive_exception_message(caplog):
+    sensitive = (
+        "https://push.example/private-endpoint "
+        "p256dh-private vapid-private-secret"
+    )
+
+    def dispatch(_stored):
+        raise RuntimeError(sensitive)
+
+    service = ManeuverEventService(repo(), dispatch_event=dispatch)
+
+    with caplog.at_level(
+        logging.ERROR,
+        logger="app.services.maneuver_event_service",
+    ):
+        result = service.accept_event(
+            DEVICE_ID,
+            DEVICE_SECRET,
+            event(),
+        )
+
+    assert result.status == "accepted"
+    assert sensitive not in caplog.text
+    assert "private-endpoint" not in caplog.text
+    assert "vapid-private-secret" not in caplog.text

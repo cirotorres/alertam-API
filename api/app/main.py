@@ -11,12 +11,14 @@ from fastapi.responses import JSONResponse
 from app.api.v1.router import create_v1_router
 from app.core.config import Settings
 from app.core.errors import ApiError
+from app.infrastructure.web_push import WebPushGateway
 from app.core.logging import (
     HttpRequestLoggingMiddleware,
     configure_logging,
 )
 from app.repositories.events import AlertaRepository, StoredManeuverEvent
 from app.repositories.factory import create_devices_repository
+from app.services.push_dispatch_service import PushDispatchService, PushGateway
 from app.services.vessel_photo_service import (
     VesselPhotoLookup,
     VesselPhotoService,
@@ -31,6 +33,7 @@ def create_app(
     clock: Callable[[], datetime] | None = None,
     vessel_photo_service: VesselPhotoLookup | None = None,
     dispatch_event: Callable[[StoredManeuverEvent], None] | None = None,
+    web_push_gateway: PushGateway | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings()
     resolved_stale_after = (
@@ -56,14 +59,32 @@ def create_app(
         user_agent=resolved_settings.vessel_photo_user_agent,
     )
 
+    resolved_dispatch_event = dispatch_event
+    if resolved_dispatch_event is None and resolved_settings.web_push_enabled:
+        resolved_gateway = web_push_gateway or WebPushGateway(
+            vapid_private_key=resolved_settings.vapid_private_key,
+            vapid_subject=resolved_settings.vapid_subject,
+        )
+        push_dispatcher = PushDispatchService(
+            devices_repository,
+            resolved_gateway,
+            foreground_fresh_seconds=(
+                resolved_settings.push_foreground_fresh_seconds
+            ),
+            clock=clock,
+        )
+        resolved_dispatch_event = push_dispatcher.dispatch_event
+
     application.include_router(
         create_v1_router(
             devices_repository,
             stale_after_seconds=resolved_stale_after,
             cookie_secure=resolved_settings.environment == "production",
             vessel_photo_service=resolved_photo_service,
+            web_push_enabled=resolved_settings.web_push_enabled,
+            vapid_public_key=resolved_settings.vapid_public_key,
             clock=clock,
-            dispatch_event=dispatch_event,
+            dispatch_event=resolved_dispatch_event,
         )
     )
 
@@ -75,7 +96,14 @@ def create_app(
             CORSMiddleware,
             allow_origins=allowed_origins,
             allow_credentials=False,
-            allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+            allow_methods=[
+                "GET",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE",
+                "OPTIONS",
+            ],
             allow_headers=["Authorization", "Content-Type"],
         )
 

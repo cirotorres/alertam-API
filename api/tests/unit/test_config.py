@@ -46,3 +46,46 @@ def test_supabase_backend_still_accepts_legacy_service_role_key(monkeypatch):
     settings = Settings(_env_file=None)
 
     assert settings.supabase_server_key == "legacy-service-role"
+
+
+def test_web_push_disabled_does_not_require_vapid_credentials(monkeypatch):
+    monkeypatch.delenv("WEB_PUSH_ENABLED", raising=False)
+    monkeypatch.delenv("VAPID_PUBLIC_KEY", raising=False)
+    monkeypatch.delenv("VAPID_PRIVATE_KEY", raising=False)
+    monkeypatch.delenv("VAPID_SUBJECT", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.web_push_enabled is False
+    assert settings.vapid_public_key == ""
+    assert settings.vapid_private_key == ""
+    assert settings.vapid_subject == ""
+    assert settings.push_foreground_fresh_seconds == 75
+
+
+def test_web_push_enabled_requires_complete_vapid_configuration():
+    with pytest.raises(ValueError) as exc_info:
+        Settings(
+            _env_file=None,
+            web_push_enabled=True,
+            vapid_public_key="public",
+        )
+
+    message = str(exc_info.value)
+    assert "VAPID_PRIVATE_KEY" in message
+    assert "VAPID_SUBJECT" in message
+
+
+def test_vapid_private_key_is_hidden_from_settings_repr():
+    private_key = "very-secret-vapid-private-key"
+    settings = Settings(
+        _env_file=None,
+        web_push_enabled=True,
+        vapid_public_key="public-key",
+        vapid_private_key=private_key,
+        vapid_subject="mailto:alerts@example.com",
+    )
+
+    assert settings.web_push_enabled is True
+    assert settings.vapid_private_key == private_key
+    assert private_key not in repr(settings)
