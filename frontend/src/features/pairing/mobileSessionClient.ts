@@ -2,10 +2,16 @@ import {
   AccessRevokedError,
   TemporaryApiError,
 } from "../../api/snapshotClient";
+import {
+  clearInstallationId,
+  getOrCreateInstallationId,
+  storeInstallationId,
+} from "../push/installationId";
 import type { Pairing } from "./pairing";
 
 type MobileSessionResponse = {
   device_id: string;
+  installation_id: string;
 };
 
 function isMobileSessionResponse(value: unknown): value is MobileSessionResponse {
@@ -13,7 +19,9 @@ function isMobileSessionResponse(value: unknown): value is MobileSessionResponse
     typeof value === "object" &&
     value !== null &&
     typeof (value as Record<string, unknown>).device_id === "string" &&
-    String((value as Record<string, unknown>).device_id).trim().length > 0
+    String((value as Record<string, unknown>).device_id).trim().length > 0 &&
+    typeof (value as Record<string, unknown>).installation_id === "string" &&
+    String((value as Record<string, unknown>).installation_id).trim().length > 0
   );
 }
 
@@ -21,6 +29,7 @@ export async function createMobileSession(pairing: Pairing): Promise<void> {
   if (!pairing.viewSecret) {
     return;
   }
+  const installationId = getOrCreateInstallationId();
 
   let response: Response;
   try {
@@ -32,7 +41,10 @@ export async function createMobileSession(pairing: Pairing): Promise<void> {
         Authorization: `Bearer ${pairing.viewSecret}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ device_id: pairing.deviceId }),
+      body: JSON.stringify({
+        device_id: pairing.deviceId,
+        installation_id: installationId,
+      }),
     });
   } catch {
     throw new TemporaryApiError();
@@ -42,6 +54,20 @@ export async function createMobileSession(pairing: Pairing): Promise<void> {
     throw new AccessRevokedError();
   }
   if (!response.ok) {
+    throw new TemporaryApiError();
+  }
+
+  try {
+    const body: unknown = await response.json();
+    if (
+      !isMobileSessionResponse(body) ||
+      body.device_id !== pairing.deviceId ||
+      body.installation_id !== installationId
+    ) {
+      throw new TemporaryApiError();
+    }
+  } catch (error) {
+    if (error instanceof TemporaryApiError) throw error;
     throw new TemporaryApiError();
   }
 }
@@ -75,6 +101,7 @@ export async function recoverMobileSession(): Promise<Pairing | null> {
     return null;
   }
 
+  storeInstallationId(body.installation_id);
   return {
     deviceId: body.device_id,
     viewSecret: null,
@@ -91,5 +118,7 @@ export async function clearMobileSession(): Promise<void> {
     });
   } catch {
     // Best effort: a sessão expirada/rotacionada já é inválida no servidor.
+  } finally {
+    clearInstallationId();
   }
 }

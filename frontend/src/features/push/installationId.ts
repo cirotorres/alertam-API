@@ -25,6 +25,10 @@ export function getOrCreateInstallationId(
 }
 
 
+export function storeInstallationId(installationId: string): void {
+  localStorage.setItem(INSTALLATION_ID_STORAGE_KEY, installationId);
+}
+
 export function clearInstallationId(): void {
   localStorage.removeItem(INSTALLATION_ID_STORAGE_KEY);
 }

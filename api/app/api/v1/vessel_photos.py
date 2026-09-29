@@ -39,8 +39,8 @@ def create_vessel_photo_router(
             view_secret = parse_bearer_authorization(authorization)
             read_service.authenticate_view(device_id, view_secret)
         else:
-            session_device_id = session_service.resolve_session(mobile_session)
-            if session_device_id != device_id:
+            principal = session_service.resolve_session(mobile_session)
+            if principal.device_id != device_id:
                 raise InvalidViewCredentialsError()
 
         snapshot = read_service.get_authenticated_snapshot(device_id).snapshot

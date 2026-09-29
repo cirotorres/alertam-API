@@ -80,8 +80,8 @@ def create_snapshot_router(
             view_secret = parse_bearer_authorization(authorization)
             return read_service.get_snapshot(device_id, view_secret)
 
-        session_device_id = session_service.resolve_session(mobile_session)
-        if session_device_id != device_id:
+        principal = session_service.resolve_session(mobile_session)
+        if principal.device_id != device_id:
             from app.core.errors import InvalidViewCredentialsError
 
             raise InvalidViewCredentialsError()

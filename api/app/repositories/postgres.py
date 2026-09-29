@@ -15,6 +15,7 @@ from app.repositories.devices import (
     AcceptSnapshotStatus,
     DeviceAlreadyExistsError,
     DeviceAuthRecord,
+    MobileInstallationRecord,
     PersistenceUnavailableError,
     SnapshotCandidate,
     StoredSnapshot,
@@ -34,6 +35,8 @@ from app.repositories.tracking import (
     AcceptTrackingEventResult,
     AcceptTrackingEventStatus,
     StoredVesselTrackingEvent,
+    TrackedVesselRecord,
+    VesselEvidence,
 )
 
 
@@ -97,6 +100,88 @@ class PostgresDeviceRepository:
             device_secret_hash=str(row[1]),
             view_secret_hash=None if row[2] is None else str(row[2]),
         )
+
+    def ensure_mobile_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> MobileInstallationRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select installation_id, device_id, active,
+                           created_at, last_seen_at, revoked_at
+                    from public.ensure_mobile_installation(%s, %s)
+                    """,
+                    (device_id, installation_id),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._mobile_installation_from_row(row)
+
+    def get_mobile_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> MobileInstallationRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select installation_id, device_id, active,
+                           created_at, last_seen_at, revoked_at
+                    from public.mobile_installations
+                    where device_id = %s and installation_id = %s
+                    """,
+                    (device_id, installation_id),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._mobile_installation_from_row(row)
+
+    def revoke_mobile_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> bool:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select updated
+                    from public.revoke_mobile_installation(%s, %s)
+                    """,
+                    (device_id, installation_id),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        if row is None or not isinstance(row[0], bool):
+            raise PersistenceUnavailableError()
+        return row[0]
+
+    @classmethod
+    def _mobile_installation_from_row(
+        cls,
+        row: Any,
+    ) -> MobileInstallationRecord | None:
+        if row is None:
+            return None
+        try:
+            return MobileInstallationRecord(
+                installation_id=UUID(str(row[0])),
+                device_id=str(row[1]),
+                active=bool(row[2]),
+                created_at=cls._aware_datetime(row[3]),
+                last_seen_at=cls._aware_datetime(row[4]),
+                revoked_at=(
+                    None
+                    if row[5] is None
+                    else cls._aware_datetime(row[5])
+                ),
+            )
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
 
     def get_snapshot(
         self,
@@ -258,6 +343,279 @@ class PostgresDeviceRepository:
         except (TypeError, ValueError) as exc:
             raise PersistenceUnavailableError() from exc
         return AcceptEventResult(status=status, stored=stored)
+
+    @staticmethod
+    def _normalize_vessel_name(value: str) -> str:
+        return " ".join(value.upper().split())
+
+    @classmethod
+    def _vessel_matches(
+        cls,
+        requested_imo: str | None,
+        requested_name: str,
+        candidate_imo: str | None,
+        candidate_name: str,
+    ) -> bool:
+        if requested_imo:
+            return (
+                candidate_imo is not None
+                and candidate_imo.strip() == requested_imo.strip()
+            )
+        return cls._normalize_vessel_name(candidate_name) == (
+            cls._normalize_vessel_name(requested_name)
+        )
+
+    def find_vessel_evidence(
+        self,
+        device_id: str,
+        *,
+        vessel_identity: str,
+        vessel_imo: str | None,
+        vessel_name: str,
+    ) -> VesselEvidence | None:
+        snapshot = self.get_snapshot(device_id)
+        if snapshot is not None:
+            vessels = snapshot.snapshot.get("vessels", [])
+            if isinstance(vessels, list):
+                for raw in vessels:
+                    if not isinstance(raw, dict):
+                        continue
+                    name = str(raw.get("name", ""))
+                    raw_imo = raw.get("imo")
+                    imo = None if raw_imo is None else str(raw_imo)
+                    if not self._vessel_matches(
+                        vessel_imo, vessel_name, imo, name
+                    ):
+                        continue
+                    identity = (
+                        f"IMO:{imo}"
+                        if imo
+                        else f"NAME:{self._normalize_vessel_name(name)}"
+                    )
+                    return VesselEvidence(
+                        vessel_identity=identity,
+                        vessel_imo=imo,
+                        vessel_name=name,
+                        current={
+                            "present": True,
+                            "status": raw.get("status"),
+                            "section": raw.get("section"),
+                            "berth": raw.get("berth"),
+                            "side": raw.get("side"),
+                            "eta": raw.get("eta"),
+                            "etb_ets": raw.get("etb_ets"),
+                            "pob": raw.get("pob"),
+                            "pob_at": None,
+                        },
+                        observed_at=snapshot.generated_at,
+                    )
+
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                tracking_rows = conn.execute(
+                    """
+                    select event_payload
+                    from public.vessel_tracking_events
+                    where device_id = %s
+                    order by ingestion_id desc
+                    """,
+                    (device_id,),
+                ).fetchall()
+                maneuver_rows = conn.execute(
+                    """
+                    select event_payload
+                    from public.maneuver_events
+                    where device_id = %s
+                    order by ingestion_id desc
+                    """,
+                    (device_id,),
+                ).fetchall()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+
+        for row in tracking_rows:
+            try:
+                event = VesselTrackingEventIn.model_validate(row[0])
+            except (TypeError, ValueError):
+                continue
+            if not self._vessel_matches(
+                vessel_imo, vessel_name, event.vessel_imo, event.vessel_name
+            ):
+                continue
+            return VesselEvidence(
+                vessel_identity=event.vessel_identity,
+                vessel_imo=event.vessel_imo,
+                vessel_name=event.vessel_name,
+                current=event.current.model_dump(mode="json"),
+                observed_at=event.occurred_at,
+            )
+
+        for row in maneuver_rows:
+            try:
+                event = ManeuverEventIn.model_validate(row[0])
+            except (TypeError, ValueError):
+                continue
+            if not self._vessel_matches(
+                vessel_imo, vessel_name, event.vessel_imo, event.vessel_name
+            ):
+                continue
+            return VesselEvidence(
+                vessel_identity=event.vessel_identity,
+                vessel_imo=event.vessel_imo,
+                vessel_name=event.vessel_name,
+                current={
+                    "present": None,
+                    "status": None,
+                    "section": None,
+                    "berth": event.berth,
+                    "side": None,
+                    "eta": None,
+                    "etb_ets": None,
+                    "pob": event.pob,
+                    "pob_at": (
+                        None
+                        if event.pob_at is None
+                        else event.pob_at.isoformat()
+                    ),
+                },
+                observed_at=event.occurred_at,
+            )
+        return None
+
+    @classmethod
+    def _tracked_vessel_from_row(
+        cls,
+        row: Any,
+    ) -> TrackedVesselRecord | None:
+        if row is None:
+            return None
+        try:
+            current = row[10]
+            if current is not None and not isinstance(current, dict):
+                raise TypeError("current inválido")
+            return TrackedVesselRecord(
+                tracked_vessel_id=UUID(str(row[0])),
+                device_id=str(row[1]),
+                installation_id=UUID(str(row[2])),
+                vessel_identity=str(row[3]),
+                vessel_imo=None if row[4] is None else str(row[4]),
+                vessel_name=str(row[5]),
+                started_at=cls._aware_datetime(row[6]),
+                active=bool(row[7]),
+                stopped_at=(
+                    None if row[8] is None else cls._aware_datetime(row[8])
+                ),
+                last_seen_at=(
+                    None if row[9] is None else cls._aware_datetime(row[9])
+                ),
+                current=current,
+            )
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def upsert_tracked_vessel(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        evidence: VesselEvidence,
+    ) -> TrackedVesselRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select tracked_vessel_id, device_id, installation_id,
+                           vessel_identity, vessel_imo, vessel_name,
+                           started_at, active, stopped_at, last_seen_at, current
+                    from public.upsert_tracked_vessel(
+                        %s, %s, %s, %s, %s, %s, %s
+                    )
+                    """,
+                    (
+                        device_id,
+                        installation_id,
+                        evidence.vessel_identity,
+                        evidence.vessel_imo,
+                        evidence.vessel_name,
+                        Jsonb(evidence.current) if evidence.current is not None else None,
+                        evidence.observed_at,
+                    ),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._tracked_vessel_from_row(row)
+
+    def list_tracked_vessels(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> tuple[TrackedVesselRecord, ...]:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                rows = conn.execute(
+                    """
+                    select tracked_vessel_id, device_id, installation_id,
+                           vessel_identity, vessel_imo, vessel_name,
+                           started_at, active, stopped_at, last_seen_at, current
+                    from public.tracked_vessels
+                    where device_id = %s
+                      and installation_id = %s
+                      and active = true
+                    order by started_at asc
+                    """,
+                    (device_id, installation_id),
+                ).fetchall()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return tuple(
+            item
+            for row in rows
+            if (item := self._tracked_vessel_from_row(row)) is not None
+        )
+
+    def get_tracked_vessel(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        tracked_vessel_id: UUID,
+    ) -> TrackedVesselRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select tracked_vessel_id, device_id, installation_id,
+                           vessel_identity, vessel_imo, vessel_name,
+                           started_at, active, stopped_at, last_seen_at, current
+                    from public.tracked_vessels
+                    where device_id = %s
+                      and installation_id = %s
+                      and tracked_vessel_id = %s
+                    """,
+                    (device_id, installation_id, tracked_vessel_id),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._tracked_vessel_from_row(row)
+
+    def deactivate_tracked_vessel(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        tracked_vessel_id: UUID,
+    ) -> TrackedVesselRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select tracked_vessel_id, device_id, installation_id,
+                           vessel_identity, vessel_imo, vessel_name,
+                           started_at, active, stopped_at, last_seen_at, current
+                    from public.deactivate_tracked_vessel(%s, %s, %s)
+                    """,
+                    (device_id, installation_id, tracked_vessel_id),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._tracked_vessel_from_row(row)
 
     def accept_vessel_tracking_event_atomic(
         self,

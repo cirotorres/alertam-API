@@ -4,7 +4,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from threading import Lock
 from typing import Callable, Iterable
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.models.maneuver_event import ManeuverEventIn
 from app.models.vessel_tracking_event import VesselTrackingEventIn
@@ -13,6 +13,7 @@ from app.repositories.devices import (
     AcceptSnapshotStatus,
     DeviceAlreadyExistsError,
     DeviceAuthRecord,
+    MobileInstallationRecord,
     SnapshotCandidate,
     StoredSnapshot,
 )
@@ -31,6 +32,8 @@ from app.repositories.tracking import (
     AcceptTrackingEventResult,
     AcceptTrackingEventStatus,
     StoredVesselTrackingEvent,
+    TrackedVesselRecord,
+    VesselEvidence,
 )
 
 
@@ -53,6 +56,8 @@ class MemoryDeviceRepository:
         self._event_ingestion_sequence = 0
         self._tracking_events_by_id: dict[str, StoredVesselTrackingEvent] = {}
         self._tracking_event_ingestion_sequence = 0
+        self._mobile_installations: dict[UUID, MobileInstallationRecord] = {}
+        self._tracked_vessels: dict[UUID, TrackedVesselRecord] = {}
         self._push_installations: dict[object, PushInstallation] = {}
         self._push_deliveries: dict[tuple[str, object], PushDelivery] = {}
         self._clock = clock or (lambda: datetime.now(timezone.utc))
@@ -68,6 +73,73 @@ class MemoryDeviceRepository:
 
     def get_device_auth(self, device_id: str) -> DeviceAuthRecord | None:
         return self._devices.get(device_id)
+
+    def ensure_mobile_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> MobileInstallationRecord | None:
+        with self._lock:
+            if device_id not in self._devices:
+                return None
+            now = self._clock()
+            current = self._mobile_installations.get(installation_id)
+            if current is not None and current.device_id != device_id:
+                return None
+            if current is None:
+                current = MobileInstallationRecord(
+                    installation_id=installation_id,
+                    device_id=device_id,
+                    active=True,
+                    created_at=now,
+                    last_seen_at=now,
+                    revoked_at=None,
+                )
+            else:
+                current = replace(
+                    current,
+                    active=True,
+                    last_seen_at=now,
+                    revoked_at=None,
+                )
+            self._mobile_installations[installation_id] = current
+            return current
+
+    def get_mobile_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> MobileInstallationRecord | None:
+        current = self._mobile_installations.get(installation_id)
+        if current is None or current.device_id != device_id:
+            return None
+        return current
+
+    def revoke_mobile_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> bool:
+        with self._lock:
+            current = self._mobile_installations.get(installation_id)
+            if current is None or current.device_id != device_id:
+                return False
+            now = self._clock()
+            self._mobile_installations[installation_id] = replace(
+                current,
+                active=False,
+                last_seen_at=now,
+                revoked_at=now,
+            )
+            for tracked_id, tracked in tuple(self._tracked_vessels.items()):
+                if tracked.installation_id != installation_id or not tracked.active:
+                    continue
+                self._tracked_vessels[tracked_id] = replace(
+                    tracked,
+                    active=False,
+                    stopped_at=now,
+                )
+            return True
 
     def get_snapshot(self, device_id: str) -> StoredSnapshot | None:
         return self._snapshots.get(device_id)
@@ -89,6 +161,27 @@ class MemoryDeviceRepository:
                 view_secret_hash=view_secret_hash,
             )
             now = self._clock()
+            for installation_id, installation in tuple(
+                self._mobile_installations.items()
+            ):
+                if installation.device_id != device_id:
+                    continue
+                self._mobile_installations[installation_id] = replace(
+                    installation,
+                    active=False,
+                    last_seen_at=now,
+                    revoked_at=now,
+                )
+            for tracked_id, tracked in tuple(
+                self._tracked_vessels.items()
+            ):
+                if tracked.device_id != device_id or not tracked.active:
+                    continue
+                self._tracked_vessels[tracked_id] = replace(
+                    tracked,
+                    active=False,
+                    stopped_at=now,
+                )
             for installation_id, installation in tuple(
                 self._push_installations.items()
             ):
@@ -181,6 +274,257 @@ class MemoryDeviceRepository:
             )
             self._events_by_id[event_id] = stored
             return AcceptEventResult(AcceptEventStatus.ACCEPTED, stored)
+
+    @staticmethod
+    def _normalized_vessel_name(value: str) -> str:
+        return " ".join(value.upper().split())
+
+    @classmethod
+    def _same_vessel(
+        cls,
+        requested_imo: str | None,
+        requested_name: str,
+        candidate_imo: str | None,
+        candidate_name: str,
+    ) -> bool:
+        if requested_imo:
+            return (
+                candidate_imo is not None
+                and candidate_imo.strip() == requested_imo.strip()
+            )
+        return cls._normalized_vessel_name(candidate_name) == (
+            cls._normalized_vessel_name(requested_name)
+        )
+
+    def find_vessel_evidence(
+        self,
+        device_id: str,
+        *,
+        vessel_identity: str,
+        vessel_imo: str | None,
+        vessel_name: str,
+    ) -> VesselEvidence | None:
+        snapshot = self._snapshots.get(device_id)
+        if snapshot is not None:
+            vessels = snapshot.snapshot.get("vessels", [])
+            if isinstance(vessels, list):
+                for raw in vessels:
+                    if not isinstance(raw, dict):
+                        continue
+                    name = str(raw.get("name", ""))
+                    imo = raw.get("imo")
+                    candidate_imo = None if imo is None else str(imo)
+                    if not self._same_vessel(
+                        vessel_imo, vessel_name, candidate_imo, name
+                    ):
+                        continue
+                    identity = (
+                        f"IMO:{candidate_imo}"
+                        if candidate_imo
+                        else f"NAME:{self._normalized_vessel_name(name)}"
+                    )
+                    return VesselEvidence(
+                        vessel_identity=identity,
+                        vessel_imo=candidate_imo,
+                        vessel_name=name,
+                        current={
+                            "present": True,
+                            "status": raw.get("status"),
+                            "section": raw.get("section"),
+                            "berth": raw.get("berth"),
+                            "side": raw.get("side"),
+                            "eta": raw.get("eta"),
+                            "etb_ets": raw.get("etb_ets"),
+                            "pob": raw.get("pob"),
+                            "pob_at": None,
+                        },
+                        observed_at=snapshot.generated_at,
+                    )
+
+        tracking = sorted(
+            (
+                item
+                for item in self._tracking_events_by_id.values()
+                if item.device_id == device_id
+                and self._same_vessel(
+                    vessel_imo,
+                    vessel_name,
+                    item.event.vessel_imo,
+                    item.event.vessel_name,
+                )
+            ),
+            key=lambda item: item.ingestion_id,
+            reverse=True,
+        )
+        if tracking:
+            item = tracking[0]
+            return VesselEvidence(
+                vessel_identity=item.event.vessel_identity,
+                vessel_imo=item.event.vessel_imo,
+                vessel_name=item.event.vessel_name,
+                current=item.event.current.model_dump(mode="json"),
+                observed_at=item.event.occurred_at,
+            )
+
+        maneuvers = sorted(
+            (
+                item
+                for item in self._events_by_id.values()
+                if item.device_id == device_id
+                and self._same_vessel(
+                    vessel_imo,
+                    vessel_name,
+                    item.event.vessel_imo,
+                    item.event.vessel_name,
+                )
+            ),
+            key=lambda item: item.ingestion_id,
+            reverse=True,
+        )
+        if maneuvers:
+            item = maneuvers[0]
+            event = item.event
+            return VesselEvidence(
+                vessel_identity=event.vessel_identity,
+                vessel_imo=event.vessel_imo,
+                vessel_name=event.vessel_name,
+                current={
+                    "present": None,
+                    "status": None,
+                    "section": None,
+                    "berth": event.berth,
+                    "side": None,
+                    "eta": None,
+                    "etb_ets": None,
+                    "pob": event.pob,
+                    "pob_at": (
+                        None
+                        if event.pob_at is None
+                        else event.pob_at.isoformat()
+                    ),
+                },
+                observed_at=event.occurred_at,
+            )
+        return None
+
+    def upsert_tracked_vessel(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        evidence: VesselEvidence,
+    ) -> TrackedVesselRecord | None:
+        with self._lock:
+            installation = self._mobile_installations.get(installation_id)
+            if (
+                installation is None
+                or installation.device_id != device_id
+                or not installation.active
+            ):
+                return None
+            existing = None
+            for item in self._tracked_vessels.values():
+                if (
+                    item.device_id != device_id
+                    or item.installation_id != installation_id
+                ):
+                    continue
+                if item.vessel_identity == evidence.vessel_identity:
+                    existing = item
+                    break
+                if (
+                    evidence.vessel_imo
+                    and item.vessel_imo is None
+                    and self._normalized_vessel_name(item.vessel_name)
+                    == self._normalized_vessel_name(evidence.vessel_name)
+                ):
+                    existing = item
+                    break
+            now = self._clock()
+            if existing is None:
+                record = TrackedVesselRecord(
+                    tracked_vessel_id=uuid4(),
+                    device_id=device_id,
+                    installation_id=installation_id,
+                    vessel_identity=evidence.vessel_identity,
+                    vessel_imo=evidence.vessel_imo,
+                    vessel_name=evidence.vessel_name,
+                    started_at=now,
+                    active=True,
+                    stopped_at=None,
+                    last_seen_at=evidence.observed_at,
+                    current=evidence.current,
+                )
+            else:
+                record = replace(
+                    existing,
+                    vessel_identity=evidence.vessel_identity,
+                    vessel_imo=evidence.vessel_imo,
+                    vessel_name=evidence.vessel_name,
+                    started_at=(
+                        existing.started_at if existing.active else now
+                    ),
+                    active=True,
+                    stopped_at=None,
+                    last_seen_at=evidence.observed_at,
+                    current=evidence.current,
+                )
+            self._tracked_vessels[record.tracked_vessel_id] = record
+            return record
+
+    def list_tracked_vessels(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> tuple[TrackedVesselRecord, ...]:
+        with self._lock:
+            return tuple(sorted(
+                (
+                    item for item in self._tracked_vessels.values()
+                    if item.device_id == device_id
+                    and item.installation_id == installation_id
+                    and item.active
+                ),
+                key=lambda item: item.started_at,
+            ))
+
+    def get_tracked_vessel(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        tracked_vessel_id: UUID,
+    ) -> TrackedVesselRecord | None:
+        with self._lock:
+            item = self._tracked_vessels.get(tracked_vessel_id)
+            if (
+                item is None
+                or item.device_id != device_id
+                or item.installation_id != installation_id
+            ):
+                return None
+            return item
+
+    def deactivate_tracked_vessel(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        tracked_vessel_id: UUID,
+    ) -> TrackedVesselRecord | None:
+        with self._lock:
+            item = self._tracked_vessels.get(tracked_vessel_id)
+            if (
+                item is None
+                or item.device_id != device_id
+                or item.installation_id != installation_id
+            ):
+                return None
+            if item.active:
+                item = replace(
+                    item,
+                    active=False,
+                    stopped_at=self._clock(),
+                )
+                self._tracked_vessels[tracked_vessel_id] = item
+            return item
 
     def accept_vessel_tracking_event_atomic(
         self,
@@ -515,6 +859,6 @@ class MemoryDeviceRepository:
 
 
 def current_event_id(value: str):
-    from uuid import UUID
+    from uuid import UUID, uuid4
 
     return UUID(value)

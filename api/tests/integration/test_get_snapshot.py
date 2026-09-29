@@ -149,7 +149,7 @@ def test_get_snapshot_accepts_valid_mobile_session_cookie():
     created = client.post(
         "/api/v1/mobile/session",
         headers={"Authorization": f"Bearer {VIEW_SECRET}"},
-        json={"device_id": DEVICE_ID},
+        json={"device_id": DEVICE_ID, "installation_id": "10000000-0000-4000-8000-000000000099"},
     )
     assert created.status_code == 200
 
@@ -167,7 +167,7 @@ def test_mobile_session_cookie_cannot_read_another_device_path():
     created = client.post(
         "/api/v1/mobile/session",
         headers={"Authorization": f"Bearer {VIEW_SECRET}"},
-        json={"device_id": DEVICE_ID},
+        json={"device_id": DEVICE_ID, "installation_id": "10000000-0000-4000-8000-000000000099"},
     )
     assert created.status_code == 200
 

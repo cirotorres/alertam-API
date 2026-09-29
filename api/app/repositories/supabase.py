@@ -12,6 +12,7 @@ from app.repositories.devices import (
     AcceptSnapshotResult,
     AcceptSnapshotStatus,
     DeviceAuthRecord,
+    MobileInstallationRecord,
     PersistenceUnavailableError,
     SnapshotCandidate,
     StoredSnapshot,
@@ -31,6 +32,8 @@ from app.repositories.tracking import (
     AcceptTrackingEventResult,
     AcceptTrackingEventStatus,
     StoredVesselTrackingEvent,
+    TrackedVesselRecord,
+    VesselEvidence,
 )
 
 
@@ -96,6 +99,123 @@ class SupabaseDeviceRepository:
             ValueError,
         ) as exc:
             raise PersistenceUnavailableError() from exc
+
+    def ensure_mobile_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> MobileInstallationRecord | None:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/ensure_mobile_installation",
+                headers=self._headers(),
+                json={
+                    "p_device_id": device_id,
+                    "p_installation_id": str(installation_id),
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise ValueError("Resposta de instalação inválida.")
+            if not data:
+                return None
+            if len(data) != 1 or not isinstance(data[0], dict):
+                raise ValueError("Resposta de instalação inválida.")
+            return self._mobile_installation_from_mapping(data[0])
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def get_mobile_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> MobileInstallationRecord | None:
+        try:
+            response = self._client.get(
+                f"{self._base_url}/rest/v1/mobile_installations",
+                headers=self._headers(),
+                params={
+                    "select": (
+                        "installation_id,device_id,active,"
+                        "created_at,last_seen_at,revoked_at"
+                    ),
+                    "device_id": f"eq.{device_id}",
+                    "installation_id": f"eq.{installation_id}",
+                    "limit": "1",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise ValueError("Resposta de instalação inválida.")
+            if not data:
+                return None
+            if len(data) != 1 or not isinstance(data[0], dict):
+                raise ValueError("Resposta de instalação inválida.")
+            return self._mobile_installation_from_mapping(data[0])
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def revoke_mobile_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> bool:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/revoke_mobile_installation",
+                headers=self._headers(),
+                json={
+                    "p_device_id": device_id,
+                    "p_installation_id": str(installation_id),
+                },
+            )
+            response.raise_for_status()
+            row = self._extract_row(response.json())
+            updated = row["updated"]
+            if not isinstance(updated, bool):
+                raise TypeError("Resultado de revogação inválido.")
+            return updated
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    @classmethod
+    def _mobile_installation_from_mapping(
+        cls,
+        row: dict[str, Any],
+    ) -> MobileInstallationRecord:
+        created_at = cls._parse_datetime(row.get("created_at"))
+        last_seen_at = cls._parse_datetime(row.get("last_seen_at"))
+        revoked_at = cls._parse_datetime(row.get("revoked_at"))
+        if created_at is None or last_seen_at is None:
+            raise ValueError("Timestamp de instalação ausente.")
+        active = row.get("active")
+        if not isinstance(active, bool):
+            raise TypeError("active inválido.")
+        return MobileInstallationRecord(
+            installation_id=UUID(str(row["installation_id"])),
+            device_id=str(row["device_id"]),
+            active=active,
+            created_at=created_at,
+            last_seen_at=last_seen_at,
+            revoked_at=revoked_at,
+        )
 
     def get_snapshot(
         self,
@@ -274,6 +394,342 @@ class SupabaseDeviceRepository:
         ) as exc:
             raise PersistenceUnavailableError() from exc
         return AcceptEventResult(status=status, stored=stored)
+
+    @staticmethod
+    def _normalize_vessel_name(value: str) -> str:
+        return " ".join(value.upper().split())
+
+    @classmethod
+    def _vessel_matches(
+        cls,
+        requested_imo: str | None,
+        requested_name: str,
+        candidate_imo: str | None,
+        candidate_name: str,
+    ) -> bool:
+        if requested_imo:
+            return (
+                candidate_imo is not None
+                and candidate_imo.strip() == requested_imo.strip()
+            )
+        return cls._normalize_vessel_name(candidate_name) == (
+            cls._normalize_vessel_name(requested_name)
+        )
+
+    def find_vessel_evidence(
+        self,
+        device_id: str,
+        *,
+        vessel_identity: str,
+        vessel_imo: str | None,
+        vessel_name: str,
+    ) -> VesselEvidence | None:
+        snapshot = self.get_snapshot(device_id)
+        if snapshot is not None:
+            vessels = snapshot.snapshot.get("vessels", [])
+            if isinstance(vessels, list):
+                for raw in vessels:
+                    if not isinstance(raw, dict):
+                        continue
+                    name = str(raw.get("name", ""))
+                    raw_imo = raw.get("imo")
+                    imo = None if raw_imo is None else str(raw_imo)
+                    if not self._vessel_matches(
+                        vessel_imo, vessel_name, imo, name
+                    ):
+                        continue
+                    identity = (
+                        f"IMO:{imo}"
+                        if imo
+                        else f"NAME:{self._normalize_vessel_name(name)}"
+                    )
+                    return VesselEvidence(
+                        vessel_identity=identity,
+                        vessel_imo=imo,
+                        vessel_name=name,
+                        current={
+                            "present": True,
+                            "status": raw.get("status"),
+                            "section": raw.get("section"),
+                            "berth": raw.get("berth"),
+                            "side": raw.get("side"),
+                            "eta": raw.get("eta"),
+                            "etb_ets": raw.get("etb_ets"),
+                            "pob": raw.get("pob"),
+                            "pob_at": None,
+                        },
+                        observed_at=snapshot.generated_at,
+                    )
+
+        try:
+            tracking_response = self._client.get(
+                f"{self._base_url}/rest/v1/vessel_tracking_events",
+                headers=self._headers(),
+                params={
+                    "select": "event_payload",
+                    "device_id": f"eq.{device_id}",
+                    "order": "ingestion_id.desc",
+                },
+            )
+            tracking_response.raise_for_status()
+            maneuver_response = self._client.get(
+                f"{self._base_url}/rest/v1/maneuver_events",
+                headers=self._headers(),
+                params={
+                    "select": "event_payload",
+                    "device_id": f"eq.{device_id}",
+                    "order": "ingestion_id.desc",
+                },
+            )
+            maneuver_response.raise_for_status()
+            tracking_rows = tracking_response.json()
+            maneuver_rows = maneuver_response.json()
+            if not isinstance(tracking_rows, list) or not isinstance(
+                maneuver_rows, list
+            ):
+                raise ValueError("Resposta de evidência inválida.")
+        except (httpx.HTTPError, TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+
+        for row in tracking_rows:
+            if not isinstance(row, dict):
+                continue
+            try:
+                event = VesselTrackingEventIn.model_validate(
+                    row["event_payload"]
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not self._vessel_matches(
+                vessel_imo, vessel_name, event.vessel_imo, event.vessel_name
+            ):
+                continue
+            return VesselEvidence(
+                vessel_identity=event.vessel_identity,
+                vessel_imo=event.vessel_imo,
+                vessel_name=event.vessel_name,
+                current=event.current.model_dump(mode="json"),
+                observed_at=event.occurred_at,
+            )
+
+        for row in maneuver_rows:
+            if not isinstance(row, dict):
+                continue
+            try:
+                event = ManeuverEventIn.model_validate(row["event_payload"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not self._vessel_matches(
+                vessel_imo, vessel_name, event.vessel_imo, event.vessel_name
+            ):
+                continue
+            return VesselEvidence(
+                vessel_identity=event.vessel_identity,
+                vessel_imo=event.vessel_imo,
+                vessel_name=event.vessel_name,
+                current={
+                    "present": None,
+                    "status": None,
+                    "section": None,
+                    "berth": event.berth,
+                    "side": None,
+                    "eta": None,
+                    "etb_ets": None,
+                    "pob": event.pob,
+                    "pob_at": (
+                        None
+                        if event.pob_at is None
+                        else event.pob_at.isoformat()
+                    ),
+                },
+                observed_at=event.occurred_at,
+            )
+        return None
+
+    @classmethod
+    def _tracked_vessel_from_mapping(
+        cls,
+        row: dict[str, Any],
+    ) -> TrackedVesselRecord:
+        started_at = cls._parse_datetime(row.get("started_at"))
+        stopped_at = cls._parse_datetime(row.get("stopped_at"))
+        last_seen_at = cls._parse_datetime(row.get("last_seen_at"))
+        if started_at is None:
+            raise ValueError("started_at ausente.")
+        active = row.get("active")
+        if not isinstance(active, bool):
+            raise TypeError("active inválido.")
+        current = row.get("current")
+        if current is not None and not isinstance(current, dict):
+            raise TypeError("current inválido.")
+        return TrackedVesselRecord(
+            tracked_vessel_id=UUID(str(row["tracked_vessel_id"])),
+            device_id=str(row["device_id"]),
+            installation_id=UUID(str(row["installation_id"])),
+            vessel_identity=str(row["vessel_identity"]),
+            vessel_imo=(
+                None
+                if row.get("vessel_imo") is None
+                else str(row["vessel_imo"])
+            ),
+            vessel_name=str(row["vessel_name"]),
+            started_at=started_at,
+            active=active,
+            stopped_at=stopped_at,
+            last_seen_at=last_seen_at,
+            current=current,
+        )
+
+    def upsert_tracked_vessel(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        evidence: VesselEvidence,
+    ) -> TrackedVesselRecord | None:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/upsert_tracked_vessel",
+                headers=self._headers(),
+                json={
+                    "p_device_id": device_id,
+                    "p_installation_id": str(installation_id),
+                    "p_vessel_identity": evidence.vessel_identity,
+                    "p_vessel_imo": evidence.vessel_imo,
+                    "p_vessel_name": evidence.vessel_name,
+                    "p_current": evidence.current,
+                    "p_last_seen_at": (
+                        None
+                        if evidence.observed_at is None
+                        else evidence.observed_at.isoformat()
+                    ),
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise ValueError("Resposta de tracking inválida.")
+            if not data:
+                return None
+            if len(data) != 1 or not isinstance(data[0], dict):
+                raise ValueError("Resposta de tracking inválida.")
+            return self._tracked_vessel_from_mapping(data[0])
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def list_tracked_vessels(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> tuple[TrackedVesselRecord, ...]:
+        try:
+            response = self._client.get(
+                f"{self._base_url}/rest/v1/tracked_vessels",
+                headers=self._headers(),
+                params={
+                    "select": (
+                        "tracked_vessel_id,device_id,installation_id,"
+                        "vessel_identity,vessel_imo,vessel_name,"
+                        "started_at,active,stopped_at,last_seen_at,current"
+                    ),
+                    "device_id": f"eq.{device_id}",
+                    "installation_id": f"eq.{installation_id}",
+                    "active": "eq.true",
+                    "order": "started_at.asc",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise ValueError("Resposta de tracking inválida.")
+            return tuple(
+                self._tracked_vessel_from_mapping(row)
+                for row in data
+                if isinstance(row, dict)
+            )
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def get_tracked_vessel(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        tracked_vessel_id: UUID,
+    ) -> TrackedVesselRecord | None:
+        try:
+            response = self._client.get(
+                f"{self._base_url}/rest/v1/tracked_vessels",
+                headers=self._headers(),
+                params={
+                    "select": (
+                        "tracked_vessel_id,device_id,installation_id,"
+                        "vessel_identity,vessel_imo,vessel_name,"
+                        "started_at,active,stopped_at,last_seen_at,current"
+                    ),
+                    "device_id": f"eq.{device_id}",
+                    "installation_id": f"eq.{installation_id}",
+                    "tracked_vessel_id": f"eq.{tracked_vessel_id}",
+                    "limit": "1",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise ValueError("Resposta de tracking inválida.")
+            if not data:
+                return None
+            if len(data) != 1 or not isinstance(data[0], dict):
+                raise ValueError("Resposta de tracking inválida.")
+            return self._tracked_vessel_from_mapping(data[0])
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def deactivate_tracked_vessel(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        tracked_vessel_id: UUID,
+    ) -> TrackedVesselRecord | None:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/deactivate_tracked_vessel",
+                headers=self._headers(),
+                json={
+                    "p_device_id": device_id,
+                    "p_installation_id": str(installation_id),
+                    "p_tracked_vessel_id": str(tracked_vessel_id),
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise ValueError("Resposta de tracking inválida.")
+            if not data:
+                return None
+            if len(data) != 1 or not isinstance(data[0], dict):
+                raise ValueError("Resposta de tracking inválida.")
+            return self._tracked_vessel_from_mapping(data[0])
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
 
     def accept_vessel_tracking_event_atomic(
         self,

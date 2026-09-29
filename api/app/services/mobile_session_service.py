@@ -5,7 +5,9 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 import json
+from dataclasses import dataclass
 from typing import Callable
+from uuid import UUID
 
 from app.core.errors import (
     InvalidViewCredentialsError,
@@ -21,6 +23,12 @@ from app.security.credentials import verify_secret
 SESSION_TTL = timedelta(days=30)
 
 
+@dataclass(frozen=True)
+class MobileSessionPrincipal:
+    device_id: str
+    installation_id: UUID
+
+
 class MobileSessionService:
     def __init__(
         self,
@@ -31,7 +39,12 @@ class MobileSessionService:
         self._repository = repository
         self._clock = clock or (lambda: datetime.now(timezone.utc))
 
-    def create_session(self, device_id: str, view_secret: str) -> str:
+    def create_session(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        view_secret: str,
+    ) -> tuple[str, MobileSessionPrincipal]:
         auth = self._get_auth(device_id)
         if (
             auth is None
@@ -40,14 +53,33 @@ class MobileSessionService:
         ):
             raise InvalidViewCredentialsError()
 
-        expires_at = int((self._clock() + SESSION_TTL).timestamp())
-        payload = self._encode_payload(
-            {"device_id": device_id, "exp": expires_at}
-        )
-        signature = self._sign(payload, auth.view_secret_hash)
-        return f"{payload}.{signature}"
+        try:
+            installation = self._repository.ensure_mobile_installation(
+                device_id,
+                installation_id,
+            )
+        except PersistenceUnavailableError as exc:
+            raise PersistenceUnavailableApiError() from exc
+        if installation is None:
+            raise InvalidViewCredentialsError()
 
-    def resolve_session(self, token: str | None) -> str:
+        principal = MobileSessionPrincipal(
+            device_id=device_id,
+            installation_id=installation_id,
+        )
+        expires_at = int((self._clock() + SESSION_TTL).timestamp())
+        payload = self._encode_payload({
+            "device_id": device_id,
+            "installation_id": str(installation_id),
+            "exp": expires_at,
+        })
+        signature = self._sign(payload, auth.view_secret_hash)
+        return f"{payload}.{signature}", principal
+
+    def resolve_session(
+        self,
+        token: str | None,
+    ) -> MobileSessionPrincipal:
         if not token:
             raise InvalidViewCredentialsError()
 
@@ -55,6 +87,7 @@ class MobileSessionService:
             payload, signature = token.split(".", 1)
             body = self._decode_payload(payload)
             device_id = str(body["device_id"])
+            installation_id = UUID(str(body["installation_id"]))
             expires_at = int(body["exp"])
         except (ValueError, KeyError, TypeError, json.JSONDecodeError):
             raise InvalidViewCredentialsError() from None
@@ -70,7 +103,32 @@ class MobileSessionService:
         if not hmac.compare_digest(signature, expected):
             raise InvalidViewCredentialsError()
 
-        return device_id
+        try:
+            installation = self._repository.get_mobile_installation(
+                device_id,
+                installation_id,
+            )
+        except PersistenceUnavailableError as exc:
+            raise PersistenceUnavailableApiError() from exc
+        if installation is None or not installation.active:
+            raise InvalidViewCredentialsError()
+
+        return MobileSessionPrincipal(
+            device_id=device_id,
+            installation_id=installation_id,
+        )
+
+    def invalidate_installation(
+        self,
+        principal: MobileSessionPrincipal,
+    ) -> None:
+        try:
+            self._repository.revoke_mobile_installation(
+                principal.device_id,
+                principal.installation_id,
+            )
+        except PersistenceUnavailableError as exc:
+            raise PersistenceUnavailableApiError() from exc
 
     def _get_auth(self, device_id: str):
         try:

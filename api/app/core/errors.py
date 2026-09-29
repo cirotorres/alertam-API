@@ -135,3 +135,21 @@ class PushInstallationNotFoundError(ApiError):
             code="push_installation_not_found",
             message="Instalação push não encontrada.",
         )
+
+
+class VesselTrackingTargetNotFoundError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=404,
+            code="vessel_tracking_target_not_found",
+            message="Navio não está disponível para acompanhamento.",
+        )
+
+
+class TrackedVesselNotFoundError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=404,
+            code="tracked_vessel_not_found",
+            message="Acompanhamento não encontrado.",
+        )

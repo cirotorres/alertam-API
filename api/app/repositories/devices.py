@@ -24,6 +24,16 @@ class DeviceAuthRecord:
 
 
 @dataclass(frozen=True)
+class MobileInstallationRecord:
+    installation_id: UUID
+    device_id: str
+    active: bool
+    created_at: datetime
+    last_seen_at: datetime
+    revoked_at: datetime | None = None
+
+
+@dataclass(frozen=True)
 class StoredSnapshot:
     device_id: str
     snapshot: dict[str, Any]
@@ -62,6 +72,24 @@ class DeviceCreator(Protocol):
 
 class DevicesRepository(DeviceCreator, Protocol):
     def get_device_auth(self, device_id: str) -> DeviceAuthRecord | None: ...
+
+    def ensure_mobile_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> MobileInstallationRecord | None: ...
+
+    def get_mobile_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> MobileInstallationRecord | None: ...
+
+    def revoke_mobile_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+    ) -> bool: ...
 
     def get_snapshot(self, device_id: str) -> StoredSnapshot | None: ...
 

@@ -95,7 +95,7 @@ def authenticate(client: TestClient) -> None:
     response = client.post(
         "/api/v1/mobile/session",
         headers={"Authorization": f"Bearer {VIEW_SECRET}"},
-        json={"device_id": DEVICE_ID},
+        json={"device_id": DEVICE_ID, "installation_id": "10000000-0000-4000-8000-000000000099"},
     )
     assert response.status_code == 200
 

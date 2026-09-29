@@ -99,7 +99,7 @@ def test_vessel_photo_accepts_mobile_session_cookie():
     client = _client(service)
     session = client.post(
         "/api/v1/mobile/session",
-        json={"device_id": DEVICE_ID},
+        json={"device_id": DEVICE_ID, "installation_id": "10000000-0000-4000-8000-000000000099"},
         headers={"Authorization": f"Bearer {VIEW_SECRET}"},
     )
     assert session.status_code == 200

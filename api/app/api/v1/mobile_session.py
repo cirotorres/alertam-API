@@ -5,6 +5,7 @@ from typing import Callable
 
 from fastapi import APIRouter, Cookie, Header, Response, status
 
+from app.core.errors import InvalidViewCredentialsError
 from app.models.mobile_session import (
     MobileSessionRequest,
     MobileSessionResponse,
@@ -40,7 +41,11 @@ def create_mobile_session_router(
         ),
     ) -> MobileSessionResponse:
         view_secret = parse_bearer_authorization(authorization)
-        token = service.create_session(request.device_id, view_secret)
+        token, principal = service.create_session(
+            request.device_id,
+            request.installation_id,
+            view_secret,
+        )
         response.set_cookie(
             key=COOKIE_NAME,
             value=token,
@@ -50,7 +55,10 @@ def create_mobile_session_router(
             httponly=True,
             samesite="strict",
         )
-        return MobileSessionResponse(device_id=request.device_id)
+        return MobileSessionResponse(
+            device_id=principal.device_id,
+            installation_id=principal.installation_id,
+        )
 
     @router.get("", response_model=MobileSessionResponse)
     def recover_session(
@@ -59,11 +67,28 @@ def create_mobile_session_router(
             alias=COOKIE_NAME,
         ),
     ) -> MobileSessionResponse:
-        device_id = service.resolve_session(mobile_session)
-        return MobileSessionResponse(device_id=device_id)
+        principal = service.resolve_session(mobile_session)
+        return MobileSessionResponse(
+            device_id=principal.device_id,
+            installation_id=principal.installation_id,
+        )
 
     @router.delete("", status_code=status.HTTP_204_NO_CONTENT)
-    def delete_session(response: Response) -> Response:
+    def delete_session(
+        response: Response,
+        mobile_session: str | None = Cookie(
+            default=None,
+            alias=COOKIE_NAME,
+        ),
+    ) -> Response:
+        if mobile_session:
+            try:
+                principal = service.resolve_session(mobile_session)
+                service.invalidate_installation(principal)
+            except InvalidViewCredentialsError:
+                # Sessão já expirada/revogada: ainda podemos limpar o
+                # cookie local sem fingir que houve uma nova revogação.
+                pass
         response.delete_cookie(
             key=COOKIE_NAME,
             path=COOKIE_PATH,
