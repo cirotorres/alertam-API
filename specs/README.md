@@ -4,8 +4,8 @@
 |---|---|---|---|
 | 020 | [Frontend mobile responsivo e PWA](020-frontend-mobile-pwa.md) | Em validação final | React/Vite read-only, pareamento por QR, polling 30 s, mapa, drawer, bottom sheet, navegação inferior e instalação PWA |
 | 021 | [Eventos de manobra, feed mobile e Web Push](021-maneuver-events-webpush.md) | Implementação local concluída; validação externa pendente | Persistência idempotente de ManeuverEvent, feed Alertas/Histórico e Web Push por instalação com preferências |
-| 022 | [Detalhes de Alertas e linha do tempo da manobra](022-alert-details-maneuver-timeline.md) | Design aprovado; aguardando revisão | Alertas clicáveis, gaveta detalhada, POB × conclusão observada, timeline por maneuver_id e detalhes equivalentes no Desktop |
-| 023 | [Ship Tracking](023-ship-tracking.md) | Design aprovado; aguardando revisão | Acompanhamento persistente por navio/instalação, VesselTrackingEvent, push seletivo, timeline unificada e tracking local no Desktop |
+| 022 | [Detalhes de Alertas e linha do tempo da manobra](022-alert-details-maneuver-timeline.md) | Implementação local concluída e validada | Alertas clicáveis, gaveta detalhada, POB × conclusão observada, timeline por maneuver_id e detalhes equivalentes no Desktop |
+| 023 | [Ship Tracking](023-ship-tracking.md) | Plano 1 concluído; Plano 2 é o próximo | Acompanhamento persistente por navio/instalação, VesselTrackingEvent, push seletivo, timeline unificada e tracking local no Desktop |
 
 ## Dependências cross-repo
 

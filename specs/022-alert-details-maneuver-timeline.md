@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Status | Design aprovado — aguardando revisão da spec e writing-plans |
+| Status | Implementação local concluída e validada — incluindo gate Tk/Xephyr (511 passed) |
 | Criado em | 2026-09-28 |
 | Atualizado em | 2026-09-28 |
 | Escopo | AlertaM Desktop + FastAPI/Supabase + PWA React/Vite |

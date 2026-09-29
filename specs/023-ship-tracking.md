@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Status | Design aprovado — aguardando revisão da spec e writing-plans |
+| Status | Plano 1 — Core Events concluído e validado; Plano 2 — Installations & Dispatch é o próximo |
 | Criado em | 2026-09-28 |
 | Atualizado em | 2026-09-28 |
 | Escopo | AlertaM Desktop + FastAPI/Supabase + PWA React/Vite |
@@ -250,6 +250,29 @@ Para VesselTrackingEvent, somente instalações que acompanham o navio são eleg
 
 ## Acompanhamento por instalação PWA
 
+### Identidade de instalação independente do Web Push
+
+Ship Tracking precisa continuar funcionando mesmo quando Web Push estiver desligado. Portanto,
+`installation_id` não pode existir somente em `push_installations`.
+
+A PWA já possui um UUID local estável de instalação. A sessão mobile deve passar a incorporar essa
+identidade:
+
+- ao criar a sessão, o cliente envia `device_id + installation_id`;
+- a API garante uma linha de `mobile_installations` vinculada ao `device_id`;
+- o cookie assinado passa a representar `device_id + installation_id + exp`;
+- endpoints de tracking resolvem ambos pela sessão e nunca aceitam escolher livremente outra instalação;
+- recuperar a sessão devolve a mesma instalação;
+- `push_installations` usa o mesmo `installation_id`, mas continua sendo opcional;
+- **Esquecer este aparelho** revoga a instalação mobile e seus trackings;
+- rotação/revogação do VIEW_SECRET revoga as instalações mobile daquele acesso e desativa os trackings
+  correspondentes.
+
+`mobile_installations` é identidade de aparelho/PWA, não uma PushSubscription. Isso permite:
+- tracking com push desligado;
+- recriar uma PushSubscription sem perder o acompanhamento;
+- manter isolamento por instalação mesmo quando a permissão de notificação nunca foi concedida.
+
 Criar persistência cloud conceitual `tracked_vessels`.
 
 Uma linha ativa representa:
@@ -300,6 +323,7 @@ GET    /api/v1/mobile/tracked-vessels
 POST   /api/v1/mobile/tracked-vessels
 DELETE /api/v1/mobile/tracked-vessels/{tracked_vessel_id}
 GET    /api/v1/mobile/tracked-vessels/{tracked_vessel_id}/events
+GET    /api/v1/mobile/tracked-vessels/events?after=<cursor>
 ```
 
 POST aceita somente um alvo visível/derivado de dado legítimo do PWA:
@@ -314,6 +338,15 @@ O servidor resolve `device_id` e `installation_id` pela sessão/instalação atu
 pode escolher outra instalação livremente.
 
 DELETE é idempotente para o mesmo tracking já desativado.
+
+O feed agregado `/tracked-vessels/events`:
+- é session/installation-scoped;
+- usa cursor de ingestão crescente;
+- entrega somente `VesselTrackingEvent` de trackings ativos e posteriores ao respectivo `started_at`;
+- existe para polling/aviso interno em foreground, evitando um request por navio acompanhado;
+- não substitui a timeline unificada por navio;
+- não duplica `ManeuverEvent`: esses continuam no feed existente, e o PWA decide o destino do aviso
+  conforme preferência geral + tracking ativo.
 
 ## VesselTrackingEvent Desktop → API
 
@@ -589,9 +622,15 @@ Ao tocar, abrir detalhe/timeline do navio acompanhado.
 
 ## PWA — timeline unificada
 
-A timeline de um navio acompanhado mistura, em ordem temporal/ingestão:
+A timeline de um navio acompanhado mistura:
 - ManeuverEvent;
 - VesselTrackingEvent.
+
+Como os dois tipos vivem em persistências diferentes, seus `ingestion_id` não são diretamente
+comparáveis. A ordem unificada é determinística por:
+1. `occurred_at` crescente;
+2. `ingested_at` crescente como desempate;
+3. `event_id` como último desempate estável.
 
 Exemplo:
 
@@ -685,6 +724,8 @@ Se notificações Web Push estiverem globalmente desativadas para a instalação
 
 ## Segurança
 
+- A sessão mobile autentica `device_id + installation_id`; o cliente não escolhe outra instalação nos endpoints de tracking.
+- `mobile_installations` existe independentemente de Web Push e é revogada em **Esquecer este aparelho**/rotação de acesso.
 - PWA nunca cria VesselTrackingEvent.
 - Somente Desktop autenticado cria eventos de tracking.
 - Tracking é installation-scoped.
@@ -769,6 +810,9 @@ As quatro categorias gerais da SPEC 021 continuam existindo e não são ampliada
 - janela Acompanhados funciona para presente e ausente.
 
 ### API
+- sessão mobile cria/recupera `mobile_installation` estável e assina `device_id + installation_id`;
+- tracking continua funcionando sem `push_installation` ativa;
+- uma sessão não acessa tracking de outra instalação do mesmo device;
 - POST de VesselTrackingEvent exige Device auth;
 - retry idêntico é idempotente;
 - payload divergente conflita;
@@ -820,6 +864,7 @@ As quatro categorias gerais da SPEC 021 continuam existindo e não são ampliada
 - [ ] Sem AIS/GPS ou inferência geográfica.
 - [ ] Retenção de eventos continua limitada a 30 dias.
 - [ ] Preferências permanecem isoladas por instalação.
+- [ ] Tracking funciona sem PushSubscription porque a identidade de instalação é independente do Web Push.
 
 ## Decisões fechadas
 

@@ -36,7 +36,11 @@ def reset_database():
         _ensure_roles(conn)
         conn.execute("drop schema if exists public cascade")
         conn.execute("create schema public")
-        for name in ("001_devices.sql", "008_vessel_tracking_events.sql"):
+        for name in (
+            "001_devices.sql",
+            "008_vessel_tracking_events.sql",
+            "009_vessel_tracking_retention.sql",
+        ):
             conn.execute((MIGRATIONS / name).read_text(encoding="utf-8"))
     yield
 
@@ -99,3 +103,41 @@ def test_postgres_tracking_event_payload_mismatch_does_not_overwrite():
     assert result.status is AcceptTrackingEventStatus.PAYLOAD_MISMATCH
     assert result.stored is not None
     assert result.stored.event.vessel_name == "NAVIO A"
+
+
+def test_postgres_tracking_retention_removes_only_events_older_than_30_days():
+    repository = repo()
+    old_id = "00000000-0000-4000-8000-000000000501"
+    recent_id = "00000000-0000-4000-8000-000000000502"
+    repository.accept_vessel_tracking_event_atomic(
+        "pecem-01", event(event_id=old_id)
+    )
+    repository.accept_vessel_tracking_event_atomic(
+        "pecem-01", event(event_id=recent_id)
+    )
+
+    assert DSN is not None
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(
+            "update public.vessel_tracking_events "
+            "set ingested_at = '2026-08-28T12:00:00Z' "
+            "where event_id = %s",
+            (old_id,),
+        )
+        conn.execute(
+            "update public.vessel_tracking_events "
+            "set ingested_at = '2026-09-27T12:00:00Z' "
+            "where event_id = %s",
+            (recent_id,),
+        )
+        deleted = conn.execute(
+            "select public.cleanup_vessel_tracking_retention("
+            "'2026-09-28T12:00:00Z'::timestamptz)"
+        ).fetchone()[0]
+        rows = conn.execute(
+            "select event_id from public.vessel_tracking_events "
+            "order by event_id"
+        ).fetchall()
+
+    assert deleted == 1
+    assert [str(row[0]) for row in rows] == [recent_id]
