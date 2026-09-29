@@ -50,7 +50,7 @@ export function TrackedVesselsPage({
   };
 
   return (
-    <section className="page-stack">
+    <section className="page-stack page-stack--continuous-scroll">
       <h1>Acompanhados</h1>
       <p className="page-intro">
         Navios acompanhados neste aparelho, inclusive quando não aparecem mais na planilha.

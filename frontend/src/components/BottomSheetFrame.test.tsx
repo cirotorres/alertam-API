@@ -1,8 +1,12 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 
 import { BottomSheetFrame } from "./BottomSheetFrame";
 
+
+afterEach(() => {
+  document.documentElement.classList.remove("has-open-bottom-sheet");
+});
 
 function renderFrame(onClose = vi.fn(), open = true) {
   const view = render(
@@ -18,6 +22,100 @@ function renderFrame(onClose = vi.fn(), open = true) {
   );
   return { ...view, onClose };
 }
+
+test("bottom_sheet_locks_document_only_while_open_and_cleans_up_on_unmount", () => {
+  const onClose = vi.fn();
+  const { rerender, unmount } = render(
+    <BottomSheetFrame
+      open
+      onClose={onClose}
+      ariaLabel="Detalhes de teste"
+      closeLabel="Fechar detalhes"
+    >
+      <p>Conteúdo</p>
+    </BottomSheetFrame>,
+  );
+
+  expect(document.documentElement).toHaveClass("has-open-bottom-sheet");
+
+  rerender(
+    <BottomSheetFrame
+      open={false}
+      onClose={onClose}
+      ariaLabel="Detalhes de teste"
+      closeLabel="Fechar detalhes"
+    >
+      <p>Conteúdo</p>
+    </BottomSheetFrame>,
+  );
+  expect(document.documentElement).not.toHaveClass("has-open-bottom-sheet");
+
+  rerender(
+    <BottomSheetFrame
+      open
+      onClose={onClose}
+      ariaLabel="Detalhes de teste"
+      closeLabel="Fechar detalhes"
+    >
+      <p>Conteúdo</p>
+    </BottomSheetFrame>,
+  );
+  expect(document.documentElement).toHaveClass("has-open-bottom-sheet");
+
+  unmount();
+  expect(document.documentElement).not.toHaveClass("has-open-bottom-sheet");
+});
+
+test("bottom_sheet_document_lock_is_reference_counted", () => {
+  const { rerender, unmount } = render(
+    <>
+      <BottomSheetFrame
+        open
+        onClose={() => undefined}
+        ariaLabel="Primeira sheet"
+        closeLabel="Fechar primeira"
+      >
+        <p>Primeira</p>
+      </BottomSheetFrame>
+      <BottomSheetFrame
+        open
+        onClose={() => undefined}
+        ariaLabel="Segunda sheet"
+        closeLabel="Fechar segunda"
+      >
+        <p>Segunda</p>
+      </BottomSheetFrame>
+    </>,
+  );
+
+  expect(document.documentElement).toHaveClass("has-open-bottom-sheet");
+
+  rerender(
+    <>
+      <BottomSheetFrame
+        open={false}
+        onClose={() => undefined}
+        ariaLabel="Primeira sheet"
+        closeLabel="Fechar primeira"
+      >
+        <p>Primeira</p>
+      </BottomSheetFrame>
+      <BottomSheetFrame
+        open
+        onClose={() => undefined}
+        ariaLabel="Segunda sheet"
+        closeLabel="Fechar segunda"
+      >
+        <p>Segunda</p>
+      </BottomSheetFrame>
+    </>,
+  );
+
+  expect(document.documentElement).toHaveClass("has-open-bottom-sheet");
+
+  unmount();
+  expect(document.documentElement).not.toHaveClass("has-open-bottom-sheet");
+});
 
 test("bottom_sheet_backdrop_and_close_button_close_the_frame", () => {
   const { onClose } = renderFrame();

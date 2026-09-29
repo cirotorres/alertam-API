@@ -9,6 +9,20 @@ import {
 import { useDismissDrag } from "../hooks/useDismissDrag";
 
 
+let openBottomSheetLocks = 0;
+
+function acquireDocumentLock() {
+  openBottomSheetLocks += 1;
+  document.documentElement.classList.add("has-open-bottom-sheet");
+}
+
+function releaseDocumentLock() {
+  openBottomSheetLocks = Math.max(0, openBottomSheetLocks - 1);
+  if (openBottomSheetLocks === 0) {
+    document.documentElement.classList.remove("has-open-bottom-sheet");
+  }
+}
+
 type BottomSheetFrameProps = {
   open: boolean;
   onClose: () => void;
@@ -47,6 +61,12 @@ export function BottomSheetFrame({
     onDismiss: onClose,
     canStart: canStartDrag,
   });
+
+  useEffect(() => {
+    if (!open) return;
+    acquireDocumentLock();
+    return releaseDocumentLock;
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;

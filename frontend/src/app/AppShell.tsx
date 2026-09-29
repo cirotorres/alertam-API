@@ -268,8 +268,16 @@ export function AppShell({
     rootPath,
     routePath("/alertas"),
     routePath("/historico"),
+    routePath("/acompanhados"),
     routePath("/tempo"),
   ].includes(location.pathname);
+
+  const bottomNavActive: BottomNavItem | null =
+    location.pathname === routePath("/acompanhados")
+      ? null
+      : location.pathname === routePath("/tempo")
+        ? "weather"
+        : activeBottomTab;
 
   const handleBottomTabChange = (tab: BottomNavItem) => {
     if (tab === "weather") {
@@ -327,7 +335,7 @@ export function AppShell({
       </main>
       {showBottomNav ? (
         <BottomNav
-          active={location.pathname === routePath("/tempo") ? "weather" : activeBottomTab}
+          active={bottomNavActive}
           onChange={handleBottomTabChange}
         />
       ) : null}

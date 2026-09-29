@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 import fixture from "../test/fixtures/mobile_snapshot_v1.json";
@@ -28,6 +28,10 @@ import {
 } from "../features/pairing/pairingStorage";
 import { AppRoutes } from "../app/router";
 import { StatusCards } from "../components/StatusCards";
+import {
+  StaticTrackingProvider,
+  type TrackingState,
+} from "../features/tracking/TrackingProvider";
 
 const pairing: Pairing = {
   deviceId: "pecem-01",
@@ -152,6 +156,60 @@ function renderRoute(
   };
 }
 
+function staticTrackingState(
+  isTracked: TrackingState["isTracked"],
+  trackings: TrackingState["trackings"] = [],
+): TrackingState {
+  return {
+    trackings,
+    status: "online",
+    newTrackingEvent: null,
+    mutationPending: false,
+    mutationError: null,
+    findTracking: vi.fn().mockReturnValue(null),
+    isTracked,
+    startTracking: vi.fn().mockResolvedValue(true),
+    stopTracking: vi.fn().mockResolvedValue(true),
+    refresh: vi.fn().mockResolvedValue(true),
+    clearMutationError: vi.fn(),
+  };
+}
+
+function renderMapWithTracking(
+  data: typeof response,
+  isTracked: TrackingState["isTracked"],
+  route = "/",
+  trackings: TrackingState["trackings"] = [],
+) {
+  return render(
+    <StaticSnapshotProvider
+      state={{
+        status: "online",
+        data,
+        refresh: () => undefined,
+      }}
+    >
+      <StaticEventProvider
+        state={{
+          events: [],
+          status: "online",
+          newEvent: null,
+          hasMore: false,
+          loadOlder: async () => false,
+        }}
+      >
+        <StaticPushProvider state={DEFAULT_PUSH_STATE}>
+          <StaticTrackingProvider state={staticTrackingState(isTracked, trackings)}>
+            <MemoryRouter initialEntries={[route]}>
+              <AppRoutes pairing={pairing} />
+            </MemoryRouter>
+          </StaticTrackingProvider>
+        </StaticPushProvider>
+      </StaticEventProvider>
+    </StaticSnapshotProvider>,
+  );
+}
+
 function renderConfig(
   pushState: PushState = DEFAULT_PUSH_STATE,
   onPairingCleared = vi.fn(),
@@ -186,6 +244,118 @@ function renderConfig(
   );
   return { onPairingCleared, unmount: view.unmount };
 }
+
+test("operational_list_marks_tracked_vessel_by_imo_without_changing_name", async () => {
+  const isTracked = vi.fn().mockImplementation((target) =>
+    typeof target !== "string" && target.vessel_imo === "1234567",
+  );
+  renderMapWithTracking(response, isTracked);
+
+  const name = await screen.findByText("NAVIO A");
+  const card = name.closest(".operational-card");
+
+  expect(name).toHaveTextContent("NAVIO A");
+  expect(card?.querySelector(".operational-card__tracking-star")).toHaveTextContent("★");
+  expect(isTracked).toHaveBeenCalledWith({
+    vessel_identity: "IMO:1234567",
+    vessel_imo: "1234567",
+    vessel_name: "NAVIO A",
+  });
+});
+
+test("operational_list_marks_tracked_vessel_with_name_fallback", async () => {
+  const noImoResponse = parseSnapshotReadResponse({
+    ...response,
+    snapshot: {
+      ...response.snapshot,
+      vessels: response.snapshot.vessels.map((vessel) => ({
+        ...vessel,
+        imo: null,
+      })),
+    },
+  });
+  const isTracked = vi.fn().mockImplementation((target) =>
+    typeof target !== "string" &&
+    target.vessel_identity === "NAME:NAVIO A",
+  );
+  renderMapWithTracking(noImoResponse, isTracked);
+
+  const name = await screen.findByText("NAVIO A");
+  const card = name.closest(".operational-card");
+
+  expect(name).toHaveTextContent("NAVIO A");
+  expect(card?.querySelector(".operational-card__tracking-star")).toHaveTextContent("★");
+  expect(isTracked).toHaveBeenCalledWith({
+    vessel_identity: "NAME:NAVIO A",
+    vessel_imo: null,
+    vessel_name: "NAVIO A",
+  });
+});
+
+test("tracked_vessels_route_keeps_footer_without_false_active_tab", async () => {
+  renderMapWithTracking(response, () => false, "/acompanhados");
+
+  expect(
+    await screen.findByRole("heading", { name: "Acompanhados" }),
+  ).toBeInTheDocument();
+
+  const nav = screen.getByRole("navigation", { name: "Navegação inferior" });
+  const buttons = within(nav).getAllByRole("button");
+
+  expect(buttons).toHaveLength(5);
+  expect(nav.querySelector('[aria-current="page"]')).toBeNull();
+
+  fireEvent.click(within(nav).getByRole("button", { name: "Tempo" }));
+  expect(
+    await screen.findByRole("heading", { name: "Tempo e mar" }),
+  ).toBeInTheDocument();
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Manobras confirmadas" }),
+  );
+  expect(
+    await screen.findByRole("heading", { name: "Mapa operacional" }),
+  ).toBeInTheDocument();
+});
+
+test("track_deep_link_neutralizes_alert_sheet_and_keeps_one_interactive_dialog", async () => {
+  const tracked = {
+    tracked_vessel_id: "10000000-0000-4000-8000-000000000099",
+    vessel_identity: "IMO:1234567",
+    vessel_imo: "1234567",
+    vessel_name: "NAVIO A",
+    started_at: "2026-09-29T03:00:00-03:00",
+    active: true,
+    stopped_at: null,
+    last_seen_at: "2026-09-29T03:05:00-03:00",
+    current: {
+      present: true,
+      status: "ATRACANDO",
+      section: "FUNDEADO",
+      berth: 2,
+      side: "BE",
+      eta: "29/09 05:30",
+      etb_ets: "29/09 06:30",
+      pob: "29/09 02:30",
+      pob_at: "2026-09-29T02:30:00-03:00",
+    },
+  } satisfies TrackingState["trackings"][number];
+
+  renderMapWithTracking(
+    response,
+    () => true,
+    `/acompanhados?track=${tracked.tracked_vessel_id}&event=${EVENT_PAGE.events[0]!.event_id}`,
+    [tracked],
+  );
+
+  expect(
+    await screen.findByRole("dialog", { name: "Detalhes do acompanhamento" }),
+  ).toBeInTheDocument();
+  expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  expect(
+    screen.queryByRole("dialog", { name: "Detalhes do alerta" }),
+  ).not.toBeInTheDocument();
+});
 
 test("alerts_and_history_use_distinct_views", async () => {
   const { unmount } = renderRoute("/alertas");

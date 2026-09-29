@@ -336,6 +336,66 @@ async function mockBrowserPush(page: Page) {
   });
 }
 
+async function expectOuterGutterScrollsPage(page: Page) {
+  const stack = page.locator(".page-stack--continuous-scroll");
+  await expect(stack).toBeVisible();
+  const metrics = await stack.evaluate((element) => ({
+    scrollHeight: element.scrollHeight,
+    clientHeight: element.clientHeight,
+  }));
+  expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
+
+  await stack.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  const box = await stack.boundingBox();
+  expect(box).not.toBeNull();
+
+  await page.mouse.move(4, Math.min((box?.y ?? 100) + 120, 700));
+  await page.mouse.wheel(0, 520);
+
+  await expect.poll(
+    () => stack.evaluate((element) => element.scrollTop),
+  ).toBeGreaterThan(0);
+}
+
+async function mockTrackedVesselsForScroll(page: Page, count = 8) {
+  const vessels = Array.from({ length: count }, (_, index) => {
+    const number = index + 1;
+    return {
+      ...trackedVesselFixture(),
+      tracked_vessel_id: `95000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
+      vessel_identity: `IMO:${1234567 + number}`,
+      vessel_imo: String(1234567 + number),
+      vessel_name: `NAVIO TRACK ${number}`,
+    };
+  });
+
+  await page.route("**/api/v1/mobile/tracked-vessels**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/tracked-vessels/events")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ events: [], newest_cursor: null }),
+      });
+      return;
+    }
+    if (
+      url.pathname.endsWith("/tracked-vessels") &&
+      route.request().method() === "GET"
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(vessels),
+      });
+      return;
+    }
+    await route.continue();
+  });
+}
+
 test("pairing removes token from url and renders operational data", async ({ page }) => {
   await mockSnapshot(page);
   await mockMobileSession(page);
@@ -1079,6 +1139,118 @@ async function mockTrackingApi(page: Page) {
   });
   return { tracked, trackingEvent, requests };
 }
+
+test("continuous scroll works from outer gutter on alerts history and tracked pages", async ({ page }, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "mobile-390",
+    "Continuous-scroll gesture runs once on the primary mobile viewport.",
+  );
+
+  await seedPairing(page);
+  await mockSnapshot(page);
+
+  const events = Array.from({ length: 8 }, (_, index) => {
+    const number = index + 1;
+    return maneuverEvent(
+      number,
+      `81000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
+      "CONFIRMED",
+      {
+        maneuverId: `82000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
+        vesselName: `NAVIO SCROLL ${number}`,
+      },
+    );
+  });
+  await mockManeuverEvents(page, eventPage(events));
+  await mockTrackedVesselsForScroll(page);
+
+  for (const route of ["/alertas", "/historico", "/acompanhados"]) {
+    await page.goto(route);
+    await expect(page.locator(".page-stack")).toBeVisible();
+    await expectOuterGutterScrollsPage(page);
+  }
+});
+
+test("bottom sheet locks background scroll and restores page position", async ({ page }, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "mobile-390",
+    "Bottom-sheet background lock runs once on the primary mobile viewport.",
+  );
+
+  await seedPairing(page);
+  await mockSnapshot(page);
+
+  const events = Array.from({ length: 8 }, (_, index) => {
+    const number = index + 1;
+    return maneuverEvent(
+      number,
+      `83000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
+      "CONFIRMED",
+      {
+        vesselName: `NAVIO LOCK ${number}`,
+      },
+    );
+  });
+  await mockManeuverEvents(page, eventPage(events));
+  await mockManeuverEventDetails(
+    page,
+    Object.fromEntries(
+      events.map((event) => [
+        event.event_id,
+        eventDetail(event.event_id, events),
+      ]),
+    ),
+  );
+
+  await page.goto("/alertas");
+  const stack = page.locator(".page-stack--continuous-scroll");
+  await expect(stack).toBeVisible();
+  await stack.evaluate((element) => {
+    element.scrollTop = Math.min(120, element.scrollHeight - element.clientHeight);
+  });
+  const before = await stack.evaluate((element) => element.scrollTop);
+  expect(before).toBeGreaterThan(0);
+
+  await page.locator(".timeline__action").nth(2).evaluate((element) => {
+    (element as HTMLElement).click();
+  });
+
+  const sheet = page.getByRole("dialog", { name: "Detalhes do alerta" });
+  await expect(sheet).toBeVisible();
+  await expect(page.locator("html")).toHaveClass(/has-open-bottom-sheet/);
+  await expect(page.locator(".mobile-content")).toHaveCSS("pointer-events", "none");
+  await expect(sheet).toHaveCSS("overscroll-behavior-y", "contain");
+
+  const backdrop = page.getByRole("button", {
+    name: "Fechar detalhes do alerta pela área externa",
+  });
+  const backdropBox = await backdrop.boundingBox();
+  expect(backdropBox).not.toBeNull();
+  await page.mouse.move(4, Math.min((backdropBox?.y ?? 0) + 120, 700));
+  await page.mouse.wheel(0, 600);
+  expect(await stack.evaluate((element) => element.scrollTop)).toBe(before);
+
+  await sheet.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  const sheetBox = await sheet.boundingBox();
+  expect(sheetBox).not.toBeNull();
+  await page.mouse.move(
+    (sheetBox?.x ?? 0) + (sheetBox?.width ?? 0) / 2,
+    (sheetBox?.y ?? 0) + Math.min((sheetBox?.height ?? 0) / 2, 180),
+  );
+  await page.mouse.wheel(0, 600);
+  expect(await stack.evaluate((element) => element.scrollTop)).toBe(before);
+
+  await page.getByRole("button", {
+    name: "Fechar detalhes do alerta",
+    exact: true,
+  }).click();
+
+  await expect(sheet).not.toBeVisible();
+  await expect(page.locator("html")).not.toHaveClass(/has-open-bottom-sheet/);
+  expect(await stack.evaluate((element) => element.scrollTop)).toBe(before);
+});
 
 test("tracked vessels page keeps absent vessel and deep link timeline works", async ({ page }) => {
   test.skip(

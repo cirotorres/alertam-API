@@ -20,7 +20,7 @@ export function AlertsPage() {
   };
 
   return (
-    <section className="page-stack">
+    <section className="page-stack page-stack--continuous-scroll">
       <h1>Alertas</h1>
       <p className="page-intro">
         Eventos operacionais recentes confirmados pelo AlertaM Desktop.

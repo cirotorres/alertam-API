@@ -20,7 +20,7 @@ export function HistoryPage() {
   };
 
   return (
-    <section className="page-stack">
+    <section className="page-stack page-stack--continuous-scroll">
       <h1>Histórico</h1>
       <p className="page-intro">
         Ciclos recentes de manobra e seus eventos operacionais.

@@ -15,6 +15,11 @@ import {
   departureForecast,
 } from "../features/vessels/projections";
 import { useShellContext } from "../app/AppShell";
+import { trackingIdentity } from "../api/trackingClient";
+import {
+  useOptionalTracking,
+  type TrackingState,
+} from "../features/tracking/TrackingProvider";
 
 export function MapPage() {
   const {
@@ -23,6 +28,7 @@ export function MapPage() {
     activeBottomTab: active,
   } = useShellContext();
   const snapshot = snapshotState.data?.snapshot ?? null;
+  const tracking = useOptionalTracking();
 
   const content = useMemo<Array<ManeuverV1 | VesselV1>>(() => {
     if (!snapshot) return [];
@@ -62,7 +68,13 @@ export function MapPage() {
           ) : (
             <ul>
               {content.map((item) =>
-                renderItem(active, item, snapshot, selectVessel),
+                renderItem(
+                  active,
+                  item,
+                  snapshot,
+                  selectVessel,
+                  tracking?.isTracked,
+                ),
               )}
             </ul>
           )}
@@ -87,11 +99,39 @@ function vesselSprite(vessel: VesselV1): string {
   return "/assets/navio.png";
 }
 
+function trackingTarget(vessel: VesselV1) {
+  return {
+    vessel_identity: trackingIdentity(vessel.imo, vessel.name),
+    vessel_imo: vessel.imo,
+    vessel_name: vessel.name,
+  };
+}
+
+function renderVesselName(
+  name: string,
+  tracked: boolean,
+) {
+  return (
+    <strong>
+      <span className="operational-card__name">{name}</span>
+      {tracked ? (
+        <span
+          className="operational-card__tracking-star"
+          aria-hidden="true"
+        >
+          ★
+        </span>
+      ) : null}
+    </strong>
+  );
+}
+
 function renderItem(
   tab: BottomTab,
   item: ManeuverV1 | VesselV1,
   snapshot: MobileSnapshotV1 | null,
   onSelect: (vessel: VesselV1) => void,
+  isTracked?: TrackingState["isTracked"],
 ) {
   if ("vessel_name" in item) {
     const vessel =
@@ -99,6 +139,7 @@ function renderItem(
       null;
     const movement =
       item.type === "ATRACACAO" ? "arrival" : "departure";
+    const tracked = vessel ? (isTracked?.(trackingTarget(vessel)) ?? false) : false;
 
     return (
       <li key={item.id}>
@@ -125,7 +166,7 @@ function renderItem(
             aria-hidden="true"
           />
           <span className="operational-card__body">
-            <strong>{item.vessel_name}</strong>
+            {renderVesselName(item.vessel_name, tracked)}
             <span>
               {item.pob ? `POB ${item.pob} · ` : ""}
               B: {item.berth ?? "—"}
@@ -138,6 +179,7 @@ function renderItem(
   }
 
   const time = tab === "anchored" ? item.eta : item.etb_ets;
+  const tracked = isTracked?.(trackingTarget(item)) ?? false;
 
   return (
     <li key={`${item.name}-${item.berth ?? "x"}`}>
@@ -157,7 +199,7 @@ function renderItem(
           aria-hidden="true"
         />
         <span className="operational-card__body">
-          <strong>{item.name}</strong>
+          {renderVesselName(item.name, tracked)}
           <span>
             {time ?? "Sem previsão"} · B: {item.berth ?? "—"}
           </span>

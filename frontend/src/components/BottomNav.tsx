@@ -2,7 +2,7 @@ export type BottomTab = "maneuvers" | "arrivals" | "departures" | "anchored";
 export type BottomNavItem = BottomTab | "weather";
 
 type BottomNavProps = {
-  active: BottomNavItem;
+  active: BottomNavItem | null;
   onChange: (value: BottomNavItem) => void;
 };
 
