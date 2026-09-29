@@ -30,3 +30,5 @@ frontend/vite.config.d.ts
 # Playwright
 frontend/test-results/
 frontend/playwright-report/
+
+.worktrees/
