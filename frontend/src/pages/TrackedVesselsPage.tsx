@@ -50,37 +50,39 @@ export function TrackedVesselsPage({
   };
 
   return (
-    <section className="page-stack page-stack--continuous-scroll">
-      <h1>Acompanhados</h1>
-      <p className="page-intro">
-        Navios acompanhados neste aparelho, inclusive quando não aparecem mais na planilha.
-      </p>
-      {tracking.trackings.length === 0 ? (
-        <p className="empty-state">
-          {tracking.status === "loading"
-            ? "Carregando acompanhamentos..."
-            : "Nenhum navio acompanhado neste aparelho."}
+    <>
+      <section className="page-stack page-stack--continuous-scroll">
+        <h1>Acompanhados</h1>
+        <p className="page-intro">
+          Navios acompanhados neste aparelho, inclusive quando não aparecem mais na planilha.
         </p>
-      ) : (
-        <ol className="timeline tracked-vessels-list">
-          {tracking.trackings.map((tracked) => (
-            <li key={tracked.tracked_vessel_id}>
-              <button
-                type="button"
-                className="timeline__action"
-                onClick={() => open(tracked.tracked_vessel_id)}
-              >
-                <strong>{tracked.vessel_name}</strong>
-                <span>{tracked.current?.present ? "Presente" : "Ausente"}</span>
-                <small>
-                  {berthLabel(tracked)}
-                  {tracked.current?.status ? ` · ${tracked.current.status}` : ""}
-                </small>
-              </button>
-            </li>
-          ))}
-        </ol>
-      )}
+        {tracking.trackings.length === 0 ? (
+          <p className="empty-state">
+            {tracking.status === "loading"
+              ? "Carregando acompanhamentos..."
+              : "Nenhum navio acompanhado neste aparelho."}
+          </p>
+        ) : (
+          <ol className="timeline tracked-vessels-list">
+            {tracking.trackings.map((tracked) => (
+              <li key={tracked.tracked_vessel_id}>
+                <button
+                  type="button"
+                  className="timeline__action"
+                  onClick={() => open(tracked.tracked_vessel_id)}
+                >
+                  <strong>{tracked.vessel_name}</strong>
+                  <span>{tracked.current?.present ? "Presente" : "Ausente"}</span>
+                  <small>
+                    {berthLabel(tracked)}
+                    {tracked.current?.status ? ` · ${tracked.current.status}` : ""}
+                  </small>
+                </button>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
       <TrackedVesselSheet
         tracked={selected}
         selectedEventId={eventId}
@@ -88,6 +90,6 @@ export function TrackedVesselsPage({
         onClose={close}
         timelineFetcher={timelineFetcher}
       />
-    </section>
+    </>
   );
 }

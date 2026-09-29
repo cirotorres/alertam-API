@@ -121,11 +121,13 @@ test("deep_link_opens_timeline_highlights_event_and_close_keeps_page", async () 
   ).not.toBeInTheDocument();
 });
 
-test("row_action_opens_bottom_sheet", async () => {
+test("row_action_opens_bottom_sheet_outside_scroll_surface", async () => {
   renderPage();
   fireEvent.click(screen.getByRole("button", { name: /NAVIO A.*Ausente/i }));
 
-  expect(
-    await screen.findByRole("dialog", { name: "Detalhes do acompanhamento" }),
-  ).toBeInTheDocument();
+  const dialog = await screen.findByRole("dialog", {
+    name: "Detalhes do acompanhamento",
+  });
+  expect(dialog).toBeInTheDocument();
+  expect(dialog.closest(".page-stack--continuous-scroll")).toBeNull();
 });

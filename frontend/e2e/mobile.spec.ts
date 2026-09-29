@@ -1171,6 +1171,26 @@ test("continuous scroll works from outer gutter on alerts history and tracked pa
   }
 });
 
+test("alerts history and tracked pages use a white review surface", async ({ page }, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "mobile-390",
+    "Review-surface color runs once on the primary mobile viewport.",
+  );
+
+  await seedPairing(page);
+  await mockSnapshot(page);
+  await mockManeuverEvents(page, eventPage([]));
+  await mockTrackedVesselsForScroll(page);
+
+  for (const route of ["/alertas", "/historico", "/acompanhados"]) {
+    await page.goto(route);
+    await expect(page.locator(".page-stack--continuous-scroll")).toHaveCSS(
+      "background-color",
+      "rgb(255, 255, 255)",
+    );
+  }
+});
+
 test("bottom sheet locks background scroll and restores page position", async ({ page }, testInfo) => {
   test.skip(
     testInfo.project.name !== "mobile-390",
