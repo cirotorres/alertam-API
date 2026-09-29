@@ -342,3 +342,29 @@ def test_foreground_feed_full_page_advances_only_to_last_delivered_event():
         "50000000-0000-4000-8000-000000000104"
     ]
     assert second["newest_cursor"] == 4
+
+
+def test_empty_tracking_feed_baseline_returns_zero_and_after_zero_reads_first_future_event():
+    repo = repository()
+    client = session_client(repo)
+    tracked = start_tracking(client)
+
+    baseline = client.get("/api/v1/mobile/tracked-vessels/events")
+    assert baseline.status_code == 200
+    assert baseline.json() == {"events": [], "newest_cursor": 0}
+
+    first = tracking_payload(
+        event_id="50000000-0000-4000-8000-000000000999",
+        occurred_at="2026-09-28T10:45:00-03:00",
+    )
+    assert post_tracking_event(client, first).status_code == 200
+
+    feed = client.get(
+        "/api/v1/mobile/tracked-vessels/events?after=0&limit=50"
+    )
+    assert feed.status_code == 200
+    assert feed.json()["newest_cursor"] == 1
+    assert feed.json()["events"][0]["tracked_vessel_id"] == tracked[
+        "tracked_vessel_id"
+    ]
+    assert feed.json()["events"][0]["event"]["event_id"] == first["event_id"]

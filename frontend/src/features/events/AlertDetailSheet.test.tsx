@@ -191,3 +191,82 @@ test("alert_detail_sheet_explains_retained_cycle_without_confirmed_event", () =>
   ).toBeInTheDocument();
   expect(screen.getAllByTestId("alert-timeline-event")).toHaveLength(2);
 });
+
+
+function alertTrackingControls(tracked = false) {
+  const record = tracked
+    ? {
+        tracked_vessel_id: "30000000-0000-4000-8000-000000000010",
+        vessel_identity: "NAME:NAVIO ALFA",
+        vessel_imo: null,
+        vessel_name: "NAVIO ALFA",
+        started_at: "2026-09-29T03:00:00-03:00",
+        active: true,
+        stopped_at: null,
+        last_seen_at: null,
+        current: null,
+      }
+    : null;
+  return {
+    findTracking: vi.fn().mockReturnValue(record),
+    mutationPending: false,
+    mutationError: null,
+    startTracking: vi.fn().mockResolvedValue(true),
+    stopTracking: vi.fn().mockResolvedValue(true),
+    clearMutationError: vi.fn(),
+  };
+}
+
+test("alert_detail_can_track_vessel_using_event_identity_even_if_absent_from_snapshot", () => {
+  const controls = alertTrackingControls(false);
+  render(
+    <AlertDetailSheet
+      open
+      state={state("ready", detail())}
+      selectedEventId={updated.event_id}
+      onClose={() => undefined}
+      onRetry={() => undefined}
+      trackingControls={controls}
+    />,
+  );
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "☆ Acompanhar navio" }),
+  );
+
+  expect(controls.startTracking).toHaveBeenCalledWith({
+    vessel_identity: "IMO:9876543",
+    vessel_imo: "9876543",
+    vessel_name: "NAVIO ALFA",
+  });
+});
+
+test("alert_detail_name_fallback_reuses_existing_tracking_instead_of_starting_second", () => {
+  const controls = alertTrackingControls(true);
+  const noImo = event(
+    "00000000-0000-4000-8000-000000001099",
+    9,
+    {
+      vessel_identity: "NAME:NAVIO ALFA",
+      vessel_imo: null,
+    },
+  );
+  render(
+    <AlertDetailSheet
+      open
+      state={state("ready", detail([noImo]))}
+      selectedEventId={noImo.event_id}
+      onClose={() => undefined}
+      onRetry={() => undefined}
+      trackingControls={controls}
+    />,
+  );
+
+  expect(screen.getByText(/identificação por nome exato/i)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Acompanhando/ }));
+
+  expect(controls.startTracking).not.toHaveBeenCalled();
+  expect(controls.stopTracking).toHaveBeenCalledWith(
+    "30000000-0000-4000-8000-000000000010",
+  );
+});

@@ -26,6 +26,7 @@ import { usePush } from "../features/push/PushProvider";
 import { useForegroundHeartbeat } from "../features/push/useForegroundHeartbeat";
 import { useSnapshotState } from "../features/snapshot/SnapshotProvider";
 import type { SnapshotState } from "../features/snapshot/useSnapshotPolling";
+import { useOptionalTracking } from "../features/tracking/TrackingProvider";
 import { VesselSheet } from "../features/vessels/VesselSheet";
 import { useVesselPhoto } from "../features/vessels/useVesselPhoto";
 
@@ -59,6 +60,7 @@ export function AppShell({
   const snapshotState = useSnapshotState();
   const eventState = useEventState();
   const pushState = usePush();
+  const trackingState = useOptionalTracking();
   const navigate = useNavigate();
   const location = useLocation();
   const eventId = new URLSearchParams(location.search).get("event");
@@ -265,6 +267,7 @@ export function AppShell({
           photo={vesselPhoto.photo}
           photoLoading={vesselPhoto.loading}
           photoError={vesselPhoto.error}
+          trackingControls={trackingState ?? undefined}
         />
       ) : null}
       <AlertDetailSheet
@@ -273,6 +276,7 @@ export function AppShell({
         selectedEventId={eventId}
         onClose={closeAlertDetail}
         onRetry={alertDetail.retry}
+        trackingControls={trackingState ?? undefined}
       />
     </div>
   );

@@ -2216,3 +2216,41 @@ textarea {
   margin: calc(var(--space-2) * -1);
   padding: var(--space-2);
 }
+
+
+.tracking-toggle {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: var(--space-3);
+}
+
+.tracking-toggle__button {
+  min-height: 44px;
+  width: 100%;
+  border: 1px solid var(--alertam-border);
+  border-radius: var(--radius-md);
+  background: var(--alertam-blue-100);
+  color: var(--alertam-blue-900);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tracking-toggle__button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.tracking-toggle__note,
+.tracking-toggle__error {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.tracking-toggle__note {
+  color: var(--alertam-muted);
+}
+
+.tracking-toggle__error {
+  color: var(--alertam-danger, #a61b1b);
+}

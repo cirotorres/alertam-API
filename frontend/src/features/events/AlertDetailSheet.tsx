@@ -4,6 +4,10 @@ import {
   projectAlertTimelineItem,
 } from "./alertDetailProjections";
 import type { AlertDetailState } from "./useAlertDetail";
+import {
+  TrackingToggle,
+  type TrackingControls,
+} from "../tracking/TrackingToggle";
 
 
 type AlertDetailSheetProps = {
@@ -12,6 +16,7 @@ type AlertDetailSheetProps = {
   selectedEventId: string | null;
   onClose: () => void;
   onRetry: () => void;
+  trackingControls?: TrackingControls;
 };
 
 function formatObservedAt(value: string): string {
@@ -89,6 +94,7 @@ export function AlertDetailSheet({
   selectedEventId,
   onClose,
   onRetry,
+  trackingControls,
 }: AlertDetailSheetProps) {
   const detail = state.detail;
   const selectedIndex =
@@ -134,6 +140,16 @@ export function AlertDetailSheet({
               events={detail.events}
               selectedIndex={selectedIndex}
             />
+            {trackingControls ? (
+              <TrackingToggle
+                controls={trackingControls}
+                target={{
+                  vessel_identity: selectedEvent.vessel_identity,
+                  vessel_imo: selectedEvent.vessel_imo,
+                  vessel_name: selectedEvent.vessel_name,
+                }}
+              />
+            ) : null}
             {!detail.events.some((event) => event.event_type === "CONFIRMED") ? (
               <p className="alert-detail-sheet__baseline-note">
                 Esta manobra já estava em andamento quando o AlertaM iniciou.

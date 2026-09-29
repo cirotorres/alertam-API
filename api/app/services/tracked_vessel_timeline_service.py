@@ -81,8 +81,11 @@ class TrackedVesselTimelineService:
         if after is None:
             return TrackingForegroundFeedResponse(
                 events=[],
-                newest_cursor=self._repository.latest_tracking_event_cursor(
-                    principal.device_id
+                newest_cursor=(
+                    self._repository.latest_tracking_event_cursor(
+                        principal.device_id
+                    )
+                    or 0
                 ),
             )
 

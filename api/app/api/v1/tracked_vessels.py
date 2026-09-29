@@ -36,7 +36,7 @@ def create_tracked_vessels_router(
         response_model=TrackingForegroundFeedResponse,
     )
     def get_tracking_events_feed(
-        after: int | None = Query(default=None, ge=1),
+        after: int | None = Query(default=None, ge=0),
         limit: int = Query(default=50, ge=1, le=100),
         principal: MobileSessionPrincipal = Depends(auth),
     ) -> TrackingForegroundFeedResponse:

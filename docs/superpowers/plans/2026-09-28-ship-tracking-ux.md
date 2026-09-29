@@ -46,12 +46,12 @@ combina o feed existente de ManeuverEvent com o feed de VesselTrackingEvent para
 - Methods: `start(ship, observed_at)`, `stop(identity)`, `is_tracked(identity)`, `update_snapshot(snapshot)`, `list_active()`.
 - Persistência independente de tracking PWA, sem TTL.
 
-- [ ] **Step 1:** RED acompanhar/persistir/reabrir e parar manualmente.
-- [ ] **Step 2:** RED ausência atualizar present=false/last_seen sem desativar.
-- [ ] **Step 3:** RED NAME → IMO preservar um único favorito por match exato.
-- [ ] **Step 4:** RED snapshot com navio presente atualizar status/berth/pob/last_seen.
-- [ ] **Step 5:** Implementar store atômico e service.
-- [ ] **Step 6:** Rodar testes focados + suíte Desktop.
+- [x] **Step 1:** RED acompanhar/persistir/reabrir e parar manualmente.
+- [x] **Step 2:** RED ausência atualizar present=false/last_seen sem desativar.
+- [x] **Step 3:** RED NAME → IMO preservar um único favorito por match exato.
+- [x] **Step 4:** RED snapshot com navio presente atualizar status/berth/pob/last_seen.
+- [x] **Step 5:** Implementar store atômico e service.
+- [x] **Step 6:** Rodar testes focados + suíte Desktop.
 ### Task 2: Desktop — ficha, janela Acompanhados, estrela e timeline local
 
 **Files:**
@@ -68,12 +68,12 @@ combina o feed existente de ManeuverEvent com o feed de VesselTrackingEvent para
 - Acompanhados é Toplevel único não modal.
 - Timeline local une ManeuverEvent ledger + VesselTrackingEvent ledger por occurred_at/observed order.
 
-- [ ] **Step 1:** RED botão ☆ acompanhar → ★ e fallback por nome visível quando IMO ausente.
-- [ ] **Step 2:** RED janela listar presente/ausente, último status/berço/POB/visto e parar acompanhamento.
-- [ ] **Step 3:** RED timeline local conter ambos tipos sem duplicar mudança de manobra.
-- [ ] **Step 4:** RED estrela nas listas/mapa/tooltip sem alterar cores operacionais.
-- [ ] **Step 5:** Implementar wiring e atualização em SNAPSHOT_READY.
-- [ ] **Step 6:** Rodar `make test` e `make test-ui XEPHYR_N=27`.
+- [x] **Step 1:** RED botão ☆ acompanhar → ★ e fallback por nome visível quando IMO ausente.
+- [x] **Step 2:** RED janela listar presente/ausente, último status/berço/POB/visto e parar acompanhamento.
+- [x] **Step 3:** RED timeline local conter ambos tipos sem duplicar mudança de manobra.
+- [x] **Step 4:** RED estrela nas listas/mapa/tooltip sem alterar cores operacionais.
+- [x] **Step 5:** Implementar wiring e atualização em SNAPSHOT_READY.
+- [ ] **Step 6:** `make test` concluído; `make test-ui XEPHYR_N=27` delegado por Ciro para validação manual ao fim do Plano 3.
 ### Task 3: Tracking client/provider PWA
 
 **Files:**
@@ -89,12 +89,12 @@ combina o feed existente de ManeuverEvent com o feed de VesselTrackingEvent para
   `newTrackingEvent`, refresh/retry state.
 - Poll do feed agregado usa cursor e cadência de 30 s, igual ao polling mobile atual.
 
-- [ ] **Step 1:** RED Zod strict para tracked vessel, tracking event e timeline union discriminada.
-- [ ] **Step 2:** RED start/stop idempotente, 401 reset pairing, 503 erro recuperável.
-- [ ] **Step 3:** RED polling cursor sem replay na montagem e emitindo somente evento novo posterior.
-- [ ] **Step 4:** RED push off não impedir list/start/stop.
-- [ ] **Step 5:** Implementar TrackingProvider acima de AppRoutes e abaixo da sessão.
-- [ ] **Step 6:** Rodar Vitest focado + build.
+- [x] **Step 1:** RED Zod strict para tracked vessel, tracking event e timeline union discriminada.
+- [x] **Step 2:** RED start/stop idempotente, 401 reset pairing, 503 erro recuperável.
+- [x] **Step 3:** RED polling cursor sem replay na montagem e emitindo somente evento novo posterior.
+- [x] **Step 4:** RED push off não impedir list/start/stop.
+- [x] **Step 5:** Implementar TrackingProvider acima de AppRoutes e abaixo da sessão.
+- [x] **Step 6:** Rodar Vitest focado + build.
 ### Task 4: Ações acompanhar na VesselSheet e AlertDetailSheet
 
 **Files:**
@@ -108,13 +108,13 @@ combina o feed existente de ManeuverEvent com o feed de VesselTrackingEvent para
 - AlertDetailSheet target vem do evento selecionado, mesmo que navio não esteja no snapshot.
 - Botão: ☆ Acompanhar navio / ★ Acompanhando / Parar de acompanhar.
 
-- [ ] **Step 1:** RED VesselSheet acompanhar/parar e estado loading/erro.
-- [ ] **Step 2:** RED AlertDetailSheet acompanhar navio ausente usando vessel_identity/IMO/name do evento.
-- [ ] **Step 3:** RED navio sem IMO mostrar nota discreta de identidade por nome.
-- [ ] **Step 4:** RED promoção para IMO não criar segundo botão/segundo tracking.
-- [ ] **Step 5:** RED falha/offline no toggle manter o último estado confirmado e mostrar erro recuperável, sem falso sucesso otimista.
-- [ ] **Step 6:** Implementar callbacks/provider sem acoplar rede às sheets.
-- [ ] **Step 7:** Rodar sheets/provider tests + build.
+- [x] **Step 1:** RED VesselSheet acompanhar/parar e estado loading/erro.
+- [x] **Step 2:** RED AlertDetailSheet acompanhar navio ausente usando vessel_identity/IMO/name do evento.
+- [x] **Step 3:** RED navio sem IMO mostrar nota discreta de identidade por nome.
+- [x] **Step 4:** RED promoção para IMO não criar segundo botão/segundo tracking.
+- [x] **Step 5:** RED falha/offline no toggle manter o último estado confirmado e mostrar erro recuperável, sem falso sucesso otimista.
+- [x] **Step 6:** Implementar callbacks/provider sem acoplar rede às sheets.
+- [x] **Step 7:** Rodar sheets/provider tests + build.
 ### Task 5: Página Acompanhados, timeline unificada e deep links
 
 **Files:**

@@ -5,6 +5,7 @@ import { EventProvider } from "../features/events/EventProvider";
 import { PairingGate } from "../features/pairing/PairingGate";
 import { PushProvider } from "../features/push/PushProvider";
 import { SnapshotProvider } from "../features/snapshot/SnapshotProvider";
+import { TrackingProvider } from "../features/tracking/TrackingProvider";
 import { AppRoutes } from "./router";
 
 export function App() {
@@ -36,15 +37,20 @@ function AppContent() {
             sessionReady={sessionReady}
             onAccessRevoked={resetPairing}
           >
-            <PushProvider
+            <TrackingProvider
               sessionReady={sessionReady}
               onAccessRevoked={resetPairing}
             >
-              <AppRoutes
-                pairing={pairing}
-                onPairingCleared={resetPairing}
-              />
-            </PushProvider>
+              <PushProvider
+                sessionReady={sessionReady}
+                onAccessRevoked={resetPairing}
+              >
+                <AppRoutes
+                  pairing={pairing}
+                  onPairingCleared={resetPairing}
+                />
+              </PushProvider>
+            </TrackingProvider>
           </EventProvider>
         </SnapshotProvider>
       )}

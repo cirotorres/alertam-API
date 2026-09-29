@@ -237,3 +237,104 @@ test("long_downward_drag_dismisses_vessel_sheet", async () => {
 
   await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
 });
+
+
+function trackingControls(options: {
+  tracked?: boolean;
+  error?: string | null;
+  pending?: boolean;
+} = {}) {
+  const tracked = options.tracked
+    ? {
+        tracked_vessel_id: "30000000-0000-4000-8000-000000000001",
+        vessel_identity: "NAME:NAVIO A",
+        vessel_imo: null,
+        vessel_name: "NAVIO A",
+        started_at: "2026-09-29T03:00:00-03:00",
+        active: true,
+        stopped_at: null,
+        last_seen_at: null,
+        current: null,
+      }
+    : null;
+  return {
+    findTracking: vi.fn().mockReturnValue(tracked),
+    mutationPending: options.pending ?? false,
+    mutationError: options.error ?? null,
+    startTracking: vi.fn().mockResolvedValue(true),
+    stopTracking: vi.fn().mockResolvedValue(true),
+    clearMutationError: vi.fn(),
+  };
+}
+
+test("vessel_sheet_starts_tracking_from_current_vessel_identity", () => {
+  const controls = trackingControls();
+  render(
+    <VesselSheet
+      vessel={vessel}
+      open
+      onClose={() => undefined}
+      trackingControls={controls}
+    />,
+  );
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "☆ Acompanhar navio" }),
+  );
+
+  expect(controls.startTracking).toHaveBeenCalledWith({
+    vessel_identity: "IMO:1234567",
+    vessel_imo: "1234567",
+    vessel_name: "NAVIO A",
+  });
+});
+
+test("vessel_sheet_uses_confirmed_promoted_tracking_and_stops_same_record", () => {
+  const controls = trackingControls({ tracked: true });
+  render(
+    <VesselSheet
+      vessel={vessel}
+      open
+      onClose={() => undefined}
+      trackingControls={controls}
+    />,
+  );
+
+  fireEvent.click(
+    screen.getByRole("button", { name: /Acompanhando/ }),
+  );
+
+  expect(controls.startTracking).not.toHaveBeenCalled();
+  expect(controls.stopTracking).toHaveBeenCalledWith(
+    "30000000-0000-4000-8000-000000000001",
+  );
+});
+
+test("vessel_sheet_name_fallback_is_explicit_and_error_preserves_button_state", () => {
+  const controls = trackingControls({
+    error: "Não foi possível salvar o acompanhamento agora.",
+  });
+  render(
+    <VesselSheet
+      vessel={{ ...vessel, imo: null, name: "Navio Sem IMO" }}
+      open
+      onClose={() => undefined}
+      trackingControls={controls}
+    />,
+  );
+
+  expect(screen.getByText(/identificação por nome exato/i)).toBeInTheDocument();
+  expect(screen.getByRole("alert")).toHaveTextContent(/não foi possível/i);
+  expect(
+    screen.getByRole("button", { name: "☆ Acompanhar navio" }),
+  ).toBeInTheDocument();
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "☆ Acompanhar navio" }),
+  );
+  expect(controls.startTracking).toHaveBeenCalledWith({
+    vessel_identity: "NAME:NAVIO SEM IMO",
+    vessel_imo: null,
+    vessel_name: "Navio Sem IMO",
+  });
+});

@@ -1,5 +1,10 @@
 import type { VesselPhotoResponse, VesselV1 } from "../../api/contract";
+import { trackingIdentity } from "../../api/trackingClient";
 import { BottomSheetFrame } from "../../components/BottomSheetFrame";
+import {
+  TrackingToggle,
+  type TrackingControls,
+} from "../tracking/TrackingToggle";
 
 type VesselSheetProps = {
   vessel: VesselV1;
@@ -8,6 +13,7 @@ type VesselSheetProps = {
   photo?: VesselPhotoResponse | null;
   photoLoading?: boolean;
   photoError?: "temporary" | null;
+  trackingControls?: TrackingControls;
 };
 
 function Detail({ label, value }: { label: string; value: string | number | null }) {
@@ -27,6 +33,7 @@ export function VesselSheet({
   photo = null,
   photoLoading = false,
   photoError = null,
+  trackingControls,
 }: VesselSheetProps) {
   return (
     <BottomSheetFrame
@@ -77,6 +84,17 @@ export function VesselSheet({
         <p className="vessel-sheet__photo-status" role="status">
           Sem foto disponível para este navio.
         </p>
+      ) : null}
+
+      {trackingControls ? (
+        <TrackingToggle
+          controls={trackingControls}
+          target={{
+            vessel_identity: trackingIdentity(vessel.imo, vessel.name),
+            vessel_imo: vessel.imo,
+            vessel_name: vessel.name,
+          }}
+        />
       ) : null}
 
       <dl className="vessel-sheet__details">
