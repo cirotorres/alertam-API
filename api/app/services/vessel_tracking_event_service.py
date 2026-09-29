@@ -26,10 +26,12 @@ class VesselTrackingEventService:
         repository: AlertaRepository,
         *,
         project_event: Callable[[StoredVesselTrackingEvent], None] | None = None,
+        dispatch_event: Callable[[StoredVesselTrackingEvent], None] | None = None,
     ) -> None:
         self._repository = repository
         self._auth = DeviceAuthService(repository)
         self._project_event = project_event
+        self._dispatch_event = dispatch_event
 
     def authenticate_device(
         self,
@@ -62,6 +64,19 @@ class VesselTrackingEventService:
                     self._project_event(result.stored)
                 except PersistenceUnavailableError as exc:
                     raise PersistenceUnavailableApiError() from exc
+            if (
+                result.status is AcceptTrackingEventStatus.ACCEPTED
+                and self._dispatch_event is not None
+            ):
+                try:
+                    self._dispatch_event(result.stored)
+                except Exception as exc:  # noqa: BLE001
+                    import logging
+                    logging.getLogger(__name__).error(
+                        "Falha no dispatch pós-persistência de "
+                        "VesselTrackingEvent error_type=%s",
+                        type(exc).__name__,
+                    )
             return VesselTrackingEventAcceptedResponse(
                 status=result.status.value,
                 ingestion_id=result.stored.ingestion_id,

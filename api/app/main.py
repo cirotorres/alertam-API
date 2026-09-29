@@ -17,8 +17,12 @@ from app.core.logging import (
     configure_logging,
 )
 from app.repositories.events import AlertaRepository, StoredManeuverEvent
+from app.repositories.tracking import StoredVesselTrackingEvent
 from app.repositories.factory import create_devices_repository
 from app.services.push_dispatch_service import PushDispatchService, PushGateway
+from app.services.tracking_push_dispatch_service import (
+    TrackingPushDispatchService,
+)
 from app.services.vessel_photo_service import (
     VesselPhotoLookup,
     VesselPhotoService,
@@ -33,6 +37,9 @@ def create_app(
     clock: Callable[[], datetime] | None = None,
     vessel_photo_service: VesselPhotoLookup | None = None,
     dispatch_event: Callable[[StoredManeuverEvent], None] | None = None,
+    dispatch_tracking_event: Callable[
+        [StoredVesselTrackingEvent], None
+    ] | None = None,
     web_push_gateway: PushGateway | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings()
@@ -60,20 +67,37 @@ def create_app(
     )
 
     resolved_dispatch_event = dispatch_event
-    if resolved_dispatch_event is None and resolved_settings.web_push_enabled:
+    resolved_dispatch_tracking_event = dispatch_tracking_event
+    if resolved_settings.web_push_enabled and (
+        resolved_dispatch_event is None
+        or resolved_dispatch_tracking_event is None
+    ):
         resolved_gateway = web_push_gateway or WebPushGateway(
             vapid_private_key=resolved_settings.vapid_private_key,
             vapid_subject=resolved_settings.vapid_subject,
         )
-        push_dispatcher = PushDispatchService(
-            devices_repository,
-            resolved_gateway,
-            foreground_fresh_seconds=(
-                resolved_settings.push_foreground_fresh_seconds
-            ),
-            clock=clock,
-        )
-        resolved_dispatch_event = push_dispatcher.dispatch_event
+        if resolved_dispatch_event is None:
+            push_dispatcher = PushDispatchService(
+                devices_repository,
+                resolved_gateway,
+                foreground_fresh_seconds=(
+                    resolved_settings.push_foreground_fresh_seconds
+                ),
+                clock=clock,
+            )
+            resolved_dispatch_event = push_dispatcher.dispatch_event
+        if resolved_dispatch_tracking_event is None:
+            tracking_push_dispatcher = TrackingPushDispatchService(
+                devices_repository,
+                resolved_gateway,
+                foreground_fresh_seconds=(
+                    resolved_settings.push_foreground_fresh_seconds
+                ),
+                clock=clock,
+            )
+            resolved_dispatch_tracking_event = (
+                tracking_push_dispatcher.dispatch_event
+            )
 
     application.include_router(
         create_v1_router(
@@ -85,6 +109,7 @@ def create_app(
             vapid_public_key=resolved_settings.vapid_public_key,
             clock=clock,
             dispatch_event=resolved_dispatch_event,
+            dispatch_tracking_event=resolved_dispatch_tracking_event,
         )
     )
 

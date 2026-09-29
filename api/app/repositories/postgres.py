@@ -37,6 +37,8 @@ from app.repositories.tracking import (
     InstallationTrackingEventRecord,
     StoredVesselTrackingEvent,
     TrackedVesselRecord,
+    TrackingPushDelivery,
+    TrackingPushDeliveryStatus,
     VesselEventRecord,
     VesselEvidence,
 )
@@ -762,6 +764,93 @@ class PostgresDeviceRepository:
             raise PersistenceUnavailableError() from exc
         return tuple(result)
 
+    def find_active_tracked_vessel_for_event(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        *,
+        vessel_identity: str,
+        vessel_imo: str | None,
+        vessel_name: str,
+        occurred_at: datetime,
+    ) -> TrackedVesselRecord | None:
+        normalized_name = " ".join(vessel_name.upper().split())
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                if vessel_imo is not None:
+                    row = conn.execute(
+                        """
+                        select tracked_vessel_id, device_id, installation_id,
+                               vessel_identity, vessel_imo, vessel_name,
+                               started_at, active, stopped_at, last_seen_at, current
+                        from public.tracked_vessels
+                        where device_id = %s
+                          and installation_id = %s
+                          and active = true
+                          and started_at <= %s
+                          and (
+                              vessel_identity = %s
+                              or vessel_imo = %s
+                              or (
+                                  vessel_imo is null
+                                  and regexp_replace(
+                                      upper(trim(vessel_name)),
+                                      '[[:space:]]+',
+                                      ' ',
+                                      'g'
+                                  ) = %s
+                              )
+                          )
+                        order by started_at asc
+                        limit 1
+                        """,
+                        (
+                            device_id,
+                            installation_id,
+                            occurred_at,
+                            vessel_identity,
+                            vessel_imo,
+                            normalized_name,
+                        ),
+                    ).fetchone()
+                else:
+                    row = conn.execute(
+                        """
+                        select tracked_vessel_id, device_id, installation_id,
+                               vessel_identity, vessel_imo, vessel_name,
+                               started_at, active, stopped_at, last_seen_at, current
+                        from public.tracked_vessels
+                        where device_id = %s
+                          and installation_id = %s
+                          and active = true
+                          and started_at <= %s
+                          and (
+                              vessel_identity = %s
+                              or (
+                                  vessel_imo is null
+                                  and regexp_replace(
+                                      upper(trim(vessel_name)),
+                                      '[[:space:]]+',
+                                      ' ',
+                                      'g'
+                                  ) = %s
+                              )
+                          )
+                        order by started_at asc
+                        limit 1
+                        """,
+                        (
+                            device_id,
+                            installation_id,
+                            occurred_at,
+                            vessel_identity,
+                            normalized_name,
+                        ),
+                    ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._tracked_vessel_from_row(row)
+
     def accept_vessel_tracking_event_atomic(
         self,
         device_id: str,
@@ -1033,6 +1122,68 @@ class PostgresDeviceRepository:
         except psycopg.Error as exc:
             raise PersistenceUnavailableError() from exc
         return tuple(self._push_installation_from_row(row) for row in rows)
+
+    def claim_tracking_push_delivery(
+        self,
+        event_id: str | UUID,
+        installation_id: UUID,
+        *,
+        lease_seconds: int = 8,
+    ) -> bool:
+        return self._call_boolean_rpc(
+            """
+            select claimed
+            from public.claim_vessel_tracking_delivery(%s, %s, %s)
+            """,
+            (event_id, installation_id, lease_seconds),
+            "claimed",
+        )
+
+    def set_tracking_push_delivery_status(
+        self,
+        event_id: str | UUID,
+        installation_id: UUID,
+        status: TrackingPushDeliveryStatus,
+    ) -> None:
+        self._call_boolean_rpc(
+            """
+            select updated
+            from public.set_vessel_tracking_delivery_status(%s, %s, %s)
+            """,
+            (event_id, installation_id, status.value),
+            "updated",
+        )
+
+    def get_tracking_push_delivery(
+        self,
+        event_id: str | UUID,
+        installation_id: UUID,
+    ) -> TrackingPushDelivery | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select event_id, installation_id, status,
+                           claimed_at, updated_at
+                    from public.vessel_tracking_deliveries
+                    where event_id = %s and installation_id = %s
+                    """,
+                    (event_id, installation_id),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        if row is None:
+            return None
+        try:
+            return TrackingPushDelivery(
+                event_id=UUID(str(row[0])),
+                installation_id=UUID(str(row[1])),
+                status=TrackingPushDeliveryStatus(str(row[2])),
+                claimed_at=self._aware_datetime(row[3]),
+                updated_at=self._aware_datetime(row[4]),
+            )
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
 
     def claim_push_delivery(
         self,

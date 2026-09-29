@@ -2,9 +2,9 @@
 
 | Campo | Valor |
 |---|---|
-| Status | Plano 1 — Core Events concluído e validado; Plano 2 — Installations & Dispatch é o próximo |
+| Status | Planos 1 e 2 concluídos e validados; Plano 3 — Desktop & PWA UX é o próximo |
 | Criado em | 2026-09-28 |
-| Atualizado em | 2026-09-28 |
+| Atualizado em | 2026-09-29 |
 | Escopo | AlertaM Desktop + FastAPI/Supabase + PWA React/Vite |
 | Repositórios | `/home/ciro/dev/prog/alertamaritimo` + `/home/ciro/dev/prog/alertamaritimoAPI` |
 | Dependências | SPEC 021 + SPEC 022 |

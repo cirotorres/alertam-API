@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -178,3 +179,34 @@ def test_postgres_mobile_revoke_deactivates_only_that_installation_tracking():
     )
     assert a is not None and a.active is False
     assert b is not None and b.active is True
+
+
+def test_postgres_tracking_lookup_for_maneuver_push_respects_started_at():
+    repository = repo()
+    tracked = repository.upsert_tracked_vessel(
+        "pecem-01",
+        INSTALL_A,
+        evidence(identity="IMO:1234567", imo="1234567"),
+    )
+    assert tracked is not None
+
+    before = repository.find_active_tracked_vessel_for_event(
+        "pecem-01",
+        INSTALL_A,
+        vessel_identity="IMO:1234567",
+        vessel_imo="1234567",
+        vessel_name="NAVIO A",
+        occurred_at=tracked.started_at - timedelta(microseconds=1),
+    )
+    equal = repository.find_active_tracked_vessel_for_event(
+        "pecem-01",
+        INSTALL_A,
+        vessel_identity="IMO:1234567",
+        vessel_imo="1234567",
+        vessel_name="NAVIO A",
+        occurred_at=tracked.started_at,
+    )
+
+    assert before is None
+    assert equal is not None
+    assert equal.tracked_vessel_id == tracked.tracked_vessel_id

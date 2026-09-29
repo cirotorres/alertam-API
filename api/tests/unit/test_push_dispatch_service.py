@@ -14,6 +14,7 @@ from app.repositories.events import (
     PushPreferences,
 )
 from app.repositories.memory import MemoryDeviceRepository
+from app.repositories.tracking import VesselEvidence
 from app.services.push_dispatch_service import (
     PushDispatchService,
     build_push_message,
@@ -211,3 +212,129 @@ def test_build_push_message_contains_only_public_payload_fields():
     assert "NAVIO A" in message["body"]
     assert "14:30 → 15:00" in message["body"]
     assert message["url"].endswith(str(event().event_id))
+
+
+def track(repo, current, *, started_at=T0):
+    current[0] = started_at
+    assert repo.ensure_mobile_installation("pecem-01", INSTALL) is not None
+    tracked = repo.upsert_tracked_vessel(
+        "pecem-01",
+        INSTALL,
+        VesselEvidence(
+            vessel_identity="NAME:NAVIO A",
+            vessel_imo=None,
+            vessel_name="NAVIO A",
+            current={
+                "present": True,
+                "status": "PREVISTO",
+                "section": "PREVISTO",
+                "berth": 4,
+                "side": None,
+                "eta": None,
+                "etb_ets": None,
+                "pob": "15:00",
+                "pob_at": None,
+            },
+            observed_at=started_at,
+        ),
+    )
+    assert tracked is not None
+    return tracked
+
+
+def test_disabled_general_preference_is_eligible_via_active_tracking():
+    repo, current, stored, gateway, service = prepared()
+    subscribe(repo)
+    repo.update_push_preferences(
+        "pecem-01",
+        INSTALL,
+        PushPreferences(confirmed=False),
+    )
+    tracked = track(repo, current, started_at=T0)
+    current[0] = T0 + timedelta(seconds=76)
+
+    service.dispatch_event(stored)
+
+    assert len(gateway.calls) == 1
+    payload = gateway.calls[0][1]
+    assert payload["url"] == (
+        f"/acompanhados?track={tracked.tracked_vessel_id}"
+        f"&event={stored.event.event_id}"
+    )
+    delivery = repo.get_push_delivery(stored.event.event_id, INSTALL)
+    assert delivery is not None
+    assert delivery.status is PushDeliveryStatus.DELIVERED
+
+
+def test_general_preference_and_tracking_still_send_once_to_canonical_alert_url():
+    repo, current, stored, gateway, service = prepared()
+    subscribe(repo)
+    track(repo, current, started_at=T0)
+    current[0] = T0 + timedelta(seconds=76)
+
+    service.dispatch_event(stored)
+    service.dispatch_event(stored)
+
+    assert len(gateway.calls) == 1
+    assert gateway.calls[0][1]["url"] == f"/alertas?event={stored.event.event_id}"
+
+
+def test_tracking_started_after_event_does_not_replay_when_general_preference_is_off():
+    repo, current, stored, gateway, service = prepared()
+    subscribe(repo)
+    repo.update_push_preferences(
+        "pecem-01",
+        INSTALL,
+        PushPreferences(confirmed=False),
+    )
+    track(repo, current, started_at=T0 + timedelta(seconds=1))
+    current[0] = T0 + timedelta(seconds=76)
+
+    service.dispatch_event(stored)
+
+    assert gateway.calls == []
+    delivery = repo.get_push_delivery(stored.event.event_id, INSTALL)
+    assert delivery is not None
+    assert delivery.status is PushDeliveryStatus.IGNORED_PREFERENCE
+
+
+def test_tracking_without_push_subscription_creates_no_maneuver_delivery():
+    repo, current, stored, gateway, service = prepared()
+    track(repo, current, started_at=T0)
+    current[0] = T0 + timedelta(seconds=76)
+
+    service.dispatch_event(stored)
+
+    assert gateway.calls == []
+    assert repo.get_push_delivery(stored.event.event_id, INSTALL) is None
+
+
+def test_inactive_push_installation_is_not_reactivated_by_tracking_eligibility():
+    repo, current, stored, gateway, service = prepared()
+    subscribe(repo)
+    track(repo, current, started_at=T0)
+    assert repo.deactivate_push_installation("pecem-01", INSTALL) is True
+    current[0] = T0 + timedelta(seconds=76)
+
+    service.dispatch_event(stored)
+
+    assert gateway.calls == []
+    assert repo.get_push_delivery(stored.event.event_id, INSTALL) is None
+
+
+def test_general_category_delivery_does_not_depend_on_tracking_lookup():
+    repo, current, stored, gateway, service = prepared()
+    subscribe(repo)
+    current[0] = T0 + timedelta(seconds=76)
+
+    def fail_tracking_lookup(*args, **kwargs):
+        raise AssertionError("tracking lookup should not run")
+
+    repo.find_active_tracked_vessel_for_event = fail_tracking_lookup
+
+    service.dispatch_event(stored)
+
+    assert len(gateway.calls) == 1
+    assert gateway.calls[0][1]["url"] == (
+        f"/alertas?event={stored.event.event_id}"
+    )

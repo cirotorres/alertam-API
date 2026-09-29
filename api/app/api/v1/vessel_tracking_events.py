@@ -19,11 +19,13 @@ def create_vessel_tracking_event_router(
     repository: AlertaRepository,
     *,
     project_event: Callable[[StoredVesselTrackingEvent], None] | None = None,
+    dispatch_event: Callable[[StoredVesselTrackingEvent], None] | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/devices")
     service = VesselTrackingEventService(
         repository,
         project_event=project_event,
+        dispatch_event=dispatch_event,
     )
 
     def require_device(

@@ -17,6 +17,24 @@ class AcceptTrackingEventStatus(StrEnum):
     DEVICE_NOT_FOUND = "device_not_found"
 
 
+class TrackingPushDeliveryStatus(StrEnum):
+    SENDING = "SENDING"
+    DELIVERED = "DELIVERED"
+    IGNORED_FOREGROUND = "IGNORED_FOREGROUND"
+    IGNORED_BEFORE_TRACKING = "IGNORED_BEFORE_TRACKING"
+    RETRY_PENDING = "RETRY_PENDING"
+    PERMANENT_FAILURE = "PERMANENT_FAILURE"
+
+
+@dataclass(frozen=True)
+class TrackingPushDelivery:
+    event_id: UUID
+    installation_id: UUID
+    status: TrackingPushDeliveryStatus
+    claimed_at: datetime
+    updated_at: datetime
+
+
 @dataclass(frozen=True)
 class StoredVesselTrackingEvent:
     ingestion_id: int
@@ -107,6 +125,38 @@ class TrackingEventsRepository(Protocol):
         after: int,
         limit: int,
     ) -> tuple[InstallationTrackingEventRecord, ...]: ...
+
+    def find_active_tracked_vessel_for_event(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        *,
+        vessel_identity: str,
+        vessel_imo: str | None,
+        vessel_name: str,
+        occurred_at: datetime,
+    ) -> TrackedVesselRecord | None: ...
+
+    def claim_tracking_push_delivery(
+        self,
+        event_id: str | UUID,
+        installation_id: UUID,
+        *,
+        lease_seconds: int = 8,
+    ) -> bool: ...
+
+    def set_tracking_push_delivery_status(
+        self,
+        event_id: str | UUID,
+        installation_id: UUID,
+        status: TrackingPushDeliveryStatus,
+    ) -> None: ...
+
+    def get_tracking_push_delivery(
+        self,
+        event_id: str | UUID,
+        installation_id: UUID,
+    ) -> TrackingPushDelivery | None: ...
 
 
 @dataclass(frozen=True)

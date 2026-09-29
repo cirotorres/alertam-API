@@ -16,6 +16,7 @@ from app.repositories.events import (
     PushPreferences,
     StoredManeuverEvent,
 )
+from app.repositories.tracking import TrackedVesselRecord
 
 
 class PushGateway(Protocol):
@@ -72,8 +73,8 @@ class PushDispatchService:
         ):
             return
 
-        ignored_status = self._ignored_status(
-            stored.event,
+        ignored_status, tracked = self._eligibility(
+            stored,
             installation,
         )
 
@@ -94,7 +95,7 @@ class PushDispatchService:
                     ignored_status,
                 )
                 return
-            self._send_claimed(stored, installation)
+            self._send_claimed(stored, installation, tracked)
             return
 
         if ignored_status is not None:
@@ -111,39 +112,60 @@ class PushDispatchService:
         )
         if not claimed:
             return
-        self._send_claimed(stored, installation)
+        self._send_claimed(stored, installation, tracked)
 
-    def _ignored_status(
+    def _eligibility(
         self,
-        event: ManeuverEventIn,
+        stored: StoredManeuverEvent,
         installation: PushInstallation,
-    ) -> PushDeliveryStatus | None:
+    ) -> tuple[PushDeliveryStatus | None, TrackedVesselRecord | None]:
+        event = stored.event
         if event.occurred_at < installation.push_enabled_at:
-            return PushDeliveryStatus.IGNORED_BEFORE_OPT_IN
-        if not _preference_enabled(
+            return PushDeliveryStatus.IGNORED_BEFORE_OPT_IN, None
+
+        general_enabled = _preference_enabled(
             installation.preferences,
             event.event_type,
-        ):
-            return PushDeliveryStatus.IGNORED_PREFERENCE
+        )
+        tracked = None
+        if not general_enabled:
+            tracked = self._repository.find_active_tracked_vessel_for_event(
+                stored.device_id,
+                installation.installation_id,
+                vessel_identity=event.vessel_identity,
+                vessel_imo=event.vessel_imo,
+                vessel_name=event.vessel_name,
+                occurred_at=event.occurred_at,
+            )
+            if tracked is None:
+                return PushDeliveryStatus.IGNORED_PREFERENCE, None
+
         if installation.last_foreground_at is not None:
             age = (
                 self._clock() - installation.last_foreground_at
             ).total_seconds()
             if age <= self._foreground_fresh_seconds:
-                return PushDeliveryStatus.IGNORED_FOREGROUND
-        return None
+                return PushDeliveryStatus.IGNORED_FOREGROUND, tracked
+
+        if general_enabled:
+            return None, None
+        return None, tracked
 
     def _send_claimed(
         self,
         stored: StoredManeuverEvent,
         installation: PushInstallation,
+        tracked: TrackedVesselRecord | None,
     ) -> None:
         event_id = stored.event.event_id
         try:
-            self._gateway.send(
-                installation,
-                build_push_message(stored.event),
-            )
+            payload = build_push_message(stored.event)
+            if tracked is not None:
+                payload["url"] = (
+                    f"/acompanhados?track={tracked.tracked_vessel_id}"
+                    f"&event={stored.event.event_id}"
+                )
+            self._gateway.send(installation, payload)
         except PermanentPushError:
             self._repository.deactivate_push_installation(
                 stored.device_id,

@@ -46,8 +46,8 @@ O Plano 3 só começa depois de o Plano 2 provar isolamento por instalação e d
 - Nenhuma nova voz/chime para ETA/ETB/ETS.
 - Não fazer commit ou push sem autorização explícita de Ciro.
 
-## Estado de execução em 2026-09-28
+## Estado de execução em 2026-09-29
 
 - Plano 1 — Core Events: **concluído e validado**.
-- Plano 2 — Installations & Dispatch: **próximo plano; ainda não iniciado**.
-- Plano 3 — Desktop & PWA UX: **pendente do Plano 2**.
+- Plano 2 — Installations & Dispatch: **concluído e validado**.
+- Plano 3 — Desktop & PWA UX: **próximo plano; ainda não iniciado**.

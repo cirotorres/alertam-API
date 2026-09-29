@@ -52,13 +52,13 @@ recente; dispatch consulta essa intenção no momento do evento, sem jobs de rep
 - `MobileSessionRequest`/`Response` include `installation_id`.
 - Keep `MobileSessionAuth` returning device_id for old routes; add installation-aware dependency for tracking routes.
 
-- [ ] **Step 1:** RED para sessão criar/recuperar mesma mobile_installation e token assinar ambos IDs.
-- [ ] **Step 2:** RED para installation_id de outro device ser rejeitado/revogado com segurança.
-- [ ] **Step 3:** RED frontend para getOrCreateInstallationId ocorrer no pareamento, sem depender de enablePush.
-- [ ] **Step 4:** RED migration para backfill de `mobile_installations` a partir das `push_installations` existentes, preservando o mesmo UUID.
-- [ ] **Step 5:** Implementar migration/repository/session mantendo cookies antigos inválidos de forma segura.
-- [ ] **Step 6:** RED para rotação VIEW_SECRET revogar mobile_installations e trackings em transação.
-- [ ] **Step 7:** Rodar suites mobile session/pairing + Postgres real.
+- [x] **Step 1:** RED para sessão criar/recuperar mesma mobile_installation e token assinar ambos IDs.
+- [x] **Step 2:** RED para installation_id de outro device ser rejeitado/revogado com segurança.
+- [x] **Step 3:** RED frontend para getOrCreateInstallationId ocorrer no pareamento, sem depender de enablePush.
+- [x] **Step 4:** RED migration para backfill de `mobile_installations` a partir das `push_installations` existentes, preservando o mesmo UUID.
+- [x] **Step 5:** Implementar migration/repository/session mantendo cookies antigos inválidos de forma segura.
+- [x] **Step 6:** RED para rotação VIEW_SECRET revogar mobile_installations e trackings em transação.
+- [x] **Step 7:** Rodar suites mobile session/pairing + Postgres real.
 ### Task 2: tracked_vessels e lifecycle installation-scoped
 
 **Files:**
@@ -75,12 +75,12 @@ recente; dispatch consulta essa intenção no momento do evento, sem jobs de rep
 - POST input: `vessel_identity,vessel_imo,vessel_name`; installation vem da sessão.
 - Produce: `TrackedVessel` com started_at/active/stopped_at/last_seen_at/current.
 
-- [ ] **Step 1:** RED para criar tracking idempotente na mesma instalação e independente em instalação diferente.
-- [ ] **Step 2:** RED para alvo ser aceito somente se existir no snapshot atual ou em evento retido do mesmo device, semeando `current/last_seen_at` dessa evidência.
-- [ ] **Step 3:** RED para DELETE idempotente desativar sem apagar histórico.
-- [ ] **Step 4:** RED para ausência ou conclusão de manobra não expirar tracking e cookie expirado não apagar intenção.
-- [ ] **Step 5:** RED para NAME → IMO somente por nome normalizado exatamente igual e evidência explícita.
-- [ ] **Step 6:** Implementar service/repositories/endpoints com principal installation-scoped.
+- [x] **Step 1:** RED para criar tracking idempotente na mesma instalação e independente em instalação diferente.
+- [x] **Step 2:** RED para alvo ser aceito somente se existir no snapshot atual ou em evento retido do mesmo device, semeando `current/last_seen_at` dessa evidência.
+- [x] **Step 3:** RED para DELETE idempotente desativar sem apagar histórico.
+- [x] **Step 4:** RED para ausência ou conclusão de manobra não expirar tracking e cookie expirado não apagar intenção.
+- [x] **Step 5:** RED para NAME → IMO somente por nome normalizado exatamente igual e evidência explícita.
+- [x] **Step 6:** Implementar service/repositories/endpoints com principal installation-scoped.
 ### Task 3: Projeção atual e timeline cloud unificada
 
 **Files:**
@@ -96,12 +96,12 @@ recente; dispatch consulta essa intenção no momento do evento, sem jobs de rep
 - GET `/{tracked_vessel_id}/events` retorna union discriminada `MANEUVER|TRACKING`.
 - Order: occurred_at ASC, ingested_at ASC, event_id ASC.
 
-- [ ] **Step 1:** RED para VesselTrackingEvent atualizar current/presence/status/ETA/etc de todos os trackings do navio.
-- [ ] **Step 2:** RED para ManeuverEvent atualizar estado operacional inferível sem criar VesselTrackingEvent.
-- [ ] **Step 3:** RED para timeline misturar os dois tipos e manter eventos anteriores a started_at como contexto histórico retido.
-- [ ] **Step 4:** RED para instalação não acessar timeline de tracking alheio.
-- [ ] **Step 5:** Implementar query/projeção com desempate determinístico e retenção de 30 dias.
-- [ ] **Step 6:** Rodar unit/integration/Postgres.
+- [x] **Step 1:** RED para VesselTrackingEvent atualizar current/presence/status/ETA/etc de todos os trackings do navio.
+- [x] **Step 2:** RED para ManeuverEvent atualizar estado operacional inferível sem criar VesselTrackingEvent.
+- [x] **Step 3:** RED para timeline misturar os dois tipos e manter eventos anteriores a started_at como contexto histórico retido.
+- [x] **Step 4:** RED para instalação não acessar timeline de tracking alheio.
+- [x] **Step 5:** Implementar query/projeção com desempate determinístico e retenção de 30 dias.
+- [x] **Step 6:** Rodar unit/integration/Postgres.
 ### Task 4: Feed agregado de VesselTrackingEvent para foreground
 
 **Files:**
@@ -116,11 +116,11 @@ recente; dispatch consulta essa intenção no momento do evento, sem jobs de rep
 - Retorna somente VesselTrackingEvent de trackings ativos desta instalação com occurred_at >= started_at.
 - Cursor usa ingestion_id da tabela vessel_tracking_events.
 
-- [ ] **Step 1:** RED para cursor crescente; `occurred_at < started_at` fica fora e `occurred_at == started_at` é elegível.
-- [ ] **Step 2:** RED para dois celulares do mesmo device receberem feeds diferentes conforme seus trackings.
-- [ ] **Step 3:** RED para tracking desativado não receber novos eventos mas histórico individual continuar consultável.
-- [ ] **Step 4:** Implementar feed sem incluir ManeuverEvent e sem N queries por tracked vessel.
-- [ ] **Step 5:** Rodar suites API focadas e Postgres real.
+- [x] **Step 1:** RED para cursor crescente; `occurred_at < started_at` fica fora e `occurred_at == started_at` é elegível.
+- [x] **Step 2:** RED para dois celulares do mesmo device receberem feeds diferentes conforme seus trackings.
+- [x] **Step 3:** RED para tracking desativado não receber novos eventos mas histórico individual continuar consultável.
+- [x] **Step 4:** Implementar feed sem incluir ManeuverEvent e sem N queries por tracked vessel.
+- [x] **Step 5:** Rodar suites API focadas e Postgres real.
 ### Task 5: Elegibilidade de ManeuverEvent via tracking sem duplicação
 
 **Files:**
@@ -134,12 +134,12 @@ recente; dispatch consulta essa intenção no momento do evento, sem jobs de rep
 - Um único claim continua usando `event_id + installation_id`.
 - URL: categoria geral elegível → `/alertas?event=...`; somente tracking → `/acompanhados?track=...&event=...`.
 
-- [ ] **Step 1:** RED para categoria off + tracking on ainda enviar ManeuverEvent.
-- [ ] **Step 2:** RED para categoria on + tracking on gerar exatamente um delivery e manter /alertas.
-- [ ] **Step 3:** RED para tracking iniciado depois de occurred_at não tornar evento antigo elegível.
-- [ ] **Step 4:** RED para PushInstallation ausente/inativa não impedir tracking salvo nem criar delivery.
-- [ ] **Step 5:** Implementar resolução de tracked_vessel + mensagem/destino sem alterar categorias globais.
-- [ ] **Step 6:** Rodar dispatch unit/integration.
+- [x] **Step 1:** RED para categoria off + tracking on ainda enviar ManeuverEvent.
+- [x] **Step 2:** RED para categoria on + tracking on gerar exatamente um delivery e manter /alertas.
+- [x] **Step 3:** RED para tracking iniciado depois de occurred_at não tornar evento antigo elegível.
+- [x] **Step 4:** RED para PushInstallation ausente/inativa não impedir tracking salvo nem criar delivery.
+- [x] **Step 5:** Implementar resolução de tracked_vessel + mensagem/destino sem alterar categorias globais.
+- [x] **Step 6:** Rodar dispatch unit/integration.
 ### Task 6: Dispatch de VesselTrackingEvent, deliveries e revogação
 
 **Files:**
@@ -155,10 +155,10 @@ recente; dispatch consulta essa intenção no momento do evento, sem jobs de rep
   RETRY_PENDING, PERMANENT_FAILURE.
 - Deep link: `/acompanhados?track=<tracked_vessel_id>&event=<event_id>`.
 
-- [ ] **Step 1:** RED para somente instalações que acompanham o navio serem candidatas.
-- [ ] **Step 2:** RED para foreground heartbeat suprimir Web Push e falha numa instalação não bloquear outra.
-- [ ] **Step 3:** RED para reativar push não reenviar eventos antigos; dispatch ocorre somente no ingest original.
-- [ ] **Step 4:** RED para mensagem de disappearance nunca dizer “desatracou” sem ManeuverEvent.
-- [ ] **Step 5:** RED para revogação/Esquecer aparelho desativar trackings e deliveries futuros.
-- [ ] **Step 6:** Implementar migration/repository/dispatch e rodar `make test-all`.
-- [ ] **Step 7:** Auto-revisar isolamento, replay e duplicação; parar antes do Plano 3 sem commit/push não autorizado.
+- [x] **Step 1:** RED para somente instalações que acompanham o navio serem candidatas.
+- [x] **Step 2:** RED para foreground heartbeat suprimir Web Push e falha numa instalação não bloquear outra.
+- [x] **Step 3:** RED para reativar push não reenviar eventos antigos; dispatch ocorre somente no ingest original.
+- [x] **Step 4:** RED para mensagem de disappearance nunca dizer “desatracou” sem ManeuverEvent.
+- [x] **Step 5:** RED para revogação/Esquecer aparelho desativar trackings e deliveries futuros.
+- [x] **Step 6:** Implementar migration/repository/dispatch e rodar `make test-all`.
+- [x] **Step 7:** Auto-revisar isolamento, replay e duplicação; parar antes do Plano 3 sem commit/push não autorizado.

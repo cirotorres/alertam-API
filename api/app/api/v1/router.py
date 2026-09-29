@@ -17,6 +17,7 @@ from app.api.v1.vessel_photos import create_vessel_photo_router
 from app.api.v1.vessel_tracking_events import create_vessel_tracking_event_router
 from app.api.v1.tracked_vessels import create_tracked_vessels_router
 from app.repositories.events import AlertaRepository, StoredManeuverEvent
+from app.repositories.tracking import StoredVesselTrackingEvent
 from app.services.tracked_vessel_projection_service import (
     TrackedVesselProjectionService,
 )
@@ -33,6 +34,9 @@ def create_v1_router(
     vapid_public_key: str,
     clock: Callable[[], datetime] | None = None,
     dispatch_event: Callable[[StoredManeuverEvent], None] | None = None,
+    dispatch_tracking_event: Callable[
+        [StoredVesselTrackingEvent], None
+    ] | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
     projection = TrackedVesselProjectionService(repository)
@@ -48,6 +52,7 @@ def create_v1_router(
         create_vessel_tracking_event_router(
             repository,
             project_event=projection.apply_tracking_event,
+            dispatch_event=dispatch_tracking_event,
         )
     )
     router.include_router(

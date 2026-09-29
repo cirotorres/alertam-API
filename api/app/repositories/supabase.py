@@ -34,6 +34,8 @@ from app.repositories.tracking import (
     InstallationTrackingEventRecord,
     StoredVesselTrackingEvent,
     TrackedVesselRecord,
+    TrackingPushDelivery,
+    TrackingPushDeliveryStatus,
     VesselEventRecord,
     VesselEvidence,
 )
@@ -903,6 +905,42 @@ class SupabaseDeviceRepository:
         ) as exc:
             raise PersistenceUnavailableError() from exc
 
+    def find_active_tracked_vessel_for_event(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        *,
+        vessel_identity: str,
+        vessel_imo: str | None,
+        vessel_name: str,
+        occurred_at: datetime,
+    ) -> TrackedVesselRecord | None:
+        for tracked in self.list_tracked_vessels(
+            device_id,
+            installation_id,
+        ):
+            if tracked.started_at > occurred_at:
+                continue
+            if tracked.vessel_identity == vessel_identity:
+                return tracked
+            if vessel_imo is not None:
+                if tracked.vessel_imo == vessel_imo:
+                    return tracked
+                if (
+                    tracked.vessel_imo is None
+                    and self._normalize_vessel_name(tracked.vessel_name)
+                    == self._normalize_vessel_name(vessel_name)
+                ):
+                    return tracked
+                continue
+            if (
+                tracked.vessel_imo is None
+                and self._normalize_vessel_name(tracked.vessel_name)
+                == self._normalize_vessel_name(vessel_name)
+            ):
+                return tracked
+        return None
+
     def accept_vessel_tracking_event_atomic(
         self,
         device_id: str,
@@ -1197,6 +1235,86 @@ class SupabaseDeviceRepository:
             return tuple(
                 self._push_installation_from_mapping(row)
                 for row in data
+            )
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def claim_tracking_push_delivery(
+        self,
+        event_id: str | UUID,
+        installation_id: UUID,
+        *,
+        lease_seconds: int = 8,
+    ) -> bool:
+        return self._push_boolean_rpc(
+            "claim_vessel_tracking_delivery",
+            {
+                "p_event_id": str(event_id),
+                "p_installation_id": str(installation_id),
+                "p_lease_seconds": lease_seconds,
+            },
+            "claimed",
+        )
+
+    def set_tracking_push_delivery_status(
+        self,
+        event_id: str | UUID,
+        installation_id: UUID,
+        status: TrackingPushDeliveryStatus,
+    ) -> None:
+        self._push_boolean_rpc(
+            "set_vessel_tracking_delivery_status",
+            {
+                "p_event_id": str(event_id),
+                "p_installation_id": str(installation_id),
+                "p_status": status.value,
+            },
+            "updated",
+        )
+
+    def get_tracking_push_delivery(
+        self,
+        event_id: str | UUID,
+        installation_id: UUID,
+    ) -> TrackingPushDelivery | None:
+        try:
+            response = self._client.get(
+                f"{self._base_url}/rest/v1/vessel_tracking_deliveries",
+                headers=self._headers(),
+                params={
+                    "select": (
+                        "event_id,installation_id,status,"
+                        "claimed_at,updated_at"
+                    ),
+                    "event_id": f"eq.{event_id}",
+                    "installation_id": f"eq.{installation_id}",
+                    "limit": "1",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise TypeError("Resposta de delivery inválida.")
+            if not data:
+                return None
+            if len(data) != 1 or not isinstance(data[0], dict):
+                raise ValueError("Resposta de delivery inválida.")
+            row = data[0]
+            claimed_at = self._parse_datetime(row.get("claimed_at"))
+            updated_at = self._parse_datetime(row.get("updated_at"))
+            if claimed_at is None or updated_at is None:
+                raise ValueError("Timestamp de delivery ausente.")
+            return TrackingPushDelivery(
+                event_id=UUID(str(row["event_id"])),
+                installation_id=UUID(str(row["installation_id"])),
+                status=TrackingPushDeliveryStatus(str(row["status"])),
+                claimed_at=claimed_at,
+                updated_at=updated_at,
             )
         except (
             httpx.HTTPError,

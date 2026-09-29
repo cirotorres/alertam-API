@@ -34,6 +34,8 @@ from app.repositories.tracking import (
     InstallationTrackingEventRecord,
     StoredVesselTrackingEvent,
     TrackedVesselRecord,
+    TrackingPushDelivery,
+    TrackingPushDeliveryStatus,
     VesselEventRecord,
     VesselEvidence,
 )
@@ -62,6 +64,9 @@ class MemoryDeviceRepository:
         self._tracked_vessels: dict[UUID, TrackedVesselRecord] = {}
         self._push_installations: dict[object, PushInstallation] = {}
         self._push_deliveries: dict[tuple[str, object], PushDelivery] = {}
+        self._tracking_push_deliveries: dict[
+            tuple[str, object], TrackingPushDelivery
+        ] = {}
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._lock = Lock()
 
@@ -740,6 +745,34 @@ class MemoryDeviceRepository:
                     break
             return tuple(result)
 
+    def find_active_tracked_vessel_for_event(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        *,
+        vessel_identity: str,
+        vessel_imo: str | None,
+        vessel_name: str,
+        occurred_at: datetime,
+    ) -> TrackedVesselRecord | None:
+        with self._lock:
+            for tracked in self._tracked_vessels.values():
+                if (
+                    tracked.device_id != device_id
+                    or tracked.installation_id != installation_id
+                    or not tracked.active
+                    or tracked.started_at > occurred_at
+                ):
+                    continue
+                if self._tracked_record_matches_vessel(
+                    tracked,
+                    vessel_identity=vessel_identity,
+                    vessel_imo=vessel_imo,
+                    vessel_name=vessel_name,
+                ):
+                    return tracked
+            return None
+
     def accept_vessel_tracking_event_atomic(
         self,
         device_id: str,
@@ -981,6 +1014,94 @@ class MemoryDeviceRepository:
                 for installation in self._push_installations.values()
                 if installation.device_id == device_id
                 and installation.active
+            )
+
+    def claim_tracking_push_delivery(
+        self,
+        event_id,
+        installation_id,
+        *,
+        lease_seconds: int = 8,
+    ) -> bool:
+        with self._lock:
+            event_key = str(event_id)
+            installation = self._push_installations.get(installation_id)
+            if (
+                event_key not in self._tracking_events_by_id
+                or installation is None
+                or not installation.active
+            ):
+                return False
+            key = (event_key, installation_id)
+            now = self._clock()
+            current = self._tracking_push_deliveries.get(key)
+            if current is None:
+                self._tracking_push_deliveries[key] = TrackingPushDelivery(
+                    event_id=current_event_id(event_key),
+                    installation_id=installation_id,
+                    status=TrackingPushDeliveryStatus.SENDING,
+                    claimed_at=now,
+                    updated_at=now,
+                )
+                return True
+
+            recoverable = (
+                current.status is TrackingPushDeliveryStatus.RETRY_PENDING
+                or (
+                    current.status is TrackingPushDeliveryStatus.SENDING
+                    and (now - current.claimed_at).total_seconds()
+                    >= lease_seconds
+                )
+            )
+            if not recoverable:
+                return False
+            self._tracking_push_deliveries[key] = replace(
+                current,
+                status=TrackingPushDeliveryStatus.SENDING,
+                claimed_at=now,
+                updated_at=now,
+            )
+            return True
+
+    def set_tracking_push_delivery_status(
+        self,
+        event_id,
+        installation_id,
+        status: TrackingPushDeliveryStatus,
+    ) -> None:
+        with self._lock:
+            event_key = str(event_id)
+            key = (event_key, installation_id)
+            now = self._clock()
+            current = self._tracking_push_deliveries.get(key)
+            if current is None:
+                if (
+                    event_key not in self._tracking_events_by_id
+                    or installation_id not in self._push_installations
+                ):
+                    return
+                self._tracking_push_deliveries[key] = TrackingPushDelivery(
+                    event_id=current_event_id(event_key),
+                    installation_id=installation_id,
+                    status=status,
+                    claimed_at=now,
+                    updated_at=now,
+                )
+                return
+            self._tracking_push_deliveries[key] = replace(
+                current,
+                status=status,
+                updated_at=now,
+            )
+
+    def get_tracking_push_delivery(
+        self,
+        event_id,
+        installation_id,
+    ) -> TrackingPushDelivery | None:
+        with self._lock:
+            return self._tracking_push_deliveries.get(
+                (str(event_id), installation_id)
             )
 
     def claim_push_delivery(
