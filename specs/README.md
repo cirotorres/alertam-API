@@ -6,7 +6,7 @@
 | 021 | [Eventos de manobra, feed mobile e Web Push](021-maneuver-events-webpush.md) | Implementação local concluída; validação externa pendente | Persistência idempotente de ManeuverEvent, feed Alertas/Histórico e Web Push por instalação com preferências |
 | 022 | [Detalhes de Alertas e linha do tempo da manobra](022-alert-details-maneuver-timeline.md) | Implementação local concluída e validada | Alertas clicáveis, gaveta detalhada, POB × conclusão observada, timeline por maneuver_id e detalhes equivalentes no Desktop |
 | 023 | [Ship Tracking](023-ship-tracking.md) | Planos 1–3 implementados; Tk/Xephyr validado; rollout externo pendente | Acompanhamento persistente por navio/instalação, VesselTrackingEvent, push seletivo, timeline unificada e tracking local no Desktop |
-| 024 | [Tempo operacional da manobra e refinamentos de UX](024-operational-maneuver-timing-ux-refinements.md) | Design aprovado; aguardando revisão formal da SPEC | Separa horário operacional de observação do AlertaM, persiste ATRAC real e corrige UX de tracking, sheets, scroll e footer |
+| 024 | [Tempo operacional da manobra e refinamentos de UX](024-operational-maneuver-timing-ux-refinements.md) | SPEC aprovada; planos TDD preparados para revisão | Separa horário operacional de observação do AlertaM, persiste ATRAC real e corrige UX de tracking, sheets, scroll e footer |
 
 ## Dependências cross-repo
 

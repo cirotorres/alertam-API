@@ -1,6 +1,6 @@
 # SPEC 024 — Tempo operacional da manobra e refinamentos de UX pós-SPEC 023
 
-**Status:** Design aprovado; aguardando revisão formal da SPEC  
+**Status:** Aprovada para implementação; planos TDD preparados para revisão
 **Data:** 2026-09-29  
 **Escopo:** AlertaM Desktop + API FastAPI/Supabase + PWA React/Vite  
 **Origem:** validação humana da SPEC 023 em operação real
