@@ -31,8 +31,10 @@ from app.repositories.events import (
 from app.repositories.tracking import (
     AcceptTrackingEventResult,
     AcceptTrackingEventStatus,
+    InstallationTrackingEventRecord,
     StoredVesselTrackingEvent,
     TrackedVesselRecord,
+    VesselEventRecord,
     VesselEvidence,
 )
 
@@ -723,6 +725,176 @@ class SupabaseDeviceRepository:
             if len(data) != 1 or not isinstance(data[0], dict):
                 raise ValueError("Resposta de tracking inválida.")
             return self._tracked_vessel_from_mapping(data[0])
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def project_tracked_vessels(
+        self,
+        device_id: str,
+        *,
+        vessel_identity: str,
+        vessel_imo: str | None,
+        vessel_name: str,
+        observed_at: datetime,
+        replace_current: bool,
+        current: dict[str, Any] | None = None,
+        patch: dict[str, Any] | None = None,
+    ) -> int:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/project_tracked_vessels",
+                headers=self._headers(),
+                json={
+                    "p_device_id": device_id,
+                    "p_vessel_identity": vessel_identity,
+                    "p_vessel_imo": vessel_imo,
+                    "p_vessel_name": vessel_name,
+                    "p_observed_at": observed_at.isoformat(),
+                    "p_replace_current": replace_current,
+                    "p_current": current,
+                    "p_patch": patch,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, int):
+                raise TypeError("Resultado de projeção inválido.")
+            return data
+        except (httpx.HTTPError, TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def list_tracked_vessel_event_records(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        tracked_vessel_id: UUID,
+    ) -> tuple[VesselEventRecord, ...]:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/list_tracked_vessel_timeline",
+                headers=self._headers(),
+                json={
+                    "p_device_id": device_id,
+                    "p_installation_id": str(installation_id),
+                    "p_tracked_vessel_id": str(tracked_vessel_id),
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise ValueError("Timeline inválida.")
+            result: list[VesselEventRecord] = []
+            for row in data:
+                if not isinstance(row, dict):
+                    raise TypeError("Timeline inválida.")
+                kind = str(row["kind"])
+                if kind == "MANEUVER":
+                    event = ManeuverEventIn.model_validate(row["event_payload"])
+                elif kind == "TRACKING":
+                    event = VesselTrackingEventIn.model_validate(
+                        row["event_payload"]
+                    )
+                else:
+                    raise ValueError("kind inválido")
+                ingested_at = self._parse_datetime(row.get("ingested_at"))
+                if ingested_at is None:
+                    raise ValueError("ingested_at ausente")
+                result.append(VesselEventRecord(
+                    kind=kind,
+                    ingestion_id=int(row["ingestion_id"]),
+                    ingested_at=ingested_at,
+                    event=event,
+                ))
+            return tuple(result)
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def latest_tracking_event_cursor(
+        self,
+        device_id: str,
+    ) -> int | None:
+        try:
+            response = self._client.get(
+                f"{self._base_url}/rest/v1/vessel_tracking_events",
+                headers=self._headers(),
+                params={
+                    "select": "ingestion_id",
+                    "device_id": f"eq.{device_id}",
+                    "order": "ingestion_id.desc",
+                    "limit": "1",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise ValueError("Cursor inválido.")
+            if not data:
+                return None
+            if len(data) != 1 or not isinstance(data[0], dict):
+                raise ValueError("Cursor inválido.")
+            return int(data[0]["ingestion_id"])
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def list_installation_tracking_events(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        *,
+        after: int,
+        limit: int,
+    ) -> tuple[InstallationTrackingEventRecord, ...]:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/list_installation_tracking_events",
+                headers=self._headers(),
+                json={
+                    "p_device_id": device_id,
+                    "p_installation_id": str(installation_id),
+                    "p_after": after,
+                    "p_limit": limit,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise ValueError("Feed inválido.")
+            result: list[InstallationTrackingEventRecord] = []
+            for row in data:
+                if not isinstance(row, dict):
+                    raise TypeError("Feed inválido.")
+                event = VesselTrackingEventIn.model_validate(
+                    row["event_payload"]
+                )
+                ingested_at = self._parse_datetime(row.get("ingested_at"))
+                if ingested_at is None:
+                    raise ValueError("ingested_at ausente")
+                stored = StoredVesselTrackingEvent(
+                    ingestion_id=int(row["ingestion_id"]),
+                    device_id=device_id,
+                    event=event,
+                    ingested_at=ingested_at,
+                )
+                result.append(InstallationTrackingEventRecord(
+                    tracked_vessel_id=UUID(str(row["tracked_vessel_id"])),
+                    stored=stored,
+                ))
+            return tuple(result)
         except (
             httpx.HTTPError,
             KeyError,

@@ -31,8 +31,10 @@ from app.repositories.events import (
 from app.repositories.tracking import (
     AcceptTrackingEventResult,
     AcceptTrackingEventStatus,
+    InstallationTrackingEventRecord,
     StoredVesselTrackingEvent,
     TrackedVesselRecord,
+    VesselEventRecord,
     VesselEvidence,
 )
 
@@ -525,6 +527,218 @@ class MemoryDeviceRepository:
                 )
                 self._tracked_vessels[tracked_vessel_id] = item
             return item
+
+    @classmethod
+    def _tracked_record_matches_vessel(
+        cls,
+        tracked: TrackedVesselRecord,
+        *,
+        vessel_identity: str,
+        vessel_imo: str | None,
+        vessel_name: str,
+    ) -> bool:
+        if tracked.vessel_identity == vessel_identity:
+            return True
+        if vessel_imo is not None:
+            if tracked.vessel_imo == vessel_imo:
+                return True
+            if (
+                tracked.vessel_imo is None
+                and cls._normalized_vessel_name(tracked.vessel_name)
+                == cls._normalized_vessel_name(vessel_name)
+            ):
+                return True
+            return False
+        return (
+            tracked.vessel_imo is None
+            and cls._normalized_vessel_name(tracked.vessel_name)
+            == cls._normalized_vessel_name(vessel_name)
+        )
+
+    @staticmethod
+    def _empty_tracking_current() -> dict[str, object | None]:
+        return {
+            "present": None,
+            "status": None,
+            "section": None,
+            "berth": None,
+            "side": None,
+            "eta": None,
+            "etb_ets": None,
+            "pob": None,
+            "pob_at": None,
+        }
+
+    def project_tracked_vessels(
+        self,
+        device_id: str,
+        *,
+        vessel_identity: str,
+        vessel_imo: str | None,
+        vessel_name: str,
+        observed_at: datetime,
+        replace_current: bool,
+        current: dict[str, object] | None = None,
+        patch: dict[str, object] | None = None,
+    ) -> int:
+        with self._lock:
+            updated = 0
+            for tracked_id, tracked in tuple(self._tracked_vessels.items()):
+                if tracked.device_id != device_id or not tracked.active:
+                    continue
+                if not self._tracked_record_matches_vessel(
+                    tracked,
+                    vessel_identity=vessel_identity,
+                    vessel_imo=vessel_imo,
+                    vessel_name=vessel_name,
+                ):
+                    continue
+                if (
+                    tracked.last_seen_at is not None
+                    and observed_at < tracked.last_seen_at
+                ):
+                    continue
+
+                if replace_current:
+                    next_current = (
+                        None if current is None else dict(current)
+                    )
+                else:
+                    next_current = dict(
+                        tracked.current or self._empty_tracking_current()
+                    )
+                    if patch:
+                        next_current.update(patch)
+
+                promoted_identity = tracked.vessel_identity
+                promoted_imo = tracked.vessel_imo
+                promoted_name = tracked.vessel_name
+                if vessel_imo is not None:
+                    promoted_identity = vessel_identity
+                    promoted_imo = vessel_imo
+                    promoted_name = vessel_name
+
+                self._tracked_vessels[tracked_id] = replace(
+                    tracked,
+                    vessel_identity=promoted_identity,
+                    vessel_imo=promoted_imo,
+                    vessel_name=promoted_name,
+                    last_seen_at=observed_at,
+                    current=next_current,
+                )
+                updated += 1
+            return updated
+
+    def list_tracked_vessel_event_records(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        tracked_vessel_id: UUID,
+    ) -> tuple[VesselEventRecord, ...]:
+        with self._lock:
+            tracked = self._tracked_vessels.get(tracked_vessel_id)
+            if (
+                tracked is None
+                or tracked.device_id != device_id
+                or tracked.installation_id != installation_id
+            ):
+                return ()
+
+            records: list[VesselEventRecord] = []
+            for stored in self._events_by_id.values():
+                event = stored.event
+                if stored.device_id != device_id:
+                    continue
+                if not self._tracked_record_matches_vessel(
+                    tracked,
+                    vessel_identity=event.vessel_identity,
+                    vessel_imo=event.vessel_imo,
+                    vessel_name=event.vessel_name,
+                ):
+                    continue
+                records.append(VesselEventRecord(
+                    kind="MANEUVER",
+                    ingestion_id=stored.ingestion_id,
+                    ingested_at=stored.ingested_at,
+                    event=event,
+                ))
+            for stored in self._tracking_events_by_id.values():
+                event = stored.event
+                if stored.device_id != device_id:
+                    continue
+                if not self._tracked_record_matches_vessel(
+                    tracked,
+                    vessel_identity=event.vessel_identity,
+                    vessel_imo=event.vessel_imo,
+                    vessel_name=event.vessel_name,
+                ):
+                    continue
+                records.append(VesselEventRecord(
+                    kind="TRACKING",
+                    ingestion_id=stored.ingestion_id,
+                    ingested_at=stored.ingested_at,
+                    event=event,
+                ))
+            return tuple(records)
+
+    def latest_tracking_event_cursor(
+        self,
+        device_id: str,
+    ) -> int | None:
+        with self._lock:
+            values = [
+                stored.ingestion_id
+                for stored in self._tracking_events_by_id.values()
+                if stored.device_id == device_id
+            ]
+            return max(values) if values else None
+
+    def list_installation_tracking_events(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        *,
+        after: int,
+        limit: int,
+    ) -> tuple[InstallationTrackingEventRecord, ...]:
+        with self._lock:
+            active_trackings = tuple(
+                tracked
+                for tracked in self._tracked_vessels.values()
+                if tracked.device_id == device_id
+                and tracked.installation_id == installation_id
+                and tracked.active
+            )
+            result: list[InstallationTrackingEventRecord] = []
+            ordered = sorted(
+                (
+                    stored
+                    for stored in self._tracking_events_by_id.values()
+                    if stored.device_id == device_id
+                    and stored.ingestion_id > after
+                ),
+                key=lambda stored: stored.ingestion_id,
+            )
+            for stored in ordered:
+                event = stored.event
+                for tracked in active_trackings:
+                    if event.occurred_at < tracked.started_at:
+                        continue
+                    if not self._tracked_record_matches_vessel(
+                        tracked,
+                        vessel_identity=event.vessel_identity,
+                        vessel_imo=event.vessel_imo,
+                        vessel_name=event.vessel_name,
+                    ):
+                        continue
+                    result.append(InstallationTrackingEventRecord(
+                        tracked_vessel_id=tracked.tracked_vessel_id,
+                        stored=stored,
+                    ))
+                    break
+                if len(result) >= limit:
+                    break
+            return tuple(result)
 
     def accept_vessel_tracking_event_atomic(
         self,

@@ -6,6 +6,7 @@ from enum import StrEnum
 from typing import Any, Protocol
 from uuid import UUID
 
+from app.models.maneuver_event import ManeuverEventIn
 from app.models.vessel_tracking_event import VesselTrackingEventIn
 
 
@@ -73,6 +74,40 @@ class TrackingEventsRepository(Protocol):
         tracked_vessel_id: UUID,
     ) -> TrackedVesselRecord | None: ...
 
+    def project_tracked_vessels(
+        self,
+        device_id: str,
+        *,
+        vessel_identity: str,
+        vessel_imo: str | None,
+        vessel_name: str,
+        observed_at: datetime,
+        replace_current: bool,
+        current: dict[str, Any] | None = None,
+        patch: dict[str, Any] | None = None,
+    ) -> int: ...
+
+    def list_tracked_vessel_event_records(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        tracked_vessel_id: UUID,
+    ) -> tuple[VesselEventRecord, ...]: ...
+
+    def latest_tracking_event_cursor(
+        self,
+        device_id: str,
+    ) -> int | None: ...
+
+    def list_installation_tracking_events(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        *,
+        after: int,
+        limit: int,
+    ) -> tuple[InstallationTrackingEventRecord, ...]: ...
+
 
 @dataclass(frozen=True)
 class VesselEvidence:
@@ -96,3 +131,17 @@ class TrackedVesselRecord:
     stopped_at: datetime | None
     last_seen_at: datetime | None
     current: dict[str, Any] | None
+
+
+@dataclass(frozen=True)
+class VesselEventRecord:
+    kind: str
+    ingestion_id: int
+    ingested_at: datetime
+    event: ManeuverEventIn | VesselTrackingEventIn
+
+
+@dataclass(frozen=True)
+class InstallationTrackingEventRecord:
+    tracked_vessel_id: UUID
+    stored: StoredVesselTrackingEvent

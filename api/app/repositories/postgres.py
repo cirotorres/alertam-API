@@ -34,8 +34,10 @@ from app.repositories.events import (
 from app.repositories.tracking import (
     AcceptTrackingEventResult,
     AcceptTrackingEventStatus,
+    InstallationTrackingEventRecord,
     StoredVesselTrackingEvent,
     TrackedVesselRecord,
+    VesselEventRecord,
     VesselEvidence,
 )
 
@@ -616,6 +618,149 @@ class PostgresDeviceRepository:
         except psycopg.Error as exc:
             raise PersistenceUnavailableError() from exc
         return self._tracked_vessel_from_row(row)
+
+    def project_tracked_vessels(
+        self,
+        device_id: str,
+        *,
+        vessel_identity: str,
+        vessel_imo: str | None,
+        vessel_name: str,
+        observed_at: datetime,
+        replace_current: bool,
+        current: dict[str, Any] | None = None,
+        patch: dict[str, Any] | None = None,
+    ) -> int:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select public.project_tracked_vessels(
+                        %s, %s, %s, %s, %s, %s, %s, %s
+                    )
+                    """,
+                    (
+                        device_id,
+                        vessel_identity,
+                        vessel_imo,
+                        vessel_name,
+                        observed_at,
+                        replace_current,
+                        Jsonb(current) if current is not None else None,
+                        Jsonb(patch) if patch is not None else None,
+                    ),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        if row is None:
+            raise PersistenceUnavailableError()
+        try:
+            return int(row[0])
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def list_tracked_vessel_event_records(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        tracked_vessel_id: UUID,
+    ) -> tuple[VesselEventRecord, ...]:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                rows = conn.execute(
+                    """
+                    select kind, ingestion_id, ingested_at, event_payload
+                    from public.list_tracked_vessel_timeline(%s, %s, %s)
+                    """,
+                    (device_id, installation_id, tracked_vessel_id),
+                ).fetchall()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+
+        result: list[VesselEventRecord] = []
+        try:
+            for row in rows:
+                kind = str(row[0])
+                payload = row[3]
+                if kind == "MANEUVER":
+                    event = ManeuverEventIn.model_validate(payload)
+                elif kind == "TRACKING":
+                    event = VesselTrackingEventIn.model_validate(payload)
+                else:
+                    raise ValueError("kind inválido")
+                result.append(VesselEventRecord(
+                    kind=kind,
+                    ingestion_id=int(row[1]),
+                    ingested_at=self._aware_datetime(row[2]),
+                    event=event,
+                ))
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+        return tuple(result)
+
+    def latest_tracking_event_cursor(
+        self,
+        device_id: str,
+    ) -> int | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select max(ingestion_id)
+                    from public.vessel_tracking_events
+                    where device_id = %s
+                    """,
+                    (device_id,),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        if row is None or row[0] is None:
+            return None
+        try:
+            return int(row[0])
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def list_installation_tracking_events(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        *,
+        after: int,
+        limit: int,
+    ) -> tuple[InstallationTrackingEventRecord, ...]:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                rows = conn.execute(
+                    """
+                    select tracked_vessel_id, ingestion_id,
+                           ingested_at, event_payload
+                    from public.list_installation_tracking_events(
+                        %s, %s, %s, %s
+                    )
+                    """,
+                    (device_id, installation_id, after, limit),
+                ).fetchall()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+
+        result: list[InstallationTrackingEventRecord] = []
+        try:
+            for row in rows:
+                event = VesselTrackingEventIn.model_validate(row[3])
+                stored = StoredVesselTrackingEvent(
+                    ingestion_id=int(row[1]),
+                    device_id=device_id,
+                    event=event,
+                    ingested_at=self._aware_datetime(row[2]),
+                )
+                result.append(InstallationTrackingEventRecord(
+                    tracked_vessel_id=UUID(str(row[0])),
+                    stored=stored,
+                ))
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+        return tuple(result)
 
     def accept_vessel_tracking_event_atomic(
         self,

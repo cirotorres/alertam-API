@@ -30,10 +30,12 @@ class ManeuverEventService:
         repository: AlertaRepository,
         *,
         dispatch_event: Callable[[StoredManeuverEvent], None] | None = None,
+        project_event: Callable[[StoredManeuverEvent], None] | None = None,
     ) -> None:
         self._repository = repository
         self._auth = DeviceAuthService(repository)
         self._dispatch_event = dispatch_event
+        self._project_event = project_event
 
     def authenticate_device(
         self,
@@ -70,6 +72,7 @@ class ManeuverEventService:
         }:
             if result.stored is None:
                 raise PersistenceUnavailableApiError()
+            self._project(result.stored)
             self._dispatch_safely(result.stored)
             return ManeuverEventAcceptedResponse(
                 status=result.status.value,
@@ -80,6 +83,14 @@ class ManeuverEventService:
         if result.status is AcceptEventStatus.PAYLOAD_MISMATCH:
             raise EventIdPayloadMismatchError()
         raise InvalidDeviceCredentialsError()
+
+    def _project(self, stored: StoredManeuverEvent) -> None:
+        if self._project_event is None:
+            return
+        try:
+            self._project_event(stored)
+        except PersistenceUnavailableError as exc:
+            raise PersistenceUnavailableApiError() from exc
 
     def _dispatch_safely(self, stored: StoredManeuverEvent) -> None:
         if self._dispatch_event is None:

@@ -253,6 +253,247 @@ begin
 end;
 $$;
 
+
+create or replace function public.project_tracked_vessels(
+    p_device_id text,
+    p_vessel_identity text,
+    p_vessel_imo text,
+    p_vessel_name text,
+    p_observed_at timestamptz,
+    p_replace_current boolean,
+    p_current jsonb,
+    p_patch jsonb
+)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_count integer;
+    v_name text := regexp_replace(
+        upper(trim(p_vessel_name)),
+        '[[:space:]]+',
+        ' ',
+        'g'
+    );
+    v_empty_current jsonb := '{
+        "present": null,
+        "status": null,
+        "section": null,
+        "berth": null,
+        "side": null,
+        "eta": null,
+        "etb_ets": null,
+        "pob": null,
+        "pob_at": null
+    }'::jsonb;
+begin
+    update public.tracked_vessels tv
+    set
+        vessel_identity = case
+            when p_vessel_imo is not null then p_vessel_identity
+            else tv.vessel_identity
+        end,
+        vessel_imo = coalesce(p_vessel_imo, tv.vessel_imo),
+        vessel_name = case
+            when p_vessel_imo is not null then p_vessel_name
+            else tv.vessel_name
+        end,
+        current = case
+            when p_replace_current then p_current
+            else coalesce(tv.current, v_empty_current) || coalesce(p_patch, '{}'::jsonb)
+        end,
+        last_seen_at = p_observed_at,
+        updated_at = clock_timestamp()
+    where tv.device_id = p_device_id
+      and tv.active = true
+      and (tv.last_seen_at is null or p_observed_at >= tv.last_seen_at)
+      and (
+          tv.vessel_identity = p_vessel_identity
+          or (
+              p_vessel_imo is not null
+              and tv.vessel_imo = p_vessel_imo
+          )
+          or (
+              p_vessel_imo is not null
+              and tv.vessel_imo is null
+              and regexp_replace(
+                      upper(trim(tv.vessel_name)),
+                      '[[:space:]]+',
+                      ' ',
+                      'g'
+                  ) = v_name
+          )
+          or (
+              p_vessel_imo is null
+              and tv.vessel_imo is null
+              and regexp_replace(
+                      upper(trim(tv.vessel_name)),
+                      '[[:space:]]+',
+                      ' ',
+                      'g'
+                  ) = v_name
+          )
+      );
+
+    get diagnostics v_count = row_count;
+    return v_count;
+end;
+$$;
+
+create or replace function public.list_tracked_vessel_timeline(
+    p_device_id text,
+    p_installation_id uuid,
+    p_tracked_vessel_id uuid
+)
+returns table (
+    kind text,
+    ingestion_id bigint,
+    ingested_at timestamptz,
+    event_payload jsonb
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_tracked public.tracked_vessels%rowtype;
+    v_name text;
+begin
+    select *
+    into v_tracked
+    from public.tracked_vessels tv
+    where tv.tracked_vessel_id = p_tracked_vessel_id
+      and tv.device_id = p_device_id
+      and tv.installation_id = p_installation_id;
+
+    if not found then
+        return;
+    end if;
+
+    v_name := regexp_replace(
+        upper(trim(v_tracked.vessel_name)),
+        '[[:space:]]+',
+        ' ',
+        'g'
+    );
+
+    return query
+    select q.kind, q.ingestion_id, q.ingested_at, q.event_payload
+    from (
+        select
+            'MANEUVER'::text as kind,
+            me.ingestion_id,
+            me.ingested_at,
+            me.event_payload
+        from public.maneuver_events me
+        where me.device_id = p_device_id
+          and (
+              me.event_payload->>'vessel_identity' = v_tracked.vessel_identity
+              or (
+                  v_tracked.vessel_imo is not null
+                  and me.event_payload->>'vessel_imo' = v_tracked.vessel_imo
+              )
+              or (
+                  me.event_payload->>'vessel_imo' is null
+                  and regexp_replace(
+                          upper(trim(me.event_payload->>'vessel_name')),
+                          '[[:space:]]+',
+                          ' ',
+                          'g'
+                      ) = v_name
+              )
+          )
+
+        union all
+
+        select
+            'TRACKING'::text as kind,
+            vte.ingestion_id,
+            vte.ingested_at,
+            vte.event_payload
+        from public.vessel_tracking_events vte
+        where vte.device_id = p_device_id
+          and (
+              vte.vessel_identity = v_tracked.vessel_identity
+              or (
+                  v_tracked.vessel_imo is not null
+                  and vte.vessel_imo = v_tracked.vessel_imo
+              )
+              or (
+                  vte.vessel_imo is null
+                  and regexp_replace(
+                          upper(trim(vte.vessel_name)),
+                          '[[:space:]]+',
+                          ' ',
+                          'g'
+                      ) = v_name
+              )
+          )
+    ) q
+    order by
+        (q.event_payload->>'occurred_at')::timestamptz asc,
+        q.ingested_at asc,
+        (q.event_payload->>'event_id')::uuid asc;
+end;
+$$;
+
+create or replace function public.list_installation_tracking_events(
+    p_device_id text,
+    p_installation_id uuid,
+    p_after bigint,
+    p_limit integer
+)
+returns table (
+    tracked_vessel_id uuid,
+    ingestion_id bigint,
+    ingested_at timestamptz,
+    event_payload jsonb
+)
+language sql
+security definer
+set search_path = public
+as $$
+    select
+        tv.tracked_vessel_id,
+        vte.ingestion_id,
+        vte.ingested_at,
+        vte.event_payload
+    from public.vessel_tracking_events vte
+    join public.tracked_vessels tv
+      on tv.device_id = vte.device_id
+     and tv.installation_id = p_installation_id
+     and tv.active = true
+     and (
+         tv.vessel_identity = vte.vessel_identity
+         or (
+             vte.vessel_imo is not null
+             and tv.vessel_imo = vte.vessel_imo
+         )
+         or (
+             vte.vessel_imo is not null
+             and tv.vessel_imo is null
+             and regexp_replace(
+                     upper(trim(tv.vessel_name)),
+                     '[[:space:]]+',
+                     ' ',
+                     'g'
+                 ) = regexp_replace(
+                     upper(trim(vte.vessel_name)),
+                     '[[:space:]]+',
+                     ' ',
+                     'g'
+                 )
+         )
+     )
+    where vte.device_id = p_device_id
+      and vte.ingestion_id > p_after
+      and vte.occurred_at >= tv.started_at
+    order by vte.ingestion_id asc
+    limit p_limit;
+$$;
+
 revoke all on function public.upsert_tracked_vessel(
     text, uuid, text, text, text, jsonb, timestamptz
 ) from public, anon, authenticated;
@@ -272,3 +513,21 @@ grant execute on function public.revoke_mobile_installation(text, uuid)
     to service_role;
 grant execute on function public.rotate_device_view_secret(text, text)
     to service_role;
+
+revoke all on function public.project_tracked_vessels(
+    text, text, text, text, timestamptz, boolean, jsonb, jsonb
+) from public, anon, authenticated;
+revoke all on function public.list_tracked_vessel_timeline(text, uuid, uuid)
+    from public, anon, authenticated;
+revoke all on function public.list_installation_tracking_events(
+    text, uuid, bigint, integer
+) from public, anon, authenticated;
+
+grant execute on function public.project_tracked_vessels(
+    text, text, text, text, timestamptz, boolean, jsonb, jsonb
+) to service_role;
+grant execute on function public.list_tracked_vessel_timeline(text, uuid, uuid)
+    to service_role;
+grant execute on function public.list_installation_tracking_events(
+    text, uuid, bigint, integer
+) to service_role;

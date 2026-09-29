@@ -18,11 +18,13 @@ def create_maneuver_event_router(
     repository: AlertaRepository,
     *,
     dispatch_event: Callable[[StoredManeuverEvent], None] | None = None,
+    project_event: Callable[[StoredManeuverEvent], None] | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/devices")
     service = ManeuverEventService(
         repository,
         dispatch_event=dispatch_event,
+        project_event=project_event,
     )
 
     def require_device(

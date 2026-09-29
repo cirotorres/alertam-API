@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Callable
+
 from fastapi import APIRouter, Depends, Header
 
 from app.models.vessel_tracking_event import (
@@ -7,6 +9,7 @@ from app.models.vessel_tracking_event import (
     VesselTrackingEventIn,
 )
 from app.repositories.events import AlertaRepository
+from app.repositories.tracking import StoredVesselTrackingEvent
 from app.security.credentials import parse_device_authorization
 from app.services.device_auth import AuthenticatedDevice
 from app.services.vessel_tracking_event_service import VesselTrackingEventService
@@ -14,9 +17,14 @@ from app.services.vessel_tracking_event_service import VesselTrackingEventServic
 
 def create_vessel_tracking_event_router(
     repository: AlertaRepository,
+    *,
+    project_event: Callable[[StoredVesselTrackingEvent], None] | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/devices")
-    service = VesselTrackingEventService(repository)
+    service = VesselTrackingEventService(
+        repository,
+        project_event=project_event,
+    )
 
     def require_device(
         device_id: str,

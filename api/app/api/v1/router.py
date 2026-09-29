@@ -17,6 +17,9 @@ from app.api.v1.vessel_photos import create_vessel_photo_router
 from app.api.v1.vessel_tracking_events import create_vessel_tracking_event_router
 from app.api.v1.tracked_vessels import create_tracked_vessels_router
 from app.repositories.events import AlertaRepository, StoredManeuverEvent
+from app.services.tracked_vessel_projection_service import (
+    TrackedVesselProjectionService,
+)
 from app.services.vessel_photo_service import VesselPhotoLookup
 
 
@@ -32,15 +35,20 @@ def create_v1_router(
     dispatch_event: Callable[[StoredManeuverEvent], None] | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
+    projection = TrackedVesselProjectionService(repository)
     router.include_router(create_health_router())
     router.include_router(
         create_maneuver_event_router(
             repository,
             dispatch_event=dispatch_event,
+            project_event=projection.apply_maneuver_event,
         )
     )
     router.include_router(
-        create_vessel_tracking_event_router(repository)
+        create_vessel_tracking_event_router(
+            repository,
+            project_event=projection.apply_tracking_event,
+        )
     )
     router.include_router(
         create_mobile_events_router(repository, clock=clock)

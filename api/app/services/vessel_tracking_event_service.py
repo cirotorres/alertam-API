@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Callable
+
 from app.core.errors import (
     EventIdPayloadMismatchError,
     InvalidDeviceCredentialsError,
@@ -11,14 +13,23 @@ from app.models.vessel_tracking_event import (
 )
 from app.repositories.devices import PersistenceUnavailableError
 from app.repositories.events import AlertaRepository
-from app.repositories.tracking import AcceptTrackingEventStatus
+from app.repositories.tracking import (
+    AcceptTrackingEventStatus,
+    StoredVesselTrackingEvent,
+)
 from app.services.device_auth import AuthenticatedDevice, DeviceAuthService
 
 
 class VesselTrackingEventService:
-    def __init__(self, repository: AlertaRepository) -> None:
+    def __init__(
+        self,
+        repository: AlertaRepository,
+        *,
+        project_event: Callable[[StoredVesselTrackingEvent], None] | None = None,
+    ) -> None:
         self._repository = repository
         self._auth = DeviceAuthService(repository)
+        self._project_event = project_event
 
     def authenticate_device(
         self,
@@ -46,6 +57,11 @@ class VesselTrackingEventService:
         }:
             if result.stored is None:
                 raise PersistenceUnavailableApiError()
+            if self._project_event is not None:
+                try:
+                    self._project_event(result.stored)
+                except PersistenceUnavailableError as exc:
+                    raise PersistenceUnavailableApiError() from exc
             return VesselTrackingEventAcceptedResponse(
                 status=result.status.value,
                 ingestion_id=result.stored.ingestion_id,

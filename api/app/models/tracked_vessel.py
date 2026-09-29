@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
+from app.models.maneuver_event import ManeuverEventIn
+from app.models.vessel_tracking_event import VesselTrackingEventIn
 from pydantic import (
     AwareDatetime,
     BaseModel,
@@ -58,3 +61,36 @@ class TrackedVesselResponse(ContractModel):
     stopped_at: AwareDatetime | None
     last_seen_at: AwareDatetime | None
     current: TrackedVesselCurrent | None
+
+
+class TrackedTimelineManeuverItem(ContractModel):
+    kind: Literal["MANEUVER"] = "MANEUVER"
+    ingestion_id: int
+    ingested_at: AwareDatetime
+    event: ManeuverEventIn
+
+
+class TrackedTimelineTrackingItem(ContractModel):
+    kind: Literal["TRACKING"] = "TRACKING"
+    ingestion_id: int
+    ingested_at: AwareDatetime
+    event: VesselTrackingEventIn
+
+
+class TrackedVesselTimelineResponse(ContractModel):
+    tracked_vessel_id: UUID
+    events: list[
+        TrackedTimelineManeuverItem | TrackedTimelineTrackingItem
+    ]
+
+
+class TrackingForegroundFeedItem(ContractModel):
+    tracked_vessel_id: UUID
+    ingestion_id: int
+    ingested_at: AwareDatetime
+    event: VesselTrackingEventIn
+
+
+class TrackingForegroundFeedResponse(ContractModel):
+    events: list[TrackingForegroundFeedItem]
+    newest_cursor: int | None
