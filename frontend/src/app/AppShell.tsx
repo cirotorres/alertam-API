@@ -95,6 +95,7 @@ export function AppShell({
   );
   const [selectedVessel, setSelectedVessel] = useState<VesselV1 | null>(null);
   const [renderedVessel, setRenderedVessel] = useState<VesselV1 | null>(null);
+  const [dismissedNoticeKey, setDismissedNoticeKey] = useState<string | null>(null);
   const [activeBottomTab, setActiveBottomTab] =
     useState<BottomTab>("maneuvers");
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -207,6 +208,7 @@ export function AppShell({
     );
     if (generalEnabled) {
       return {
+        key: `alert:${event.event_id}`,
         kind: "alert" as const,
         vesselName: event.vessel_name,
         label: "Novo alerta operacional",
@@ -221,6 +223,7 @@ export function AppShell({
     });
     if (!tracked) return null;
     return {
+      key: `tracking:${event.event_id}`,
       kind: "tracking" as const,
       vesselName: event.vessel_name,
       label: "Novo acompanhamento",
@@ -241,6 +244,7 @@ export function AppShell({
       return null;
     }
     return {
+      key: `tracking:${item.event.event_id}`,
       kind: "tracking" as const,
       vesselName: item.event.vessel_name,
       label: "Novo acompanhamento",
@@ -252,6 +256,8 @@ export function AppShell({
   })();
 
   const foregroundNotice = maneuverNotice ?? trackingNotice;
+  const visibleForegroundNotice =
+    foregroundNotice?.key === dismissedNoticeKey ? null : foregroundNotice;
 
   const outletContext: ShellOutletContext = {
     pairing,
@@ -312,22 +318,32 @@ export function AppShell({
           Dados fictícios para validação visual · nenhuma consulta à API real
         </div>
       ) : null}
-      {!demoMode && documentVisible && foregroundNotice ? (
+      {!demoMode && documentVisible && visibleForegroundNotice ? (
         <div
           className="foreground-alert"
           role="status"
-          aria-label={foregroundNotice.label}
+          aria-label={visibleForegroundNotice.label}
         >
           <span>
-            {foregroundNotice.kind === "alert" ? "Novo alerta" : "Atualização acompanhada"}:{" "}
-            <strong>{foregroundNotice.vesselName}</strong>
+            {visibleForegroundNotice.kind === "alert" ? "Novo alerta" : "Atualização acompanhada"}:{" "}
+            <strong>{visibleForegroundNotice.vesselName}</strong>
           </span>
-          <button
-            type="button"
-            onClick={() => navigate(foregroundNotice.url)}
-          >
-            {foregroundNotice.button}
-          </button>
+          <div className="foreground-alert__actions">
+            <button
+              type="button"
+              onClick={() => navigate(visibleForegroundNotice.url)}
+            >
+              {visibleForegroundNotice.button}
+            </button>
+            <button
+              type="button"
+              className="foreground-alert__close"
+              aria-label="Fechar aviso"
+              onClick={() => setDismissedNoticeKey(visibleForegroundNotice.key)}
+            >
+              ×
+            </button>
+          </div>
         </div>
       ) : null}
       <main className="mobile-content">

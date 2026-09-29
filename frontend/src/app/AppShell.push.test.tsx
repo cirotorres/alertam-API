@@ -213,6 +213,29 @@ test("visible_new_event_shows_internal_notice_and_opens_global_alert_detail", as
   );
 });
 
+test("foreground_notice_can_be_dismissed_without_opening_the_event", async () => {
+  renderShell({
+    eventState: {
+      ...baseEventState,
+      events: [EVENT],
+      newEvent: EVENT,
+    },
+  });
+
+  expect(
+    await screen.findByRole("status", { name: "Novo alerta operacional" }),
+  ).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Fechar aviso" }));
+
+  expect(
+    screen.queryByRole("status", { name: "Novo alerta operacional" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("heading", { name: "Mapa operacional" }),
+  ).toBeInTheDocument();
+});
+
 
 const TRACK_ID = "90000000-0000-4000-8000-000000000001";
 const TRACKING_EVENT_ID = "90000000-0000-4000-8000-000000000002";
