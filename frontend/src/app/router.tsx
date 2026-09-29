@@ -7,6 +7,7 @@ import { AboutPage } from "../pages/AboutPage";
 import { ConfigPage } from "../pages/ConfigPage";
 import { HistoryPage } from "../pages/HistoryPage";
 import { MapPage } from "../pages/MapPage";
+import { TrackedVesselsPage } from "../pages/TrackedVesselsPage";
 import { WeatherPage } from "../pages/WeatherPage";
 import { AppShell } from "./AppShell";
 
@@ -44,6 +45,7 @@ export function AppRoutes({
         <Route path={routePath("")} element={<MapPage />} />
         <Route path={routePath("/alertas")} element={<AlertsPage />} />
         <Route path={routePath("/historico")} element={<HistoryPage />} />
+        <Route path={routePath("/acompanhados")} element={<TrackedVesselsPage />} />
         <Route path={routePath("/tempo")} element={<WeatherPage />} />
         <Route path={routePath("/config")} element={<ConfigPage />} />
         <Route path={routePath("/sobre")} element={<AboutPage />} />

@@ -73,7 +73,7 @@ combina o feed existente de ManeuverEvent com o feed de VesselTrackingEvent para
 - [x] **Step 3:** RED timeline local conter ambos tipos sem duplicar mudança de manobra.
 - [x] **Step 4:** RED estrela nas listas/mapa/tooltip sem alterar cores operacionais.
 - [x] **Step 5:** Implementar wiring e atualização em SNAPSHOT_READY.
-- [ ] **Step 6:** `make test` concluído; `make test-ui XEPHYR_N=27` delegado por Ciro para validação manual ao fim do Plano 3.
+- [x] **Step 6:** `make test` concluído; `make test-ui XEPHYR_N=27` delegado por Ciro para validação manual após a implementação.
 ### Task 3: Tracking client/provider PWA
 
 **Files:**
@@ -131,12 +131,12 @@ combina o feed existente de ManeuverEvent com o feed de VesselTrackingEvent para
 - Query: `?track=<tracked_vessel_id>&event=<event_id>`.
 - Timeline usa union MANEUVER/TRACKING ordenada pela API e destaca event opcional.
 
-- [ ] **Step 1:** RED drawer/route e lista somente trackings da instalação atual.
-- [ ] **Step 2:** RED navio ausente continuar listado com último estado conhecido.
-- [ ] **Step 3:** RED abrir item carregar timeline única com ETA/status + manobras.
-- [ ] **Step 4:** RED deep link selecionar tracking/event correto e fechar remover query sem sair da página.
-- [ ] **Step 5:** RED drag/scroll/ARIA reutilizando BottomSheetFrame.
-- [ ] **Step 6:** Implementar página, sheet e projeções.
+- [x] **Step 1:** RED drawer/route e lista somente trackings da instalação atual.
+- [x] **Step 2:** RED navio ausente continuar listado com último estado conhecido.
+- [x] **Step 3:** RED abrir item carregar timeline única com ETA/status + manobras.
+- [x] **Step 4:** RED deep link selecionar tracking/event correto e fechar remover query sem sair da página.
+- [x] **Step 5:** RED drag/scroll/ARIA reutilizando BottomSheetFrame.
+- [x] **Step 6:** Implementar página, sheet e projeções.
 ### Task 6: Foreground, destino de ManeuverEvent e gates cross-repo
 
 **Files:**
@@ -151,12 +151,12 @@ combina o feed existente de ManeuverEvent com o feed de VesselTrackingEvent para
 - new ManeuverEvent + categoria geral OFF + tracking ON → /acompanhados.
 - Nunca dois avisos para a mesma ocorrência semântica.
 
-- [ ] **Step 1:** RED foreground VesselTrackingEvent com tracking correto e sem Web Push do sistema.
-- [ ] **Step 2:** RED escolha de destino de ManeuverEvent usando usePush.preferences + TrackingProvider.
-- [ ] **Step 3:** RED reativar push não produzir aviso retroativo no provider.
-- [ ] **Step 4:** Rodar Desktop focused + `make test` + Xephyr.
-- [ ] **Step 5:** Rodar API unit/contract/integration + `make test-all`.
-- [ ] **Step 6:** Rodar frontend Vitest completo + build + Playwright completo.
-- [ ] **Step 7:** Smoke Desktop VesselTrackingEvent → API → tracked feed/timeline → Zod PWA.
-- [ ] **Step 8:** Auto-revisar critérios da SPEC 023, `git diff --check` e árvores dos dois repos.
-- [ ] **Step 9:** Parar para revisão humana; não commit/push sem autorização explícita.
+- [x] **Step 1:** RED foreground VesselTrackingEvent com tracking correto e sem Web Push do sistema.
+- [x] **Step 2:** RED escolha de destino de ManeuverEvent usando usePush.preferences + TrackingProvider.
+- [x] **Step 3:** RED reativar push não produzir aviso retroativo no provider.
+- [x] **Step 4:** Desktop focused + `make test` concluídos; Xephyr delegado por Ciro para validação manual.
+- [x] **Step 5:** Rodar API unit/contract/integration + `make test-all`.
+- [x] **Step 6:** Rodar frontend Vitest completo + build + Playwright completo.
+- [x] **Step 7:** Smoke Desktop VesselTrackingEvent → API → tracked feed/timeline → Zod PWA.
+- [x] **Step 8:** Auto-revisar critérios da SPEC 023, `git diff --check` e árvores dos dois repos.
+- [x] **Step 9:** Parar para revisão humana; não commit/push sem autorização explícita.

@@ -86,3 +86,22 @@ test("demo_alert_detail_is_resolved_locally_without_real_api_call", async () => 
   expect(screen.getAllByText("ATLANTIC DAWN")).toHaveLength(2);
   expect(fetchMock).not.toHaveBeenCalled();
 });
+
+
+test("demo_acompanhados_route_is_local_and_empty_without_api_calls", async () => {
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+  render(<App />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Abrir menu" }));
+  fireEvent.click(screen.getByRole("link", { name: "Acompanhados" }));
+
+  expect(
+    await screen.findByRole("heading", { name: "Acompanhados" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("Nenhum navio acompanhado neste aparelho."),
+  ).toBeInTheDocument();
+  expect(window.location.pathname).toBe("/demo/acompanhados");
+  expect(fetchMock).not.toHaveBeenCalled();
+});

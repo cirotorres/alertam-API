@@ -11,6 +11,10 @@ import type { AlertDetailFetcher } from "../events/useAlertDetail";
 import type { EventState } from "../events/useEventPolling";
 import { StaticSnapshotProvider } from "../snapshot/SnapshotProvider";
 import type { SnapshotState } from "../snapshot/useSnapshotPolling";
+import {
+  StaticTrackingProvider,
+  type TrackingState,
+} from "../tracking/TrackingProvider";
 import { AppRoutes } from "../../app/router";
 import { DEMO_RESPONSE } from "./demoData";
 
@@ -40,6 +44,20 @@ const DEMO_PUSH_STATE: PushState = {
   enablePush: async () => undefined,
   disablePush: async () => undefined,
   updatePreference: async () => undefined,
+};
+
+const DEMO_TRACKING_STATE: TrackingState = {
+  trackings: [],
+  status: "online",
+  newTrackingEvent: null,
+  mutationPending: false,
+  mutationError: null,
+  findTracking: () => null,
+  isTracked: () => false,
+  startTracking: async () => false,
+  stopTracking: async () => false,
+  refresh: async () => true,
+  clearMutationError: () => undefined,
 };
 
 const DEMO_EVENT_STATE: EventState = {
@@ -139,14 +157,16 @@ export function DemoMode() {
   return (
     <StaticSnapshotProvider state={DEMO_STATE}>
       <StaticEventProvider state={DEMO_EVENT_STATE}>
-        <StaticPushProvider state={DEMO_PUSH_STATE}>
-          <AppRoutes
-            pairing={DEMO_PAIRING}
-            basePath="/demo"
-            demoMode
-            alertDetailFetcher={DEMO_ALERT_DETAIL_FETCHER}
-          />
-        </StaticPushProvider>
+        <StaticTrackingProvider state={DEMO_TRACKING_STATE}>
+          <StaticPushProvider state={DEMO_PUSH_STATE}>
+            <AppRoutes
+              pairing={DEMO_PAIRING}
+              basePath="/demo"
+              demoMode
+              alertDetailFetcher={DEMO_ALERT_DETAIL_FETCHER}
+            />
+          </StaticPushProvider>
+        </StaticTrackingProvider>
       </StaticEventProvider>
     </StaticSnapshotProvider>
   );

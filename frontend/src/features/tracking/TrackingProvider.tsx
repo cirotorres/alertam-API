@@ -137,6 +137,13 @@ export function TrackingProvider({
   }, [handleError, listFetcher, sessionReady]);
 
   useEffect(() => {
+    if (!sessionReady || polling.newTrackingEvent === null) {
+      return;
+    }
+    void refresh();
+  }, [polling.newTrackingEvent, refresh, sessionReady]);
+
+  useEffect(() => {
     setMutationError(null);
     if (!sessionReady) {
       setTrackings([]);

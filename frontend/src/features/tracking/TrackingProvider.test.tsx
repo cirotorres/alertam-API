@@ -48,6 +48,7 @@ function Probe() {
       </div>
       <div data-testid="tracked">{state.isTracked(TARGET) ? "yes" : "no"}</div>
       <div data-testid="error">{state.mutationError ?? ""}</div>
+      <div data-testid="eta">{state.trackings[0]?.current?.eta ?? ""}</div>
       <button type="button" onClick={() => void state.startTracking(TARGET)}>
         start
       </button>
@@ -170,4 +171,86 @@ test("exact_name_fallback_matches_promoted_imo_target_without_duplicate", async 
   );
 
   await waitFor(() => expect(screen.getByTestId("tracked")).toHaveTextContent("yes"));
+});
+
+
+test("new_tracking_event_refreshes_authoritative_tracked_vessel_projection", async () => {
+  const refreshed = {
+    ...TRACKED,
+    last_seen_at: "2026-09-29T03:10:00-03:00",
+    current: {
+      ...TRACKED.current!,
+      eta: "29/09 05:30",
+    },
+  };
+  const listFetcher = vi
+    .fn()
+    .mockResolvedValueOnce([TRACKED])
+    .mockResolvedValueOnce([refreshed]);
+  const eventFetcher = vi
+    .fn()
+    .mockResolvedValueOnce({ events: [], newest_cursor: 0 })
+    .mockResolvedValueOnce({
+      events: [
+        {
+          tracked_vessel_id: TRACKED.tracked_vessel_id,
+          ingestion_id: 1,
+          ingested_at: "2026-09-29T06:10:01Z",
+          event: {
+            event_id: "20000000-0000-4000-8000-000000000099",
+            vessel_identity: TRACKED.vessel_identity,
+            vessel_imo: TRACKED.vessel_imo,
+            vessel_name: TRACKED.vessel_name,
+            occurred_at: "2026-09-29T03:10:00-03:00",
+            first_observed_at: "2026-09-29T03:10:00-03:00",
+            maneuver_id: null,
+            changes: { eta: { from: null, to: "29/09 05:30" } },
+            current: {
+              present: true,
+              status: "PREVISTO",
+              section: "PREVISTO",
+              berth: 4,
+              side: "BB",
+              eta: "29/09 05:30",
+              etb_ets: null,
+              pob: null,
+              pob_at: null,
+            },
+          },
+        },
+      ],
+      newest_cursor: 1,
+    });
+
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "visible",
+  });
+  render(
+    <TrackingProvider
+      sessionReady
+      listFetcher={listFetcher}
+      eventFetcher={eventFetcher}
+    >
+      <Probe />
+    </TrackingProvider>,
+  );
+
+  await waitFor(() => expect(listFetcher).toHaveBeenCalledTimes(1));
+  expect(screen.getByTestId("eta")).toHaveTextContent("");
+
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "hidden",
+  });
+  document.dispatchEvent(new Event("visibilitychange"));
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "visible",
+  });
+  document.dispatchEvent(new Event("visibilitychange"));
+
+  await waitFor(() => expect(eventFetcher).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(listFetcher).toHaveBeenCalledTimes(2));
+  expect(screen.getByTestId("eta")).toHaveTextContent("29/09 05:30");
 });

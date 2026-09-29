@@ -41,10 +41,17 @@ async function mockMobileSession(
     const method = route.request().method();
 
     if (method === "POST") {
+      const body = route.request().postDataJSON() as {
+        device_id: string;
+        installation_id: string;
+      };
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ device_id: "pecem-01" }),
+        body: JSON.stringify({
+          device_id: body.device_id,
+          installation_id: body.installation_id,
+        }),
       });
       return;
     }
@@ -58,7 +65,10 @@ async function mockMobileSession(
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ device_id: recoverDeviceId }),
+        body: JSON.stringify({
+          device_id: recoverDeviceId,
+          installation_id: "96000000-0000-4000-8000-000000000001",
+        }),
       });
       return;
     }
@@ -970,4 +980,137 @@ test("installed_pwa_recovers_cookie_session_without_local_storage", async ({ pag
     await page.evaluate((key) => localStorage.getItem(key), PAIRING_KEY),
   ).toBeNull();
   expect(snapshotAuthorization).toBeUndefined();
+});
+
+
+function trackedVesselFixture() {
+  return {
+    tracked_vessel_id: "95000000-0000-4000-8000-000000000001",
+    vessel_identity: "IMO:1234567",
+    vessel_imo: "1234567",
+    vessel_name: "NAVIO TRACK",
+    started_at: "2026-09-29T03:00:00-03:00",
+    active: true,
+    stopped_at: null,
+    last_seen_at: "2026-09-29T03:05:00-03:00",
+    current: {
+      present: false,
+      status: "PREVISTO",
+      section: "PREVISTO",
+      berth: 4,
+      side: "BB",
+      eta: "29/09 05:30",
+      etb_ets: "29/09 06:30",
+      pob: null,
+      pob_at: null,
+    },
+  };
+}
+
+function trackingEventFixture() {
+  return {
+    event_id: "95000000-0000-4000-8000-000000000002",
+    vessel_identity: "IMO:1234567",
+    vessel_imo: "1234567",
+    vessel_name: "NAVIO TRACK",
+    occurred_at: "2026-09-29T03:10:00-03:00",
+    first_observed_at: "2026-09-29T03:10:00-03:00",
+    maneuver_id: null,
+    changes: { eta: { from: "29/09 05:00", to: "29/09 05:30" } },
+    current: {
+      present: false,
+      status: "PREVISTO",
+      section: "PREVISTO",
+      berth: 4,
+      side: "BB",
+      eta: "29/09 05:30",
+      etb_ets: "29/09 06:30",
+      pob: null,
+      pob_at: null,
+    },
+  };
+}
+
+async function mockTrackingApi(page: Page) {
+  const tracked = trackedVesselFixture();
+  const trackingEvent = trackingEventFixture();
+  const requests = { list: 0, feed: 0, timeline: 0 };
+  await page.route("**/api/v1/mobile/tracked-vessels**", async (route) => {
+    const url = new URL(route.request().url());
+    const pathname = url.pathname;
+    if (pathname.endsWith("/events") && pathname.includes(tracked.tracked_vessel_id)) {
+      requests.timeline += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          tracked_vessel_id: tracked.tracked_vessel_id,
+          events: [
+            {
+              kind: "TRACKING",
+              ingestion_id: 1,
+              ingested_at: "2026-09-29T06:10:01Z",
+              event: trackingEvent,
+            },
+          ],
+        }),
+      });
+      return;
+    }
+    if (pathname.endsWith("/tracked-vessels/events")) {
+      requests.feed += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ events: [], newest_cursor: 1 }),
+      });
+      return;
+    }
+    if (pathname.endsWith("/tracked-vessels") && route.request().method() === "GET") {
+      requests.list += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([tracked]),
+      });
+      return;
+    }
+    await route.continue();
+  });
+  return { tracked, trackingEvent, requests };
+}
+
+test("tracked vessels page keeps absent vessel and deep link timeline works", async ({ page }) => {
+  test.skip(
+    test.info().project.name !== "mobile-390",
+    "Tracking E2E runs once on the primary mobile viewport.",
+  );
+  await seedPairing(page);
+  await mockSnapshot(page);
+  await mockManeuverEvents(page, eventPage([]));
+  const { tracked, trackingEvent, requests } = await mockTrackingApi(page);
+
+  await page.goto(
+    `/acompanhados?track=${tracked.tracked_vessel_id}&event=${trackingEvent.event_id}`,
+  );
+
+  await expect(page.getByRole("heading", { name: "Acompanhados" })).toBeVisible();
+  await expect.poll(() => requests.list).toBeGreaterThan(0);
+  await expect(
+    page.getByRole("button", { name: /NAVIO TRACK.*Ausente.*Berço 4/i }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "NAVIO TRACK" })).toBeVisible();
+  const sheet = page.getByRole("dialog", { name: "Detalhes do acompanhamento" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByText(/ETA.*05:00.*05:30/)).toBeVisible();
+
+  await page.getByRole("button", {
+    name: "Fechar detalhes do acompanhamento",
+    exact: true,
+  }).click();
+  await expect(sheet).not.toBeVisible();
+  await expect(page).toHaveURL(/\/acompanhados$/);
+
+  await page.getByRole("button", { name: "Abrir menu" }).click();
+  await expect(page.getByRole("link", { name: "Acompanhados" })).toBeVisible();
 });

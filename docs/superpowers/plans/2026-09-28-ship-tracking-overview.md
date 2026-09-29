@@ -50,4 +50,4 @@ O Plano 3 só começa depois de o Plano 2 provar isolamento por instalação e d
 
 - Plano 1 — Core Events: **concluído e validado**.
 - Plano 2 — Installations & Dispatch: **concluído e validado**.
-- Plano 3 — Desktop & PWA UX: **próximo plano; ainda não iniciado**.
+- Plano 3 — Desktop & PWA UX: **implementado e validado por gates automatizados; Tk/Xephyr delegado por Ciro para validação manual**.

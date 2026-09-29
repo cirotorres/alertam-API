@@ -125,6 +125,7 @@ export function Drawer({
               <Link ref={firstLinkRef} to={routePath("")} onClick={onClose}>Mapa</Link>
               <Link to={routePath("/alertas")} onClick={onClose}>Alertas</Link>
               <Link to={routePath("/historico")} onClick={onClose}>Histórico</Link>
+              <Link to={routePath("/acompanhados")} onClick={onClose}>Acompanhados</Link>
               <Link to={routePath("/config")} onClick={onClose}>Config.</Link>
             </nav>
             <div className="drawer__separator" />

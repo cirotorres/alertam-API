@@ -19,6 +19,10 @@ import {
 } from "../features/push/PushProvider";
 import { StaticSnapshotProvider } from "../features/snapshot/SnapshotProvider";
 import type { SnapshotState } from "../features/snapshot/useSnapshotPolling";
+import {
+  StaticTrackingProvider,
+  type TrackingState,
+} from "../features/tracking/TrackingProvider";
 
 const heartbeat = vi.hoisted(() => ({
   useForegroundHeartbeat: vi.fn(),
@@ -90,6 +94,20 @@ const basePushState: PushState = {
   updatePreference: vi.fn().mockResolvedValue(undefined),
 };
 
+const baseTrackingState: TrackingState = {
+  trackings: [],
+  status: "online",
+  newTrackingEvent: null,
+  mutationPending: false,
+  mutationError: null,
+  findTracking: () => null,
+  isTracked: () => false,
+  startTracking: async () => true,
+  stopTracking: async () => true,
+  refresh: async () => true,
+  clearMutationError: () => undefined,
+};
+
 function detailForEvent(): ManeuverEventDetailResponse {
   return {
     selected_event_id: EVENT.event_id,
@@ -103,6 +121,7 @@ function renderShell(options: {
   pushState?: PushState;
   onPairingCleared?: () => void;
   alertDetailFetcher?: AlertDetailFetcher;
+  trackingState?: TrackingState;
 } = {}) {
   const reset = options.onPairingCleared ?? vi.fn();
   const alertDetailFetcher =
@@ -110,15 +129,17 @@ function renderShell(options: {
   render(
     <StaticSnapshotProvider state={snapshotState}>
       <StaticEventProvider state={options.eventState ?? baseEventState}>
-        <StaticPushProvider state={options.pushState ?? basePushState}>
-          <MemoryRouter initialEntries={["/"]}>
-            <AppRoutes
-              pairing={pairing}
-              onPairingCleared={reset}
-              alertDetailFetcher={alertDetailFetcher}
-            />
-          </MemoryRouter>
-        </StaticPushProvider>
+        <StaticTrackingProvider state={options.trackingState ?? baseTrackingState}>
+          <StaticPushProvider state={options.pushState ?? basePushState}>
+            <MemoryRouter initialEntries={["/"]}>
+              <AppRoutes
+                pairing={pairing}
+                onPairingCleared={reset}
+                alertDetailFetcher={alertDetailFetcher}
+              />
+            </MemoryRouter>
+          </StaticPushProvider>
+        </StaticTrackingProvider>
       </StaticEventProvider>
     </StaticSnapshotProvider>,
   );
@@ -188,4 +209,124 @@ test("visible_new_event_shows_internal_notice_and_opens_global_alert_detail", as
     EVENT.event_id,
     expect.any(AbortSignal),
   );
+});
+
+
+const TRACK_ID = "90000000-0000-4000-8000-000000000001";
+const TRACKING_EVENT_ID = "90000000-0000-4000-8000-000000000002";
+const TRACKED = {
+  tracked_vessel_id: TRACK_ID,
+  vessel_identity: EVENT.vessel_identity,
+  vessel_imo: EVENT.vessel_imo,
+  vessel_name: EVENT.vessel_name,
+  started_at: "2026-09-27T17:00:00Z",
+  active: true,
+  stopped_at: null,
+  last_seen_at: "2026-09-27T18:00:00Z",
+  current: null,
+};
+
+const TRACKING_FEED_ITEM = {
+  tracked_vessel_id: TRACK_ID,
+  ingestion_id: 9,
+  ingested_at: "2026-09-27T18:00:01Z",
+  event: {
+    event_id: TRACKING_EVENT_ID,
+    vessel_identity: EVENT.vessel_identity,
+    vessel_imo: EVENT.vessel_imo,
+    vessel_name: EVENT.vessel_name,
+    occurred_at: "2026-09-27T18:00:00Z",
+    first_observed_at: "2026-09-27T18:00:00Z",
+    maneuver_id: null,
+    changes: { eta: { from: "10:00", to: "10:30" } },
+    current: {
+      present: true,
+      status: "PREVISTO",
+      section: "PREVISTO",
+      berth: 4,
+      side: "BB",
+      eta: "10:30",
+      etb_ets: null,
+      pob: null,
+      pob_at: null,
+    },
+  },
+};
+
+test("tracking_foreground_notice_opens_tracked_deep_link", async () => {
+  renderShell({
+    trackingState: {
+      ...baseTrackingState,
+      trackings: [TRACKED],
+      newTrackingEvent: TRACKING_FEED_ITEM,
+      findTracking: () => TRACKED,
+      isTracked: () => true,
+    },
+  });
+
+  const notice = await screen.findByRole("status", {
+    name: "Novo acompanhamento",
+  });
+  expect(notice).toHaveTextContent("NAVIO A");
+  fireEvent.click(screen.getByRole("button", { name: "Ver acompanhamento" }));
+
+  expect(
+    await screen.findByRole("heading", { name: "Acompanhados" }),
+  ).toBeInTheDocument();
+});
+
+test("maneuver_general_category_on_has_priority_and_shows_only_one_notice", async () => {
+  renderShell({
+    eventState: { ...baseEventState, events: [EVENT], newEvent: EVENT },
+    pushState: {
+      ...basePushState,
+      preferences: { ...basePushState.preferences, confirmed: true },
+    },
+    trackingState: {
+      ...baseTrackingState,
+      trackings: [TRACKED],
+      newTrackingEvent: {
+        ...TRACKING_FEED_ITEM,
+        event: {
+          ...TRACKING_FEED_ITEM.event,
+          maneuver_id: EVENT.maneuver_id,
+        },
+      },
+      findTracking: () => TRACKED,
+      isTracked: () => true,
+    },
+  });
+
+  expect(
+    await screen.findByRole("status", { name: "Novo alerta operacional" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("status", { name: "Novo acompanhamento" }),
+  ).not.toBeInTheDocument();
+});
+
+test("maneuver_general_category_off_but_tracked_routes_to_acompanhados", async () => {
+  renderShell({
+    eventState: { ...baseEventState, events: [EVENT], newEvent: EVENT },
+    pushState: {
+      ...basePushState,
+      preferences: { ...basePushState.preferences, confirmed: false },
+    },
+    trackingState: {
+      ...baseTrackingState,
+      trackings: [TRACKED],
+      findTracking: () => TRACKED,
+      isTracked: () => true,
+    },
+  });
+
+  const notice = await screen.findByRole("status", {
+    name: "Novo acompanhamento",
+  });
+  expect(notice).toHaveTextContent("NAVIO A");
+  fireEvent.click(screen.getByRole("button", { name: "Ver acompanhamento" }));
+
+  expect(
+    await screen.findByRole("heading", { name: "Acompanhados" }),
+  ).toBeInTheDocument();
 });

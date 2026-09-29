@@ -50,3 +50,12 @@ test("drawer_keeps_weather_out_of_general_navigation", () => {
   renderDrawer();
   expect(screen.queryByRole("link", { name: "Tempo" })).not.toBeInTheDocument();
 });
+
+
+test("drawer_links_to_tracked_vessels_page", () => {
+  renderDrawer();
+  expect(screen.getByRole("link", { name: "Acompanhados" })).toHaveAttribute(
+    "href",
+    "/acompanhados",
+  );
+});

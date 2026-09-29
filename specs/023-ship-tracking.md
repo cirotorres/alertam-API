@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Status | Planos 1 e 2 concluídos e validados; Plano 3 — Desktop & PWA UX é o próximo |
+| Status | Planos 1–3 implementados e validados por testes automatizados; Tk/Xephyr aguarda validação manual do operador |
 | Criado em | 2026-09-28 |
 | Atualizado em | 2026-09-29 |
 | Escopo | AlertaM Desktop + FastAPI/Supabase + PWA React/Vite |
@@ -847,24 +847,24 @@ As quatro categorias gerais da SPEC 021 continuam existindo e não são ampliada
 
 ## Critérios de aceite
 
-- [ ] Usuário pode acompanhar um navio pelo PWA.
-- [ ] Usuário pode acompanhar um navio pelo detalhe de um alerta.
-- [ ] Usuário pode acompanhar localmente no Desktop.
-- [ ] Tracking persiste até cancelamento manual no MVP.
-- [ ] Navio ausente não é automaticamente removido.
-- [ ] Mudanças de ETA/ETB/ETS/status/presença relevantes viram tracking event.
-- [ ] ManeuverEvent não é duplicado por tracking event equivalente.
-- [ ] Instalação recebe no máximo um push por ocorrência semântica.
-- [ ] Tracking funciona mesmo com categorias gerais de manobra desligadas.
-- [ ] PWA possui página Acompanhados e timeline unificada.
-- [ ] Desktop possui janela Acompanhados e marcação ★.
-- [ ] Reinício não produz replay em massa.
-- [ ] Ledger local preserva VesselTrackingEvent após ACK por até 30 dias.
-- [ ] Deep link segue regra determinística entre /alertas e /acompanhados sem duplicar push.
-- [ ] Sem AIS/GPS ou inferência geográfica.
-- [ ] Retenção de eventos continua limitada a 30 dias.
-- [ ] Preferências permanecem isoladas por instalação.
-- [ ] Tracking funciona sem PushSubscription porque a identidade de instalação é independente do Web Push.
+- [x] Usuário pode acompanhar um navio pelo PWA.
+- [x] Usuário pode acompanhar um navio pelo detalhe de um alerta.
+- [x] Usuário pode acompanhar localmente no Desktop.
+- [x] Tracking persiste até cancelamento manual no MVP.
+- [x] Navio ausente não é automaticamente removido.
+- [x] Mudanças de ETA/ETB/ETS/status/presença relevantes viram tracking event.
+- [x] ManeuverEvent não é duplicado por tracking event equivalente.
+- [x] Instalação recebe no máximo um push por ocorrência semântica.
+- [x] Tracking funciona mesmo com categorias gerais de manobra desligadas.
+- [x] PWA possui página Acompanhados e timeline unificada.
+- [x] Desktop possui janela Acompanhados e marcação ★.
+- [x] Reinício não produz replay em massa.
+- [x] Ledger local preserva VesselTrackingEvent após ACK por até 30 dias.
+- [x] Deep link segue regra determinística entre /alertas e /acompanhados sem duplicar push.
+- [x] Sem AIS/GPS ou inferência geográfica.
+- [x] Retenção de eventos continua limitada a 30 dias.
+- [x] Preferências permanecem isoladas por instalação.
+- [x] Tracking funciona sem PushSubscription porque a identidade de instalação é independente do Web Push.
 
 ## Decisões fechadas
 

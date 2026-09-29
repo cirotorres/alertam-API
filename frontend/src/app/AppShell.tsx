@@ -11,7 +11,7 @@ import {
   useOutletContext,
 } from "react-router-dom";
 
-import type { VesselV1 } from "../api/contract";
+import type { ManeuverEventFeedItem, VesselV1 } from "../api/contract";
 import { BottomNav, type BottomNavItem, type BottomTab } from "../components/BottomNav";
 import { useEventState } from "../features/events/EventProvider";
 import { AlertDetailSheet } from "../features/events/AlertDetailSheet";
@@ -40,6 +40,23 @@ type AppShellProps = {
 
 const noop = () => undefined;
 
+function maneuverPreferenceEnabled(
+  event: ManeuverEventFeedItem,
+  preferences: {
+    confirmed: boolean;
+    updated: boolean;
+    completed: boolean;
+    cancelled: boolean;
+  },
+): boolean {
+  const key = event.event_type.toLowerCase() as
+    | "confirmed"
+    | "updated"
+    | "completed"
+    | "cancelled";
+  return preferences[key];
+}
+
 export type ShellOutletContext = {
   pairing: Pairing;
   snapshotState: SnapshotState;
@@ -63,9 +80,12 @@ export function AppShell({
   const trackingState = useOptionalTracking();
   const navigate = useNavigate();
   const location = useLocation();
-  const eventId = new URLSearchParams(location.search).get("event");
+  const currentParams = new URLSearchParams(location.search);
+  const eventId = currentParams.get("event");
+  const trackId = currentParams.get("track");
+  const alertEventId = trackId === null ? eventId : null;
   const alertDetail = useAlertDetail(
-    eventId,
+    alertEventId,
     alertDetailFetcher,
     onPairingCleared,
   );
@@ -146,7 +166,7 @@ export function AppShell({
   }, [closeVessel, drawerOpen, selectedVessel]);
 
   useEffect(() => {
-    if (eventId === null) return;
+    if (alertEventId === null) return;
     setDrawerOpen(false);
     setSelectedVessel(null);
     vesselTriggerRef.current = null;
@@ -155,7 +175,7 @@ export function AppShell({
     };
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
-  }, [closeAlertDetail, eventId]);
+  }, [alertEventId, closeAlertDetail]);
 
   useEffect(() => {
     if (selectedVessel || !renderedVessel) return;
@@ -177,6 +197,61 @@ export function AppShell({
   const rootPath = basePath || "/";
   const routePath = (suffix: string) =>
     basePath ? `${basePath}${suffix}` : suffix || "/";
+
+  const maneuverNotice = (() => {
+    const event = eventState.newEvent;
+    if (!event) return null;
+    const generalEnabled = maneuverPreferenceEnabled(
+      event,
+      pushState.preferences,
+    );
+    if (generalEnabled) {
+      return {
+        kind: "alert" as const,
+        vesselName: event.vessel_name,
+        label: "Novo alerta operacional",
+        button: "Ver alerta",
+        url: routePath(`/alertas?event=${event.event_id}`),
+      };
+    }
+    const tracked = trackingState?.findTracking({
+      vessel_identity: event.vessel_identity,
+      vessel_imo: event.vessel_imo,
+      vessel_name: event.vessel_name,
+    });
+    if (!tracked) return null;
+    return {
+      kind: "tracking" as const,
+      vesselName: event.vessel_name,
+      label: "Novo acompanhamento",
+      button: "Ver acompanhamento",
+      url: routePath(
+        `/acompanhados?track=${tracked.tracked_vessel_id}&event=${event.event_id}`,
+      ),
+    };
+  })();
+
+  const trackingNotice = (() => {
+    const item = trackingState?.newTrackingEvent;
+    if (!item) return null;
+    if (
+      maneuverNotice?.kind === "alert" &&
+      item.event.maneuver_id === eventState.newEvent?.maneuver_id
+    ) {
+      return null;
+    }
+    return {
+      kind: "tracking" as const,
+      vesselName: item.event.vessel_name,
+      label: "Novo acompanhamento",
+      button: "Ver acompanhamento",
+      url: routePath(
+        `/acompanhados?track=${item.tracked_vessel_id}&event=${item.event.event_id}`,
+      ),
+    };
+  })();
+
+  const foregroundNotice = maneuverNotice ?? trackingNotice;
 
   const outletContext: ShellOutletContext = {
     pairing,
@@ -229,24 +304,21 @@ export function AppShell({
           Dados fictícios para validação visual · nenhuma consulta à API real
         </div>
       ) : null}
-      {!demoMode && documentVisible && eventState.newEvent ? (
+      {!demoMode && documentVisible && foregroundNotice ? (
         <div
           className="foreground-alert"
           role="status"
-          aria-label="Novo alerta operacional"
+          aria-label={foregroundNotice.label}
         >
           <span>
-            Novo alerta: <strong>{eventState.newEvent.vessel_name}</strong>
+            {foregroundNotice.kind === "alert" ? "Novo alerta" : "Atualização acompanhada"}:{" "}
+            <strong>{foregroundNotice.vesselName}</strong>
           </span>
           <button
             type="button"
-            onClick={() => navigate(
-              routePath(
-                `/alertas?event=${eventState.newEvent!.event_id}`,
-              ),
-            )}
+            onClick={() => navigate(foregroundNotice.url)}
           >
-            Ver alerta
+            {foregroundNotice.button}
           </button>
         </div>
       ) : null}
@@ -271,9 +343,9 @@ export function AppShell({
         />
       ) : null}
       <AlertDetailSheet
-        open={eventId !== null}
+        open={alertEventId !== null}
         state={alertDetail}
-        selectedEventId={eventId}
+        selectedEventId={alertEventId}
         onClose={closeAlertDetail}
         onRetry={alertDetail.retry}
         trackingControls={trackingState ?? undefined}
