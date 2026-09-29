@@ -82,6 +82,27 @@ def test_postgres_event_repository_accepts_and_is_idempotent():
     assert first.stored == second.stored
 
 
+def test_postgres_event_repository_preserves_operational_timing_in_jsonb():
+    repo = _repo()
+    raw = {
+        **_event().canonical_payload(),
+        "event_type": "COMPLETED",
+        "changes": None,
+        "operational_at": "2026-09-29T05:28:00-03:00",
+        "operational_marker": "ATRAC",
+    }
+    accepted = repo.accept_maneuver_event_atomic(
+        "pecem-01",
+        ManeuverEventIn.model_validate(raw),
+    )
+
+    stored = repo.list_maneuver_events("pecem-01").events[0].event
+
+    assert accepted.status is AcceptEventStatus.ACCEPTED
+    assert stored.operational_at.isoformat() == "2026-09-29T05:28:00-03:00"
+    assert stored.operational_marker == "ATRAC"
+
+
 def test_postgres_event_repository_concurrent_retry_creates_one_row():
     repo = _repo()
 

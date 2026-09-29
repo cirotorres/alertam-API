@@ -22,6 +22,8 @@ function event(n: number) {
     occurred_at: "2026-09-27T10:00:00-03:00",
     pob_at: null,
     first_observed_at: null,
+    operational_at: null,
+    operational_marker: null,
     changes: null,
     ingestion_id: n,
     ingested_at: "2026-09-27T13:00:00-03:00",

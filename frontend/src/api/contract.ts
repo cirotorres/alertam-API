@@ -229,6 +229,8 @@ export const ManeuverEventSchema = z
     occurred_at: awareDateTime,
     pob_at: awareDateTime.nullable().default(null),
     first_observed_at: awareDateTime.nullable().default(null),
+    operational_at: awareDateTime.nullable().default(null),
+    operational_marker: z.literal("ATRAC").nullable().default(null),
     changes: ManeuverChangesSchema.nullable(),
   })
   .strict()
@@ -245,6 +247,25 @@ export const ManeuverEventSchema = z
         code: "custom",
         path: ["changes"],
         message: "Somente UPDATED aceita changes.",
+      });
+    }
+    const hasOperationalAt = value.operational_at !== null;
+    const hasOperationalMarker = value.operational_marker !== null;
+    if (hasOperationalAt !== hasOperationalMarker) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["operational_at"],
+        message: "Horário e marcador operacional devem ser informados juntos.",
+      });
+    }
+    if (
+      hasOperationalAt &&
+      (value.event_type !== "COMPLETED" || value.maneuver_type !== "ATRACACAO")
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["operational_at"],
+        message: "ATRAC operacional só é válido na conclusão de atracação.",
       });
     }
   });
@@ -266,6 +287,8 @@ const ManeuverEventFeedItemSchema = z
     occurred_at: awareDateTime,
     pob_at: awareDateTime.nullable().default(null),
     first_observed_at: awareDateTime.nullable().default(null),
+    operational_at: awareDateTime.nullable().default(null),
+    operational_marker: z.literal("ATRAC").nullable().default(null),
     changes: ManeuverChangesSchema.nullable(),
     ingestion_id: z.number().int().positive(),
     ingested_at: awareDateTime,
@@ -284,6 +307,25 @@ const ManeuverEventFeedItemSchema = z
         code: "custom",
         path: ["changes"],
         message: "Somente UPDATED aceita changes.",
+      });
+    }
+    const hasOperationalAt = value.operational_at !== null;
+    const hasOperationalMarker = value.operational_marker !== null;
+    if (hasOperationalAt !== hasOperationalMarker) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["operational_at"],
+        message: "Horário e marcador operacional devem ser informados juntos.",
+      });
+    }
+    if (
+      hasOperationalAt &&
+      (value.event_type !== "COMPLETED" || value.maneuver_type !== "ATRACACAO")
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["operational_at"],
+        message: "ATRAC operacional só é válido na conclusão de atracação.",
       });
     }
   });

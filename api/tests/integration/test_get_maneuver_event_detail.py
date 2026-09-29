@@ -28,8 +28,10 @@ def event(
     *,
     maneuver_id: str = MANEUVER_ID,
     changes=None,
+    operational_at=None,
+    operational_marker=None,
 ) -> ManeuverEventIn:
-    return ManeuverEventIn.model_validate({
+    raw = {
         "event_id": event_id,
         "maneuver_id": maneuver_id,
         "vessel_identity": "NAME:NAVIO A",
@@ -43,7 +45,11 @@ def event(
         "pob_at": "2026-09-28T10:00:00-03:00",
         "first_observed_at": "2026-09-28T10:04:00-03:00",
         "changes": changes,
-    })
+    }
+    if operational_at is not None or operational_marker is not None:
+        raw["operational_at"] = operational_at
+        raw["operational_marker"] = operational_marker
+    return ManeuverEventIn.model_validate(raw)
 
 
 def prepared(repository_cls=MemoryDeviceRepository):
@@ -82,6 +88,8 @@ def prepared(repository_cls=MemoryDeviceRepository):
         event(
             "00000000-0000-4000-8000-000000000804",
             "COMPLETED",
+            operational_at="2026-09-28T10:03:00-03:00",
+            operational_marker="ATRAC",
         ),
     )
     repository.accept_maneuver_event_atomic(
@@ -128,6 +136,8 @@ def test_detail_returns_selected_event_and_retained_cycle_in_ingestion_order():
         "00000000-0000-4000-8000-000000000804",
     ]
     assert body["events"][1]["pob_at"] == "2026-09-28T10:00:00-03:00"
+    assert body["events"][2]["operational_at"] == "2026-09-28T10:03:00-03:00"
+    assert body["events"][2]["operational_marker"] == "ATRAC"
 
 
 def test_detail_foreign_and_unknown_ids_return_same_generic_404():

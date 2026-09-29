@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 
 import type { ManeuverEventFeedItem } from "../../api/contract";
 import {
+  formatMovementDuration,
   formatObservedDelta,
   formatPobUpdateDelta,
   projectAlertTimelineItem,
@@ -28,6 +29,8 @@ function event(
     ingestion_id: 1,
     ingested_at: "2026-09-28T15:00:01Z",
     ...overrides,
+    operational_at: overrides.operational_at ?? null,
+    operational_marker: overrides.operational_marker ?? null,
   };
 }
 
@@ -56,6 +59,16 @@ test("format_observed_delta_uses_only_canonical_aware_timestamps", () => {
   expect(formatObservedDelta("2026-09-28T12:00:00", "2026-09-28T12:50:00-03:00")).toBeNull();
 });
 
+test("format_movement_duration_omits_negative_operational_interval", () => {
+  expect(
+    formatMovementDuration(
+      "2026-09-29T05:30:00-03:00",
+      "2026-09-29T05:28:00-03:00",
+    ),
+  ).toBeNull();
+});
+
+
 test("format_pob_update_delta_compares_current_and_previous_canonical_pob", () => {
   const events = [
     event({ pob_at: "2026-09-28T12:00:00-03:00" }),
@@ -77,37 +90,46 @@ test("format_pob_update_delta_compares_current_and_previous_canonical_pob", () =
   expect(formatPobUpdateDelta(withoutPreviousCanonical, 1)).toBeNull();
 });
 
-test("completed_projection_uses_safe_observed_language_and_approximate_note", () => {
+test("completed_projection_uses_operational_duration_not_observation_delay", () => {
   const completed = event({
+    vessel_name: "FERNAO DE MAGALHAES",
     event_type: "COMPLETED",
-    occurred_at: "2026-09-28T12:50:00-03:00",
-    pob_at: "2026-09-28T12:00:00-03:00",
-    first_observed_at: "2026-09-28T12:49:00-03:00",
+    pob: "29/09 02:30",
+    occurred_at: "2026-09-29T10:46:36-03:00",
+    pob_at: "2026-09-29T02:30:00-03:00",
+    first_observed_at: "2026-09-29T10:45:35-03:00",
+    operational_at: "2026-09-29T05:28:00-03:00",
+    operational_marker: "ATRAC",
   });
 
   const projected = projectAlertTimelineItem([completed], 0);
 
-  expect(projected.title).toBe("Conclusão observada pelo AlertaM");
-  expect(projected.lines).toContain("POB vigente: 28/09 12:00");
-  expect(projected.lines).toContain("Diferença para o POB: 50 min depois");
-  expect(projected.auxiliary).toBe(
-    "Horário aproximado baseado na atualização da planilha.",
-  );
-  expect(projected.firstObservedAt).toBe("2026-09-28T12:49:00-03:00");
+  expect(projected.title).toBe("Atracação concluída");
+  expect(projected.lines).toContain("POB vigente: 29/09 02:30");
+  expect(projected.lines).toContain("ATRAC informado na planilha: 29/09 05:28");
+  expect(projected.lines).toContain("Tempo da movimentação: 2h58");
+  expect(projected.lines.some((line) => line.includes("Diferença para o POB"))).toBe(false);
+  expect(projected.auxiliary).toBeNull();
+  expect(projected.firstObservedAt).toBe("2026-09-29T10:45:35-03:00");
 });
 
-test("completed_projection_omits_delta_when_canonical_pob_is_unavailable", () => {
+test("completed_projection_legacy_event_never_invents_movement_duration", () => {
   const completed = event({
     event_type: "COMPLETED",
-    pob_at: null,
+    pob_at: "2026-09-28T12:00:00-03:00",
     pob: "28/09 12:00",
     occurred_at: "2026-09-28T12:50:00-03:00",
+    operational_at: null,
+    operational_marker: null,
   });
 
   const projected = projectAlertTimelineItem([completed], 0);
 
+  expect(projected.title).toBe("Atracação concluída");
   expect(projected.lines).toContain("POB vigente: 28/09 12:00");
-  expect(projected.lines.some((line) => line.includes("Diferença"))).toBe(false);
+  expect(projected.lines.some((line) => line.includes("Tempo da movimentação"))).toBe(false);
+  expect(projected.lines.some((line) => line.includes("Diferença para o POB"))).toBe(false);
+  expect(projected.auxiliary).toBe("Horário operacional não disponível neste registro.");
 });
 
 test("updated_projection_shows_pob_berth_and_optional_canonical_delta", () => {

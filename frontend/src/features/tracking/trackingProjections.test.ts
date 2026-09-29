@@ -51,6 +51,8 @@ test("projects_tracking_and_maneuver_items_in_api_order", () => {
           occurred_at: "2026-09-29T03:01:00-03:00",
           pob_at: "2026-09-29T04:00:00-03:00",
           first_observed_at: "2026-09-29T03:01:00-03:00",
+          operational_at: null,
+          operational_marker: null,
           changes: null,
         },
       },

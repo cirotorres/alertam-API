@@ -101,6 +101,35 @@ def test_feed_after_and_before_are_gap_free():
     assert [x["ingestion_id"] for x in after["events"]] == [3, 4]
 
 
+def test_feed_returns_operational_timing_without_loss():
+    repository = MemoryDeviceRepository()
+    repository.create_device(DeviceAuthRecord(
+        DEVICE_ID,
+        "device-hash",
+        hash_secret(VIEW_SECRET),
+    ))
+    raw = {
+        **event(1).canonical_payload(),
+        "event_type": "COMPLETED",
+        "changes": None,
+        "operational_at": "2026-09-29T05:28:00-03:00",
+        "operational_marker": "ATRAC",
+    }
+    repository.accept_maneuver_event_atomic(
+        DEVICE_ID,
+        ManeuverEventIn.model_validate(raw),
+    )
+    client = TestClient(create_app(repository=repository))
+    authenticate(client)
+
+    response = client.get("/api/v1/mobile/maneuver-events")
+
+    assert response.status_code == 200
+    item = response.json()["events"][0]
+    assert item["operational_at"] == "2026-09-29T05:28:00-03:00"
+    assert item["operational_marker"] == "ATRAC"
+
+
 def test_feed_rejects_after_and_before_together_without_leaking_data():
     _, client = prepared()
     authenticate(client)

@@ -72,6 +72,31 @@ def test_post_event_accepts_and_idempotent_retry_has_same_ingestion_id():
     assert "event" not in first.json()
 
 
+def test_post_round_trips_operational_timing_fields():
+    repository = repo()
+    client = TestClient(create_app(repository=repository))
+    body = payload()
+    body["event_type"] = "COMPLETED"
+    body["changes"] = None
+    body["pob"] = "29/09 02:30"
+    body["pob_at"] = "2026-09-29T02:30:00-03:00"
+    body["occurred_at"] = "2026-09-29T10:46:36-03:00"
+    body["first_observed_at"] = "2026-09-29T10:45:35-03:00"
+    body["operational_at"] = "2026-09-29T05:28:00-03:00"
+    body["operational_marker"] = "ATRAC"
+
+    response = client.post(
+        f"/api/v1/devices/{DEVICE_ID}/maneuver-events",
+        headers={"Authorization": f"Device {DEVICE_SECRET}"},
+        json=body,
+    )
+
+    assert response.status_code == 200
+    stored = repository.list_maneuver_events(DEVICE_ID).events[0].event
+    assert stored.operational_at.isoformat() == "2026-09-29T05:28:00-03:00"
+    assert stored.operational_marker == "ATRAC"
+
+
 def test_post_event_payload_mismatch_is_409():
     client = TestClient(create_app(repository=repo()))
     headers = {"Authorization": f"Device {DEVICE_SECRET}"}

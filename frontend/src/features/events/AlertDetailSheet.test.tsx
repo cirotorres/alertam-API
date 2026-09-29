@@ -33,6 +33,8 @@ function event(
     ingestion_id: ingestionId,
     ingested_at: "2026-09-28T15:00:01Z",
     ...overrides,
+    operational_at: overrides.operational_at ?? null,
+    operational_marker: overrides.operational_marker ?? null,
   };
 }
 
@@ -149,11 +151,58 @@ test("alert_detail_sheet_renders_summary_and_preserves_api_timeline_order", () =
   expect(within(items[0]!).getByText("Atracação confirmada")).toBeInTheDocument();
   expect(within(items[1]!).getByText("Atracação atualizada")).toBeInTheDocument();
   expect(
-    within(items[2]!).getByText("Conclusão observada pelo AlertaM"),
+    within(items[2]!).getByText("Atracação concluída"),
   ).toBeInTheDocument();
   expect(items[1]).toHaveAttribute("data-selected", "true");
   expect(items[0]).toHaveAttribute("data-selected", "false");
 });
+
+test("alert_detail_completed_uses_operational_duration_not_observation_delay", () => {
+  const fernao = event(
+    "00000000-0000-4000-8000-000000001050",
+    4,
+    {
+      vessel_name: "FERNAO DE MAGALHAES",
+      vessel_imo: "9603221",
+      vessel_identity: "IMO:9603221",
+      event_type: "COMPLETED",
+      pob: "29/09 02:30",
+      pob_at: "2026-09-29T02:30:00-03:00",
+      operational_at: "2026-09-29T05:28:00-03:00",
+      operational_marker: "ATRAC",
+      first_observed_at: "2026-09-29T10:45:35-03:00",
+      occurred_at: "2026-09-29T10:46:36-03:00",
+      changes: null,
+    },
+  );
+
+  render(
+    <AlertDetailSheet
+      open
+      state={state("ready", {
+        selected_event_id: fernao.event_id,
+        maneuver_id: fernao.maneuver_id,
+        events: [fernao],
+      })}
+      selectedEventId={fernao.event_id}
+      onClose={() => undefined}
+      onRetry={() => undefined}
+    />,
+  );
+
+  expect(screen.getAllByText("Atracação concluída").length).toBeGreaterThan(0);
+  expect(screen.getByText("ATRAC informado na planilha")).toBeInTheDocument();
+  expect(screen.getByText("05:28")).toBeInTheDocument();
+  expect(screen.getByText("Tempo da movimentação")).toBeInTheDocument();
+  expect(screen.getByText("2h58")).toBeInTheDocument();
+  expect(screen.getByText("Monitoramento do AlertaM")).toBeInTheDocument();
+  expect(screen.getByText("Primeira observação")).toBeInTheDocument();
+  expect(screen.getAllByText(/29\/09.*10:45/).length).toBeGreaterThan(0);
+  expect(screen.getByText("Confirmação")).toBeInTheDocument();
+  expect(screen.getAllByText(/29\/09.*10:46/).length).toBeGreaterThan(0);
+  expect(screen.queryByText(/Diferença para o POB/i)).not.toBeInTheDocument();
+});
+
 
 test("alert_detail_sheet_close_is_keyboard_accessible", () => {
   const onClose = vi.fn();

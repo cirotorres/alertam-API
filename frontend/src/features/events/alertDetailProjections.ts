@@ -14,19 +14,52 @@ function parseAwareTimestamp(value: string): number | null {
   return Number.isFinite(milliseconds) ? milliseconds : null;
 }
 
-function formatDuration(minutes: number): string {
+function formatDurationAmount(minutes: number): string {
   const absolute = Math.abs(minutes);
   if (absolute === 0) return "0 min";
 
   const hours = Math.floor(absolute / 60);
   const remainder = absolute % 60;
-  const amount =
-    hours === 0
-      ? `${remainder} min`
-      : remainder === 0
-        ? `${hours}h`
-        : `${hours}h${String(remainder).padStart(2, "0")}`;
-  return `${amount} ${minutes > 0 ? "depois" : "antes"}`;
+  if (hours === 0) return `${remainder} min`;
+  if (remainder === 0) return `${hours}h`;
+  return `${hours}h${String(remainder).padStart(2, "0")}`;
+}
+
+function formatDuration(minutes: number): string {
+  if (minutes === 0) return "0 min";
+  return `${formatDurationAmount(minutes)} ${minutes > 0 ? "depois" : "antes"}`;
+}
+
+export function formatMovementDuration(
+  pobAt: string | null,
+  operationalAt: string | null,
+): string | null {
+  if (pobAt === null || operationalAt === null) return null;
+  const pob = parseAwareTimestamp(pobAt);
+  const operational = parseAwareTimestamp(operationalAt);
+  if (pob === null || operational === null || operational < pob) return null;
+  return formatDurationAmount(Math.round((operational - pob) / 60_000));
+}
+
+function formatPortDateTime(value: string): string | null {
+  const timestamp = parseAwareTimestamp(value);
+  if (timestamp === null) return null;
+  const parts = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Fortaleza",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(timestamp));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value;
+  const day = part("day");
+  const month = part("month");
+  const hour = part("hour");
+  const minute = part("minute");
+  if (!day || !month || !hour || !minute) return null;
+  return `${day}/${month} ${hour}:${minute}`;
 }
 
 export function formatObservedDelta(
@@ -77,12 +110,28 @@ export function projectAlertTimelineItem(
   let title: string;
 
   if (event.event_type === "COMPLETED") {
-    title = "Conclusão observada pelo AlertaM";
+    title = `${maneuverLabel(event.maneuver_type)} concluída`;
     if (event.pob !== null) lines.push(`POB vigente: ${event.pob}`);
     if (event.berth !== null) lines.push(`Berço vigente: ${event.berth}`);
-    const delta = formatObservedDelta(event.pob_at, event.occurred_at);
-    if (delta !== null) lines.push(`Diferença para o POB: ${delta}`);
-    auxiliary = "Horário aproximado baseado na atualização da planilha.";
+
+    const operationalAt =
+      event.operational_marker === "ATRAC" ? event.operational_at : null;
+    const operationalDisplay =
+      operationalAt === null ? null : formatPortDateTime(operationalAt);
+    if (operationalDisplay !== null) {
+      lines.push(`ATRAC informado na planilha: ${operationalDisplay}`);
+    }
+
+    const movementDuration = formatMovementDuration(
+      event.pob_at,
+      operationalAt,
+    );
+    if (movementDuration !== null) {
+      lines.push(`Tempo da movimentação: ${movementDuration}`);
+    }
+    if (operationalAt === null) {
+      auxiliary = "Horário operacional não disponível neste registro.";
+    }
   } else if (event.event_type === "UPDATED") {
     title = `${maneuverLabel(event.maneuver_type)} atualizada`;
     if (event.changes?.pob) {

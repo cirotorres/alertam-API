@@ -51,24 +51,43 @@ class ManeuverEventIn(ContractModel):
     occurred_at: AwareDatetime
     pob_at: AwareDatetime | None = None
     first_observed_at: AwareDatetime | None = None
+    operational_at: AwareDatetime | None = None
+    operational_marker: Literal["ATRAC"] | None = None
     changes: ManeuverChanges | None
 
     @model_validator(mode="after")
-    def validate_changes_for_event_type(self) -> "ManeuverEventIn":
+    def validate_event_semantics(self) -> "ManeuverEventIn":
         if self.event_type == "UPDATED":
             if self.changes is None:
                 raise ValueError("UPDATED exige changes.")
-            return self
-        if self.changes is not None:
+        elif self.changes is not None:
             raise ValueError("Somente UPDATED aceita changes.")
+
+        has_operational_at = self.operational_at is not None
+        has_operational_marker = self.operational_marker is not None
+        if has_operational_at != has_operational_marker:
+            raise ValueError(
+                "operational_at e operational_marker devem ser informados juntos."
+            )
+        if has_operational_at and (
+            self.event_type != "COMPLETED"
+            or self.maneuver_type != "ATRACACAO"
+        ):
+            raise ValueError(
+                "Horário operacional ATRAC só é válido na conclusão de atracação."
+            )
         return self
 
     def canonical_payload(self) -> dict[str, object]:
-        return self.model_dump(
+        payload = self.model_dump(
             mode="json",
             by_alias=True,
             exclude_unset=True,
         )
+        if self.operational_at is None and self.operational_marker is None:
+            payload.pop("operational_at", None)
+            payload.pop("operational_marker", None)
+        return payload
 
 
 class ManeuverEventAcceptedResponse(BaseModel):

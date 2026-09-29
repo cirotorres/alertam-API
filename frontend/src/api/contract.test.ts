@@ -95,6 +95,41 @@ test("maneuver_event_contract_accepts_aware_canonical_timestamps", () => {
 
   expect(parsed.pob_at).toBe("2026-09-27T10:30:00-03:00");
   expect(parsed.first_observed_at).toBe("2026-09-27T10:04:00-03:00");
+  expect(parsed.operational_at).toBeNull();
+  expect(parsed.operational_marker).toBeNull();
+});
+
+
+test("maneuver_event_contract_accepts_operational_atrac_pair", () => {
+  const parsed = ManeuverEventSchema.parse({
+    ...maneuverEventFixture,
+    event_type: "COMPLETED",
+    changes: null,
+    operational_at: "2026-09-29T05:28:00-03:00",
+    operational_marker: "ATRAC",
+  });
+
+  expect(parsed.operational_at).toBe("2026-09-29T05:28:00-03:00");
+  expect(parsed.operational_marker).toBe("ATRAC");
+});
+
+
+test("maneuver_event_contract_rejects_invalid_operational_pair", () => {
+  expect(() => ManeuverEventSchema.parse({
+    ...maneuverEventFixture,
+    event_type: "COMPLETED",
+    changes: null,
+    operational_at: "2026-09-29T05:28:00-03:00",
+    operational_marker: null,
+  })).toThrow();
+
+  expect(() => ManeuverEventSchema.parse({
+    ...maneuverEventFixture,
+    event_type: "CONFIRMED",
+    changes: null,
+    operational_at: "2026-09-29T05:28:00-03:00",
+    operational_marker: "ATRAC",
+  })).toThrow();
 });
 
 test("maneuver_event_detail_response_parses_enriched_timeline", () => {

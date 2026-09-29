@@ -1,6 +1,7 @@
 import type { ManeuverEventFeedItem } from "../../api/contract";
 import { BottomSheetFrame } from "../../components/BottomSheetFrame";
 import {
+  formatMovementDuration,
   projectAlertTimelineItem,
 } from "./alertDetailProjections";
 import type { AlertDetailState } from "./useAlertDetail";
@@ -23,8 +24,20 @@ function formatObservedAt(value: string): string {
   const timestamp = new Date(value);
   if (Number.isNaN(timestamp.getTime())) return value;
   return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Fortaleza",
     day: "2-digit",
     month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(timestamp);
+}
+
+function formatOperationalTime(value: string): string {
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime())) return value;
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Fortaleza",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -41,6 +54,15 @@ function Summary({
   selectedIndex: number;
 }) {
   const projected = projectAlertTimelineItem(events, selectedIndex);
+  const completed = event.event_type === "COMPLETED";
+  const operationalAt =
+    completed && event.operational_marker === "ATRAC"
+      ? event.operational_at
+      : null;
+  const movementDuration = completed
+    ? formatMovementDuration(event.pob_at, operationalAt)
+    : null;
+
   return (
     <section className="alert-detail-sheet__summary">
       <div className="alert-detail-sheet__identity">
@@ -51,36 +73,81 @@ function Summary({
       <strong className="alert-detail-sheet__event-title">
         {projected.title}
       </strong>
-      <dl className="alert-detail-sheet__summary-grid">
-        <div>
-          <dt>POB vigente</dt>
-          <dd>{event.pob ?? "—"}</dd>
-        </div>
-        <div>
-          <dt>Berço vigente</dt>
-          <dd>{event.berth ?? "—"}</dd>
-        </div>
-        <div>
-          <dt>Observado pelo AlertaM</dt>
-          <dd>{formatObservedAt(event.occurred_at)}</dd>
-        </div>
-        {event.first_observed_at ? (
-          <div>
-            <dt>Primeira observação</dt>
-            <dd>{formatObservedAt(event.first_observed_at)}</dd>
-          </div>
-        ) : null}
-      </dl>
-      <p className="alert-detail-sheet__pob-current">
-        POB vigente: {event.pob ?? "—"}
-      </p>
-      {projected.lines
-        .filter((line) => line.startsWith("Diferença"))
-        .map((line) => (
-          <p key={line} className="alert-detail-sheet__delta">
-            {line}
+
+      {completed ? (
+        <>
+          <dl className="alert-detail-sheet__summary-grid">
+            <div>
+              <dt>POB vigente</dt>
+              <dd>{event.pob ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>Berço vigente</dt>
+              <dd>{event.berth ?? "—"}</dd>
+            </div>
+            {operationalAt ? (
+              <div>
+                <dt>ATRAC informado na planilha</dt>
+                <dd>{formatOperationalTime(operationalAt)}</dd>
+              </div>
+            ) : null}
+            {movementDuration ? (
+              <div>
+                <dt>Tempo da movimentação</dt>
+                <dd>{movementDuration}</dd>
+              </div>
+            ) : null}
+          </dl>
+
+          <h3>Monitoramento do AlertaM</h3>
+          <dl className="alert-detail-sheet__summary-grid">
+            {event.first_observed_at ? (
+              <div>
+                <dt>Primeira observação</dt>
+                <dd>{formatObservedAt(event.first_observed_at)}</dd>
+              </div>
+            ) : null}
+            <div>
+              <dt>Confirmação</dt>
+              <dd>{formatObservedAt(event.occurred_at)}</dd>
+            </div>
+          </dl>
+        </>
+      ) : (
+        <>
+          <dl className="alert-detail-sheet__summary-grid">
+            <div>
+              <dt>POB vigente</dt>
+              <dd>{event.pob ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>Berço vigente</dt>
+              <dd>{event.berth ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>Observado pelo AlertaM</dt>
+              <dd>{formatObservedAt(event.occurred_at)}</dd>
+            </div>
+            {event.first_observed_at ? (
+              <div>
+                <dt>Primeira observação</dt>
+                <dd>{formatObservedAt(event.first_observed_at)}</dd>
+              </div>
+            ) : null}
+          </dl>
+          <p className="alert-detail-sheet__pob-current">
+            POB vigente: {event.pob ?? "—"}
           </p>
-        ))}
+          {projected.lines
+            .filter((line) => line.startsWith("Diferença"))
+            .map((line) => (
+              <p key={line} className="alert-detail-sheet__delta">
+                {line}
+              </p>
+            ))}
+        </>
+      )}
+
       {projected.auxiliary ? (
         <p className="alert-detail-sheet__note">{projected.auxiliary}</p>
       ) : null}
@@ -174,7 +241,9 @@ export function AlertDetailSheet({
                       <div className="alert-detail-sheet__timeline-head">
                         <strong>{projected.title}</strong>
                         <time dateTime={event.occurred_at}>
-                          {formatObservedAt(event.occurred_at)}
+                          {event.event_type === "COMPLETED"
+                            ? `Confirmação AlertaM: ${formatObservedAt(event.occurred_at)}`
+                            : formatObservedAt(event.occurred_at)}
                         </time>
                       </div>
                       {projected.lines.map((line) => (

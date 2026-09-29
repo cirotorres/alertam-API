@@ -30,6 +30,8 @@ function event(
     ingestion_id,
     ingested_at: `2026-09-27T13:0${Math.min(ingestion_id, 9)}:00-03:00`,
     ...overrides,
+    operational_at: overrides.operational_at ?? null,
+    operational_marker: overrides.operational_marker ?? null,
   };
 }
 
