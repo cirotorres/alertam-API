@@ -8,6 +8,7 @@ from uuid import UUID
 
 from app.models.maneuver_event import ManeuverEventIn
 from app.repositories.devices import DevicesRepository
+from app.repositories.tracking import TrackingEventsRepository
 
 
 class AcceptEventStatus(StrEnum):
@@ -178,6 +179,7 @@ class PushRepository(Protocol):
 class AlertaRepository(
     DevicesRepository,
     ManeuverEventsRepository,
+    TrackingEventsRepository,
     PushRepository,
     Protocol,
 ):

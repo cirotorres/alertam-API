@@ -7,6 +7,7 @@ from uuid import UUID
 import httpx
 
 from app.models.maneuver_event import ManeuverEventIn
+from app.models.vessel_tracking_event import VesselTrackingEventIn
 from app.repositories.devices import (
     AcceptSnapshotResult,
     AcceptSnapshotStatus,
@@ -25,6 +26,11 @@ from app.repositories.events import (
     PushInstallation,
     PushPreferences,
     StoredManeuverEvent,
+)
+from app.repositories.tracking import (
+    AcceptTrackingEventResult,
+    AcceptTrackingEventStatus,
+    StoredVesselTrackingEvent,
 )
 
 
@@ -268,6 +274,45 @@ class SupabaseDeviceRepository:
         ) as exc:
             raise PersistenceUnavailableError() from exc
         return AcceptEventResult(status=status, stored=stored)
+
+    def accept_vessel_tracking_event_atomic(
+        self,
+        device_id: str,
+        event: VesselTrackingEventIn,
+    ) -> AcceptTrackingEventResult:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/accept_vessel_tracking_event",
+                headers=self._headers(),
+                json={
+                    "p_device_id": device_id,
+                    "p_event": event.canonical_payload(),
+                },
+            )
+            response.raise_for_status()
+            row = self._extract_row(response.json())
+            status = AcceptTrackingEventStatus(str(row["status"]))
+            stored = None
+            if row.get("ingestion_id") is not None:
+                ingested_at = self._parse_datetime(row.get("ingested_at"))
+                if ingested_at is None:
+                    raise ValueError("ingested_at ausente")
+                stored = StoredVesselTrackingEvent(
+                    ingestion_id=int(row["ingestion_id"]),
+                    device_id=device_id,
+                    event=VesselTrackingEventIn.model_validate(
+                        row["event_payload"]
+                    ),
+                    ingested_at=ingested_at,
+                )
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+        return AcceptTrackingEventResult(status=status, stored=stored)
 
     def list_maneuver_events(
         self,

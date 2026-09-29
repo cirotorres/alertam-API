@@ -7,6 +7,7 @@ from typing import Callable, Iterable
 from uuid import UUID
 
 from app.models.maneuver_event import ManeuverEventIn
+from app.models.vessel_tracking_event import VesselTrackingEventIn
 from app.repositories.devices import (
     AcceptSnapshotResult,
     AcceptSnapshotStatus,
@@ -25,6 +26,11 @@ from app.repositories.events import (
     PushInstallation,
     PushPreferences,
     StoredManeuverEvent,
+)
+from app.repositories.tracking import (
+    AcceptTrackingEventResult,
+    AcceptTrackingEventStatus,
+    StoredVesselTrackingEvent,
 )
 
 
@@ -45,6 +51,8 @@ class MemoryDeviceRepository:
         self._snapshots = {item.device_id: item for item in snapshots}
         self._events_by_id: dict[str, StoredManeuverEvent] = {}
         self._event_ingestion_sequence = 0
+        self._tracking_events_by_id: dict[str, StoredVesselTrackingEvent] = {}
+        self._tracking_event_ingestion_sequence = 0
         self._push_installations: dict[object, PushInstallation] = {}
         self._push_deliveries: dict[tuple[str, object], PushDelivery] = {}
         self._clock = clock or (lambda: datetime.now(timezone.utc))
@@ -173,6 +181,45 @@ class MemoryDeviceRepository:
             )
             self._events_by_id[event_id] = stored
             return AcceptEventResult(AcceptEventStatus.ACCEPTED, stored)
+
+    def accept_vessel_tracking_event_atomic(
+        self,
+        device_id: str,
+        event: VesselTrackingEventIn,
+    ) -> AcceptTrackingEventResult:
+        with self._lock:
+            if device_id not in self._devices:
+                return AcceptTrackingEventResult(
+                    AcceptTrackingEventStatus.DEVICE_NOT_FOUND
+                )
+
+            event_id = str(event.event_id)
+            existing = self._tracking_events_by_id.get(event_id)
+            if existing is not None:
+                same = (
+                    existing.device_id == device_id
+                    and existing.event.canonical_payload()
+                    == event.canonical_payload()
+                )
+                return AcceptTrackingEventResult(
+                    AcceptTrackingEventStatus.IDEMPOTENT
+                    if same
+                    else AcceptTrackingEventStatus.PAYLOAD_MISMATCH,
+                    existing,
+                )
+
+            self._tracking_event_ingestion_sequence += 1
+            stored = StoredVesselTrackingEvent(
+                ingestion_id=self._tracking_event_ingestion_sequence,
+                device_id=device_id,
+                event=event,
+                ingested_at=self._clock(),
+            )
+            self._tracking_events_by_id[event_id] = stored
+            return AcceptTrackingEventResult(
+                AcceptTrackingEventStatus.ACCEPTED,
+                stored,
+            )
 
     def list_maneuver_events(
         self,

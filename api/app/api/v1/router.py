@@ -14,6 +14,7 @@ from app.api.v1.mobile_session import create_mobile_session_router
 from app.api.v1.push import create_push_router
 from app.api.v1.snapshots import create_snapshot_router
 from app.api.v1.vessel_photos import create_vessel_photo_router
+from app.api.v1.vessel_tracking_events import create_vessel_tracking_event_router
 from app.repositories.events import AlertaRepository, StoredManeuverEvent
 from app.services.vessel_photo_service import VesselPhotoLookup
 
@@ -36,6 +37,9 @@ def create_v1_router(
             repository,
             dispatch_event=dispatch_event,
         )
+    )
+    router.include_router(
+        create_vessel_tracking_event_router(repository)
     )
     router.include_router(
         create_mobile_events_router(repository, clock=clock)

@@ -1,0 +1,24 @@
+{
+  "event_id": "00000000-0000-4000-8000-000000000501",
+  "vessel_identity": "IMO:1234567",
+  "vessel_imo": "1234567",
+  "vessel_name": "NAVIO A",
+  "occurred_at": "2026-09-28T10:02:00-03:00",
+  "first_observed_at": "2026-09-28T10:01:00-03:00",
+  "maneuver_id": "00000000-0000-4000-8000-000000000901",
+  "changes": {
+    "eta": {"from": "28/09 12:00", "to": "28/09 12:30"},
+    "side": {"from": "BB", "to": "BE"}
+  },
+  "current": {
+    "present": true,
+    "status": "PREVISTO",
+    "section": "PREVISTO",
+    "berth": 4,
+    "side": "BE",
+    "eta": "28/09 12:30",
+    "etb_ets": "28/09 13:00",
+    "pob": null,
+    "pob_at": null
+  }
+}

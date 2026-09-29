@@ -9,6 +9,7 @@ from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
 
 from app.models.maneuver_event import ManeuverEventIn
+from app.models.vessel_tracking_event import VesselTrackingEventIn
 from app.repositories.devices import (
     AcceptSnapshotResult,
     AcceptSnapshotStatus,
@@ -28,6 +29,11 @@ from app.repositories.events import (
     PushInstallation,
     PushPreferences,
     StoredManeuverEvent,
+)
+from app.repositories.tracking import (
+    AcceptTrackingEventResult,
+    AcceptTrackingEventStatus,
+    StoredVesselTrackingEvent,
 )
 
 
@@ -252,6 +258,39 @@ class PostgresDeviceRepository:
         except (TypeError, ValueError) as exc:
             raise PersistenceUnavailableError() from exc
         return AcceptEventResult(status=status, stored=stored)
+
+    def accept_vessel_tracking_event_atomic(
+        self,
+        device_id: str,
+        event: VesselTrackingEventIn,
+    ) -> AcceptTrackingEventResult:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select status, ingestion_id, ingested_at, event_payload
+                    from public.accept_vessel_tracking_event(%s, %s)
+                    """,
+                    (device_id, Jsonb(event.canonical_payload())),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+
+        if row is None:
+            raise PersistenceUnavailableError()
+        try:
+            status = AcceptTrackingEventStatus(str(row[0]))
+            stored = None
+            if row[1] is not None:
+                stored = StoredVesselTrackingEvent(
+                    ingestion_id=int(row[1]),
+                    device_id=device_id,
+                    event=VesselTrackingEventIn.model_validate(row[3]),
+                    ingested_at=self._aware_datetime(row[2]),
+                )
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+        return AcceptTrackingEventResult(status=status, stored=stored)
 
     def list_maneuver_events(
         self,
