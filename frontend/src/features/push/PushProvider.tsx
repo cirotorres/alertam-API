@@ -169,11 +169,7 @@ export function PushProvider({
           }
           setActive(rebound.active);
           setPreferences(rebound.preferences);
-          setPermission(
-            Notification.permission === "denied"
-              ? "denied"
-              : "granted",
-          );
+          setPermission("granted");
           storePushPreferenceSnapshot({
             optedIn: rebound.active,
             preferences: rebound.preferences,
