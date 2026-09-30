@@ -63,6 +63,8 @@ Executar na ordem:
 10. `supabase/migrations/010_mobile_installations.sql`
 11. `supabase/migrations/011_tracked_vessels.sql`
 12. `supabase/migrations/012_vessel_tracking_deliveries.sql`
+13. `supabase/migrations/013_mobile_installation_management.sql`
+14. `supabase/migrations/014_mobile_session_switch.sql`
 
 As migrations:
 
@@ -71,9 +73,11 @@ As migrations:
 - persistem instalações push e bookkeeping de deliveries;
 - fazem a rotação de `VIEW_SECRET` desativar todas as instalações do device;
 - criam cleanup explícito de eventos/deliveries com retenção de 30 dias;
-- habilitam RLS e não criam policy pública para essas tabelas.
+- habilitam RLS e não criam policy pública para essas tabelas;
+- adicionam `platform` + `display_code` às instalações mobile, revogação individual completa e listagem administrativa;
+- persistem o switch A→B por `switch_id` e executam a troca de instalação em uma única RPC transacional.
 
-As migrations 004–006 devem ser validadas em Postgres/Supabase real antes do deploy final. Testes locais com repository em memória/MockTransport não substituem esse gate.
+As migrations 004–006 e 013–014 devem ser validadas em Postgres/Supabase real antes do deploy final. Testes locais com repository em memória/MockTransport não substituem esse gate. A API da SPEC 026 deve ser publicada antes da PWA e do Desktop que consumirem os novos contratos.
 
 ### Agendar a retenção de eventos
 
@@ -194,7 +198,7 @@ push, VAPID/dispatcher, `injectManifest`, heartbeat foreground e retenção de 3
 dias. O roteamento same-origin continua mantendo `/api/v1/*` prioritário.
 
 Antes de produção ainda são obrigatórios:
-- aplicar e validar migrations 004–006 em Postgres/Supabase real;
+- aplicar e validar migrations 004–006 e 013–014 em Postgres/Supabase real;
 - habilitar o Cron de retenção somente após essa validação;
 - configurar VAPID real no backend;
 - executar smoke Desktop → API → PWA e Web Push real em aparelho/browser;

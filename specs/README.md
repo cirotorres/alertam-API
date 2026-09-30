@@ -8,6 +8,7 @@
 | 023 | [Ship Tracking](023-ship-tracking.md) | Planos 1–3 implementados; Tk/Xephyr validado; rollout externo pendente | Acompanhamento persistente por navio/instalação, VesselTrackingEvent, push seletivo, timeline unificada e tracking local no Desktop |
 | 024 | [Tempo operacional da manobra e refinamentos de UX](024-operational-maneuver-timing-ux-refinements.md) | SPEC aprovada; planos TDD preparados para revisão | Separa horário operacional de observação do AlertaM, persiste ATRAC real e corrige UX de tracking, sheets, scroll e footer |
 | 025 | [WebPilot HTTP, meteorologia observada e shadow de movimentações](025-webpilot-http-observed-weather-shadow-migration.md) | Aprovada para planejamento; implementação não iniciada | Separa autenticação/coleta WebPilot, adota meteorologia observada com fallback explícito, evolui MobileSnapshot v2 e prepara shadow HTTP com gate de equivalência sem cutover |
+| 026 | [Gestão de aparelhos mobile, revogação e troca segura de pareamento](026-mobile-installation-management-safe-pairing-switch.md) | Plano 1 API/Supabase concluído localmente; Planos 2–3 pendentes | Lista/revoga instalações por Desktop, código curto por aparelho, histórico de 30 dias e troca segura entre QR Codes |
 
 ## Dependências cross-repo
 
@@ -23,3 +24,4 @@ A SPEC 022 evolui esse canal com detalhe/timeline por manobra e requer mudanças
 A SPEC 023 depende da 022 para reutilizar timeline/detalhes e adiciona Ship Tracking com `VesselTrackingEvent`, persistência por instalação e tracking local no Desktop.
 A SPEC 024 refina a 022/023 após validação real, sem substituir seus contratos: adiciona horário operacional opcional ao ManeuverEvent e corrige UX coordenada entre Desktop e PWA.
 A SPEC 025 cruza Desktop, API e PWA para separar autenticação/coleta WebPilot, introduzir meteorologia observada e validar a futura coleta HTTP de movimentações em shadow; ela não realiza o cutover operacional.
+A SPEC 026 evolui o pareamento das specs 019/020 e a identidade por instalação das specs 021/023, adicionando gestão administrativa no Desktop, revogação individual e troca segura entre Desktops.
