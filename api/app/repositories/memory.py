@@ -13,6 +13,7 @@ from app.repositories.devices import (
     AcceptSnapshotStatus,
     DeviceAlreadyExistsError,
     DeviceAuthRecord,
+    MobileInstallationDisplayCodeConflictError,
     MobileInstallationRecord,
     SnapshotCandidate,
     StoredSnapshot,
@@ -99,6 +100,13 @@ class MemoryDeviceRepository:
             ):
                 return None
             if current is None:
+                if display_code and any(
+                    item.display_code == display_code
+                    for item in self._mobile_installations.values()
+                ):
+                    raise MobileInstallationDisplayCodeConflictError(
+                        display_code
+                    )
                 current = MobileInstallationRecord(
                     installation_id=installation_id,
                     device_id=device_id,
@@ -199,6 +207,17 @@ class MemoryDeviceRepository:
                     tracked,
                     active=False,
                     stopped_at=now,
+                )
+            push = self._push_installations.get(installation_id)
+            if push is not None and push.device_id == device_id:
+                self._push_installations[installation_id] = replace(
+                    push,
+                    endpoint=None,
+                    p256dh=None,
+                    auth=None,
+                    active=False,
+                    last_seen_at=now,
+                    updated_at=now,
                 )
             return True
 

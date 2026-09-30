@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import os
 from pathlib import Path
 from uuid import UUID
@@ -29,6 +27,11 @@ def _ensure_roles(conn):
     """)
 
 
+def _apply(conn, *names):
+    for name in names:
+        conn.execute((MIGRATIONS / name).read_text(encoding="utf-8"))
+
+
 @pytest.fixture(autouse=True)
 def reset_database():
     assert DSN is not None
@@ -36,13 +39,16 @@ def reset_database():
         _ensure_roles(conn)
         conn.execute("drop schema if exists public cascade")
         conn.execute("create schema public")
-        for name in (
+        _apply(
+            conn,
             "001_devices.sql",
             "004_maneuver_events.sql",
             "005_push_installations_deliveries.sql",
+            "008_vessel_tracking_events.sql",
             "010_mobile_installations.sql",
-        ):
-            conn.execute((MIGRATIONS / name).read_text(encoding="utf-8"))
+            "011_tracked_vessels.sql",
+            "013_mobile_installation_management.sql",
+        )
     yield
 
 
@@ -57,13 +63,37 @@ def repo():
 def test_postgres_mobile_installation_lifecycle_and_isolation():
     repository = repo()
 
-    first = repository.ensure_mobile_installation("pecem-01", INSTALL_A)
-    assert first is not None and first.active is True
-    assert repository.ensure_mobile_installation("other-01", INSTALL_A) is None
+    first = repository.ensure_mobile_installation(
+        "pecem-01",
+        INSTALL_A,
+        platform="ios",
+        display_code="K7M4Q2",
+    )
+    assert first is not None
+    assert first.active is True
+    assert first.platform == "ios"
+    assert first.display_code == "K7M4Q2"
+    assert repository.ensure_mobile_installation(
+        "other-01",
+        INSTALL_A,
+        platform="android",
+        display_code="P8X4TR",
+    ) is None
 
     assert repository.revoke_mobile_installation("pecem-01", INSTALL_A) is True
-    assert repository.get_mobile_installation("pecem-01", INSTALL_A).active is False
-    assert repository.ensure_mobile_installation("pecem-01", INSTALL_A).active is True
+    revoked = repository.get_mobile_installation("pecem-01", INSTALL_A)
+    assert revoked is not None and revoked.active is False
+    assert repository.ensure_mobile_installation(
+        "pecem-01",
+        INSTALL_A,
+        platform="ios",
+        display_code="B7K9P3",
+    ) is None
+    assert repository.touch_mobile_installation(
+        "pecem-01",
+        INSTALL_A,
+        platform="android",
+    ) is None
 
 
 def test_migration_backfills_existing_push_installation_id():
@@ -79,21 +109,30 @@ def test_migration_backfills_existing_push_installation_id():
             """,
             (INSTALL_B, "pecem-01", "https://push", "key", "auth"),
         )
+        conn.execute("drop table public.tracked_vessels cascade")
         conn.execute("drop table public.mobile_installations cascade")
-        conn.execute(
-            (MIGRATIONS / "010_mobile_installations.sql").read_text(
-                encoding="utf-8"
-            )
+        _apply(
+            conn,
+            "010_mobile_installations.sql",
+            "011_tracked_vessels.sql",
+            "013_mobile_installation_management.sql",
         )
 
     mobile = repository.get_mobile_installation("pecem-01", INSTALL_B)
     assert mobile is not None
     assert mobile.installation_id == INSTALL_B
+    assert mobile.platform == "other"
+    assert len(mobile.display_code) == 6
 
 
 def test_rotation_deactivates_mobile_and_push_installations():
     repository = repo()
-    assert repository.ensure_mobile_installation("pecem-01", INSTALL_B) is not None
+    assert repository.ensure_mobile_installation(
+        "pecem-01",
+        INSTALL_B,
+        platform="android",
+        display_code="P8X4TR",
+    ) is not None
     assert DSN is not None
 
     with psycopg.connect(DSN, autocommit=True) as conn:
@@ -107,7 +146,8 @@ def test_rotation_deactivates_mobile_and_push_installations():
         )
 
     assert repository.rotate_view_secret_hash("pecem-01", "new-view") is True
-    assert repository.get_mobile_installation("pecem-01", INSTALL_B).active is False
+    mobile = repository.get_mobile_installation("pecem-01", INSTALL_B)
+    assert mobile is not None and mobile.active is False
 
     with psycopg.connect(DSN, autocommit=True) as conn:
         active = conn.execute(

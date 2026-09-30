@@ -140,3 +140,28 @@ def test_touch_never_reactivates_revoked_installation():
         platform="android",
     ) is None
     assert repository.get_mobile_installation("pecem-01", INSTALL_C).active is False
+
+
+def test_revoke_mobile_installation_deactivates_push_credentials():
+    repository = repo()
+    repository.ensure_mobile_installation(
+        "pecem-01",
+        INSTALL_A,
+        display_code="K7M4Q2",
+    )
+    repository.upsert_push_installation(
+        "pecem-01",
+        INSTALL_A,
+        endpoint="https://push.example/endpoint",
+        p256dh="key",
+        auth="auth",
+    )
+
+    assert repository.revoke_mobile_installation("pecem-01", INSTALL_A) is True
+
+    push = repository.get_push_installation("pecem-01", INSTALL_A)
+    assert push is not None
+    assert push.active is False
+    assert push.endpoint is None
+    assert push.p256dh is None
+    assert push.auth is None

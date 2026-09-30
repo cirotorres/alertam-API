@@ -12,6 +12,7 @@ from app.repositories.devices import (
     AcceptSnapshotResult,
     AcceptSnapshotStatus,
     DeviceAuthRecord,
+    MobileInstallationDisplayCodeConflictError,
     MobileInstallationRecord,
     PersistenceUnavailableError,
     SnapshotCandidate,
@@ -108,6 +109,9 @@ class SupabaseDeviceRepository:
         self,
         device_id: str,
         installation_id: UUID,
+        *,
+        platform: str = "other",
+        display_code: str | None = None,
     ) -> MobileInstallationRecord | None:
         try:
             response = self._client.post(
@@ -116,6 +120,8 @@ class SupabaseDeviceRepository:
                 json={
                     "p_device_id": device_id,
                     "p_installation_id": str(installation_id),
+                    "p_platform": platform,
+                    "p_display_code": display_code,
                 },
             )
             response.raise_for_status()
@@ -127,6 +133,14 @@ class SupabaseDeviceRepository:
             if len(data) != 1 or not isinstance(data[0], dict):
                 raise ValueError("Resposta de instalação inválida.")
             return self._mobile_installation_from_mapping(data[0])
+        except httpx.HTTPStatusError as exc:
+            if (
+                exc.response.status_code == 409
+                and "mobile_installations_display_code_unique"
+                in exc.response.text
+            ):
+                raise MobileInstallationDisplayCodeConflictError() from exc
+            raise PersistenceUnavailableError() from exc
         except (
             httpx.HTTPError,
             KeyError,
@@ -147,11 +161,79 @@ class SupabaseDeviceRepository:
                 params={
                     "select": (
                         "installation_id,device_id,active,"
-                        "created_at,last_seen_at,revoked_at"
+                        "created_at,last_seen_at,revoked_at,"
+                        "platform,display_code"
                     ),
                     "device_id": f"eq.{device_id}",
                     "installation_id": f"eq.{installation_id}",
                     "limit": "1",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise ValueError("Resposta de instalação inválida.")
+            if not data:
+                return None
+            if len(data) != 1 or not isinstance(data[0], dict):
+                raise ValueError("Resposta de instalação inválida.")
+            return self._mobile_installation_from_mapping(data[0])
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def list_mobile_installations(
+        self,
+        device_id: str,
+        *,
+        revoked_since: datetime,
+    ) -> tuple[MobileInstallationRecord, ...]:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/list_mobile_installations",
+                headers=self._headers(),
+                json={
+                    "p_device_id": device_id,
+                    "p_revoked_since": revoked_since.isoformat(),
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise ValueError("Resposta de instalações inválida.")
+            if not all(isinstance(item, dict) for item in data):
+                raise ValueError("Resposta de instalações inválida.")
+            return tuple(
+                self._mobile_installation_from_mapping(item)
+                for item in data
+            )
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def touch_mobile_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        *,
+        platform: str,
+    ) -> MobileInstallationRecord | None:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/touch_mobile_installation",
+                headers=self._headers(),
+                json={
+                    "p_device_id": device_id,
+                    "p_installation_id": str(installation_id),
+                    "p_platform": platform,
                 },
             )
             response.raise_for_status()
@@ -212,6 +294,10 @@ class SupabaseDeviceRepository:
         active = row.get("active")
         if not isinstance(active, bool):
             raise TypeError("active inválido.")
+        platform = row.get("platform")
+        display_code = row.get("display_code")
+        if not isinstance(platform, str) or not isinstance(display_code, str):
+            raise TypeError("Metadados de instalação inválidos.")
         return MobileInstallationRecord(
             installation_id=UUID(str(row["installation_id"])),
             device_id=str(row["device_id"]),
@@ -219,6 +305,8 @@ class SupabaseDeviceRepository:
             created_at=created_at,
             last_seen_at=last_seen_at,
             revoked_at=revoked_at,
+            platform=platform,
+            display_code=display_code,
         )
 
     def get_snapshot(

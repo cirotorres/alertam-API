@@ -16,6 +16,10 @@ class PersistenceUnavailableError(Exception):
         super().__init__("Persistência temporariamente indisponível.")
 
 
+class MobileInstallationDisplayCodeConflictError(Exception):
+    pass
+
+
 @dataclass(frozen=True)
 class DeviceAuthRecord:
     device_id: str

@@ -5,7 +5,12 @@ import secrets
 from typing import Callable
 from uuid import UUID
 
-from app.repositories.devices import DevicesRepository, MobileInstallationRecord
+from app.repositories.devices import (
+    DevicesRepository,
+    MobileInstallationDisplayCodeConflictError,
+    MobileInstallationRecord,
+    PersistenceUnavailableError,
+)
 
 
 DISPLAY_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -39,12 +44,18 @@ class MobileInstallationService:
         *,
         platform: str | None = None,
     ) -> MobileInstallationRecord | None:
-        return self._repository.ensure_mobile_installation(
-            device_id,
-            installation_id,
-            platform=normalize_mobile_platform(platform),
-            display_code=self._code_factory(),
-        )
+        normalized_platform = normalize_mobile_platform(platform)
+        for _attempt in range(8):
+            try:
+                return self._repository.ensure_mobile_installation(
+                    device_id,
+                    installation_id,
+                    platform=normalized_platform,
+                    display_code=self._code_factory(),
+                )
+            except MobileInstallationDisplayCodeConflictError:
+                continue
+        raise PersistenceUnavailableError()
 
     def list_for_device(
         self,

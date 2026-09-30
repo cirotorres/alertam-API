@@ -15,6 +15,7 @@ from app.repositories.devices import (
     AcceptSnapshotStatus,
     DeviceAlreadyExistsError,
     DeviceAuthRecord,
+    MobileInstallationDisplayCodeConflictError,
     MobileInstallationRecord,
     PersistenceUnavailableError,
     SnapshotCandidate,
@@ -109,17 +110,33 @@ class PostgresDeviceRepository:
         self,
         device_id: str,
         installation_id: UUID,
+        *,
+        platform: str = "other",
+        display_code: str | None = None,
     ) -> MobileInstallationRecord | None:
         try:
             with psycopg.connect(self._database_url, autocommit=True) as conn:
                 row = conn.execute(
                     """
                     select installation_id, device_id, active,
-                           created_at, last_seen_at, revoked_at
-                    from public.ensure_mobile_installation(%s, %s)
+                           created_at, last_seen_at, revoked_at,
+                           platform, display_code
+                    from public.ensure_mobile_installation(%s, %s, %s, %s)
                     """,
-                    (device_id, installation_id),
+                    (device_id, installation_id, platform, display_code),
                 ).fetchone()
+        except UniqueViolation as exc:
+            constraint = getattr(
+                getattr(exc, "diag", None),
+                "constraint_name",
+                None,
+            )
+            if (
+                constraint == "mobile_installations_display_code_unique"
+                or "mobile_installations_display_code_unique" in str(exc)
+            ):
+                raise MobileInstallationDisplayCodeConflictError() from exc
+            raise PersistenceUnavailableError() from exc
         except psycopg.Error as exc:
             raise PersistenceUnavailableError() from exc
         return self._mobile_installation_from_row(row)
@@ -134,11 +151,59 @@ class PostgresDeviceRepository:
                 row = conn.execute(
                     """
                     select installation_id, device_id, active,
-                           created_at, last_seen_at, revoked_at
+                           created_at, last_seen_at, revoked_at,
+                           platform, display_code
                     from public.mobile_installations
                     where device_id = %s and installation_id = %s
                     """,
                     (device_id, installation_id),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._mobile_installation_from_row(row)
+
+    def list_mobile_installations(
+        self,
+        device_id: str,
+        *,
+        revoked_since: datetime,
+    ) -> tuple[MobileInstallationRecord, ...]:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                rows = conn.execute(
+                    """
+                    select installation_id, device_id, active,
+                           created_at, last_seen_at, revoked_at,
+                           platform, display_code
+                    from public.list_mobile_installations(%s, %s)
+                    """,
+                    (device_id, revoked_since),
+                ).fetchall()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return tuple(
+            item
+            for row in rows
+            if (item := self._mobile_installation_from_row(row)) is not None
+        )
+
+    def touch_mobile_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        *,
+        platform: str,
+    ) -> MobileInstallationRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select installation_id, device_id, active,
+                           created_at, last_seen_at, revoked_at,
+                           platform, display_code
+                    from public.touch_mobile_installation(%s, %s, %s)
+                    """,
+                    (device_id, installation_id, platform),
                 ).fetchone()
         except psycopg.Error as exc:
             raise PersistenceUnavailableError() from exc
@@ -183,6 +248,8 @@ class PostgresDeviceRepository:
                     if row[5] is None
                     else cls._aware_datetime(row[5])
                 ),
+                platform=str(row[6]),
+                display_code=str(row[7]),
             )
         except (TypeError, ValueError) as exc:
             raise PersistenceUnavailableError() from exc
