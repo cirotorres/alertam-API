@@ -72,7 +72,11 @@ export function TrackedVesselsPage({
                   onClick={() => open(tracked.tracked_vessel_id)}
                 >
                   <strong>{tracked.vessel_name}</strong>
-                  <span>{tracked.current?.present ? "Presente" : "Ausente"}</span>
+                  <span>
+                    {tracked.current?.present
+                      ? "Presente"
+                      : "Ausente · aguardando retorno"}
+                  </span>
                   <small>
                     {berthLabel(tracked)}
                     {tracked.current?.status ? ` · ${tracked.current.status}` : ""}

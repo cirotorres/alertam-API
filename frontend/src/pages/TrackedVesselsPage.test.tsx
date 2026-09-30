@@ -93,7 +93,7 @@ test("lists_absent_tracked_vessel_with_last_known_state", () => {
 
   expect(screen.getByRole("heading", { name: "Acompanhados" })).toBeInTheDocument();
   expect(screen.getByText("NAVIO A")).toBeInTheDocument();
-  expect(screen.getByText("Ausente")).toBeInTheDocument();
+  expect(screen.getByText("Ausente · aguardando retorno")).toBeInTheDocument();
   expect(screen.getByText(/Berço 4/)).toBeInTheDocument();
 });
 

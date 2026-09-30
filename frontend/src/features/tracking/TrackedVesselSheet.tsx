@@ -61,7 +61,11 @@ export function TrackedVesselSheet({
           <header>
             <p className="vessel-sheet__eyebrow">Acompanhamento</p>
             <h2>{tracked.vessel_name}</h2>
-            <span>{tracked.current?.present ? "Presente" : "Ausente"}</span>
+            <span>
+              {tracked.current?.present
+                ? "Presente"
+                : "Ausente · aguardando retorno"}
+            </span>
           </header>
           {error ? (
             <p role="alert">Não foi possível carregar a linha do tempo.</p>

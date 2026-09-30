@@ -55,12 +55,21 @@ function Summary({
 }) {
   const projected = projectAlertTimelineItem(events, selectedIndex);
   const completed = event.event_type === "COMPLETED";
+  const departureAt =
+    completed &&
+    event.maneuver_type === "DESATRACACAO" &&
+    event.first_observed_at
+      ? event.first_observed_at
+      : null;
   const operationalAt =
     completed && event.operational_marker === "ATRAC"
       ? event.operational_at
       : null;
   const movementDuration = completed
-    ? formatMovementDuration(event.pob_at, operationalAt)
+    ? formatMovementDuration(
+        event.pob_at,
+        event.maneuver_type === "DESATRACACAO" ? departureAt : operationalAt,
+      )
     : null;
 
   return (
@@ -91,9 +100,19 @@ function Summary({
                 <dd>{formatOperationalTime(operationalAt)}</dd>
               </div>
             ) : null}
+            {departureAt ? (
+              <div>
+                <dt>Saída observada</dt>
+                <dd>{formatOperationalTime(departureAt)}</dd>
+              </div>
+            ) : null}
             {movementDuration ? (
               <div>
-                <dt>Tempo da movimentação</dt>
+                <dt>
+                  {event.maneuver_type === "DESATRACACAO"
+                    ? "Tempo aproximado da desatracação"
+                    : "Tempo da movimentação"}
+                </dt>
                 <dd>{movementDuration}</dd>
               </div>
             ) : null}
@@ -101,7 +120,8 @@ function Summary({
 
           <h3>Monitoramento do AlertaM</h3>
           <dl className="alert-detail-sheet__summary-grid">
-            {event.first_observed_at ? (
+            {event.first_observed_at &&
+            event.maneuver_type !== "DESATRACACAO" ? (
               <div>
                 <dt>Primeira observação</dt>
                 <dd>{formatObservedAt(event.first_observed_at)}</dd>

@@ -132,6 +132,25 @@ test("completed_projection_legacy_event_never_invents_movement_duration", () => 
   expect(projected.auxiliary).toBe("Horário operacional não disponível neste registro.");
 });
 
+test("completed_departure_uses_first_disappearance_as_approximate_duration", () => {
+  const completed = event({
+    maneuver_type: "DESATRACACAO",
+    event_type: "COMPLETED",
+    pob: "30/09 12:30",
+    pob_at: "2026-09-30T12:30:00-03:00",
+    first_observed_at: "2026-09-30T12:45:00-03:00",
+    occurred_at: "2026-09-30T12:46:00-03:00",
+  });
+
+  const projected = projectAlertTimelineItem([completed], 0);
+
+  expect(projected.title).toBe("Desatracação concluída");
+  expect(projected.lines).toContain("Saída observada: 30/09 12:45");
+  expect(projected.lines).toContain("Tempo aproximado da desatracação: 15 min");
+  expect(projected.auxiliary).toBeNull();
+});
+
+
 test("updated_projection_shows_pob_berth_and_optional_canonical_delta", () => {
   const events = [
     event({ pob_at: "2026-09-28T12:00:00-03:00" }),

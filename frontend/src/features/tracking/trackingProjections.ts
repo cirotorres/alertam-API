@@ -52,6 +52,13 @@ function projectManeuver(
   } else {
     if (event.berth !== null) parts.push(`Berço ${event.berth}`);
     if (event.pob !== null) parts.push(`POB ${event.pob}`);
+    if (
+      event.event_type === "COMPLETED" &&
+      event.maneuver_type === "DESATRACACAO"
+    ) {
+      parts.push("Saiu da tabela operacional");
+      parts.push("acompanhamento permanece ativo");
+    }
   }
   return {
     title: `${maneuver} ${action}`,

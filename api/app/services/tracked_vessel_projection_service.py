@@ -35,6 +35,11 @@ class TrackedVesselProjectionService:
                 None if event.pob_at is None else event.pob_at.isoformat()
             ),
         }
+        if (
+            event.maneuver_type == "DESATRACACAO"
+            and event.event_type == "COMPLETED"
+        ):
+            patch["present"] = False
         self._repository.project_tracked_vessels(
             stored.device_id,
             vessel_identity=event.vessel_identity,

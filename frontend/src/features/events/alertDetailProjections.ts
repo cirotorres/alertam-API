@@ -114,23 +114,42 @@ export function projectAlertTimelineItem(
     if (event.pob !== null) lines.push(`POB vigente: ${event.pob}`);
     if (event.berth !== null) lines.push(`Berço vigente: ${event.berth}`);
 
-    const operationalAt =
-      event.operational_marker === "ATRAC" ? event.operational_at : null;
-    const operationalDisplay =
-      operationalAt === null ? null : formatPortDateTime(operationalAt);
-    if (operationalDisplay !== null) {
-      lines.push(`ATRAC informado na planilha: ${operationalDisplay}`);
-    }
+    if (event.maneuver_type === "DESATRACACAO") {
+      const departureDisplay =
+        event.first_observed_at === null
+          ? null
+          : formatPortDateTime(event.first_observed_at);
+      if (departureDisplay !== null) {
+        lines.push(`Saída observada: ${departureDisplay}`);
+        const duration = formatMovementDuration(
+          event.pob_at,
+          event.first_observed_at,
+        );
+        if (duration !== null) {
+          lines.push(`Tempo aproximado da desatracação: ${duration}`);
+        }
+      } else {
+        auxiliary = "Saída observada não disponível neste registro.";
+      }
+    } else {
+      const operationalAt =
+        event.operational_marker === "ATRAC" ? event.operational_at : null;
+      const operationalDisplay =
+        operationalAt === null ? null : formatPortDateTime(operationalAt);
+      if (operationalDisplay !== null) {
+        lines.push(`ATRAC informado na planilha: ${operationalDisplay}`);
+      }
 
-    const movementDuration = formatMovementDuration(
-      event.pob_at,
-      operationalAt,
-    );
-    if (movementDuration !== null) {
-      lines.push(`Tempo da movimentação: ${movementDuration}`);
-    }
-    if (operationalAt === null) {
-      auxiliary = "Horário operacional não disponível neste registro.";
+      const movementDuration = formatMovementDuration(
+        event.pob_at,
+        operationalAt,
+      );
+      if (movementDuration !== null) {
+        lines.push(`Tempo da movimentação: ${movementDuration}`);
+      }
+      if (operationalAt === null) {
+        auxiliary = "Horário operacional não disponível neste registro.";
+      }
     }
   } else if (event.event_type === "UPDATED") {
     title = `${maneuverLabel(event.maneuver_type)} atualizada`;

@@ -204,6 +204,43 @@ test("alert_detail_completed_uses_operational_duration_not_observation_delay", (
 });
 
 
+test("alert_detail_completed_departure_shows_approximate_duration", () => {
+  const departure = event(
+    "00000000-0000-4000-8000-000000001051",
+    5,
+    {
+      maneuver_type: "DESATRACACAO",
+      event_type: "COMPLETED",
+      pob: "30/09 12:30",
+      pob_at: "2026-09-30T12:30:00-03:00",
+      first_observed_at: "2026-09-30T12:45:00-03:00",
+      occurred_at: "2026-09-30T12:46:00-03:00",
+      changes: null,
+    },
+  );
+
+  render(
+    <AlertDetailSheet
+      open
+      state={state("ready", {
+        selected_event_id: departure.event_id,
+        maneuver_id: departure.maneuver_id,
+        events: [departure],
+      })}
+      selectedEventId={departure.event_id}
+      onClose={() => undefined}
+      onRetry={() => undefined}
+    />,
+  );
+
+  expect(screen.getByText("Saída observada")).toBeInTheDocument();
+  expect(screen.getByText("12:45")).toBeInTheDocument();
+  expect(screen.getByText("Tempo aproximado da desatracação")).toBeInTheDocument();
+  expect(screen.getByText("15 min")).toBeInTheDocument();
+  expect(screen.queryByText(/Horário operacional não disponível/i)).not.toBeInTheDocument();
+});
+
+
 test("alert_detail_sheet_close_is_keyboard_accessible", () => {
   const onClose = vi.fn();
   render(
