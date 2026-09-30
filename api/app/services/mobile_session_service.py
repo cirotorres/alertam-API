@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import base64
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -14,10 +12,12 @@ from app.core.errors import (
     PersistenceUnavailableApiError,
 )
 from app.repositories.devices import (
+    DeviceAuthRecord,
     DevicesRepository,
     PersistenceUnavailableError,
 )
 from app.security.credentials import verify_secret
+from app.services.mobile_installation_service import MobileInstallationService
 
 
 SESSION_TTL = timedelta(days=30)
@@ -27,6 +27,8 @@ SESSION_TTL = timedelta(days=30)
 class MobileSessionPrincipal:
     device_id: str
     installation_id: UUID
+    display_code: str
+    platform: str
 
 
 class MobileSessionService:
@@ -38,25 +40,26 @@ class MobileSessionService:
     ) -> None:
         self._repository = repository
         self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._installations = MobileInstallationService(
+            repository,
+            clock=self._clock,
+        )
 
     def create_session(
         self,
         device_id: str,
         installation_id: UUID,
         view_secret: str,
+        *,
+        platform: str | None = None,
     ) -> tuple[str, MobileSessionPrincipal]:
-        auth = self._get_auth(device_id)
-        if (
-            auth is None
-            or auth.view_secret_hash is None
-            or not verify_secret(view_secret, auth.view_secret_hash)
-        ):
-            raise InvalidViewCredentialsError()
+        auth = self._require_view_auth(device_id, view_secret)
 
         try:
-            installation = self._repository.ensure_mobile_installation(
+            installation = self._installations.ensure(
                 device_id,
                 installation_id,
+                platform=platform,
             )
         except PersistenceUnavailableError as exc:
             raise PersistenceUnavailableApiError() from exc
@@ -65,7 +68,9 @@ class MobileSessionService:
 
         principal = MobileSessionPrincipal(
             device_id=device_id,
-            installation_id=installation_id,
+            installation_id=installation.installation_id,
+            display_code=installation.display_code,
+            platform=installation.platform,
         )
         expires_at = int((self._clock() + SESSION_TTL).timestamp())
         payload = self._encode_payload({
@@ -75,6 +80,13 @@ class MobileSessionService:
         })
         signature = self._sign(payload, auth.view_secret_hash)
         return f"{payload}.{signature}", principal
+
+    def validate_pairing(
+        self,
+        device_id: str,
+        view_secret: str,
+    ) -> None:
+        self._require_view_auth(device_id, view_secret)
 
     def resolve_session(
         self,
@@ -116,6 +128,31 @@ class MobileSessionService:
         return MobileSessionPrincipal(
             device_id=device_id,
             installation_id=installation_id,
+            display_code=installation.display_code,
+            platform=installation.platform,
+        )
+
+    def touch_installation(
+        self,
+        principal: MobileSessionPrincipal,
+        *,
+        platform: str | None = None,
+    ) -> MobileSessionPrincipal:
+        try:
+            installation = self._installations.touch(
+                principal.device_id,
+                principal.installation_id,
+                platform=platform,
+            )
+        except PersistenceUnavailableError as exc:
+            raise PersistenceUnavailableApiError() from exc
+        if installation is None:
+            raise InvalidViewCredentialsError()
+        return MobileSessionPrincipal(
+            device_id=installation.device_id,
+            installation_id=installation.installation_id,
+            display_code=installation.display_code,
+            platform=installation.platform,
         )
 
     def invalidate_installation(
@@ -123,14 +160,28 @@ class MobileSessionService:
         principal: MobileSessionPrincipal,
     ) -> None:
         try:
-            self._repository.revoke_mobile_installation(
+            self._installations.revoke(
                 principal.device_id,
                 principal.installation_id,
             )
         except PersistenceUnavailableError as exc:
             raise PersistenceUnavailableApiError() from exc
 
-    def _get_auth(self, device_id: str):
+    def _require_view_auth(
+        self,
+        device_id: str,
+        view_secret: str,
+    ) -> DeviceAuthRecord:
+        auth = self._get_auth(device_id)
+        if (
+            auth is None
+            or auth.view_secret_hash is None
+            or not verify_secret(view_secret, auth.view_secret_hash)
+        ):
+            raise InvalidViewCredentialsError()
+        return auth
+
+    def _get_auth(self, device_id: str) -> DeviceAuthRecord | None:
         try:
             return self._repository.get_device_auth(device_id)
         except PersistenceUnavailableError as exc:

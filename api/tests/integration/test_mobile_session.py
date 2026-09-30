@@ -17,8 +17,8 @@ VIEW_SECRET = "V" * 43
 INSTALLATION_ID = "10000000-0000-4000-8000-000000000001"
 
 
-def _repo() -> MemoryDeviceRepository:
-    repo = MemoryDeviceRepository()
+def _repo(*, clock=None) -> MemoryDeviceRepository:
+    repo = MemoryDeviceRepository(clock=clock)
     repo.create_device(
         DeviceAuthRecord(
             device_id=DEVICE_ID,
@@ -42,10 +42,8 @@ def test_create_mobile_session_sets_http_only_cookie_without_view_secret():
     )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "device_id": DEVICE_ID,
-        "installation_id": INSTALLATION_ID,
-    }
+    assert response.json()["device_id"] == DEVICE_ID
+    assert response.json()["installation_id"] == INSTALLATION_ID
     cookie = response.headers["set-cookie"]
     assert "alertam_mobile_session=" in cookie
     assert "HttpOnly" in cookie
@@ -70,10 +68,10 @@ def test_mobile_session_can_be_recovered_from_cookie():
     recovered = client.get("/api/v1/mobile/session")
 
     assert recovered.status_code == 200
-    assert recovered.json() == {
-        "device_id": DEVICE_ID,
-        "installation_id": INSTALLATION_ID,
-    }
+    assert recovered.json()["device_id"] == DEVICE_ID
+    assert recovered.json()["installation_id"] == INSTALLATION_ID
+    assert recovered.json()["display_code"] == created.json()["display_code"]
+    assert recovered.json()["platform"] == created.json()["platform"]
 
 
 def test_rotating_view_secret_invalidates_existing_mobile_session():
@@ -304,3 +302,164 @@ def test_delete_session_does_not_mask_installation_revocation_failure():
 
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "persistence_unavailable"
+
+
+def test_legacy_session_request_returns_installation_metadata():
+    import re
+
+    client = TestClient(create_app(repository=_repo()))
+    response = client.post(
+        "/api/v1/mobile/session",
+        headers={"Authorization": f"Bearer {VIEW_SECRET}"},
+        json={
+            "device_id": DEVICE_ID,
+            "installation_id": INSTALLATION_ID,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["device_id"] == DEVICE_ID
+    assert body["installation_id"] == INSTALLATION_ID
+    assert body["platform"] == "other"
+    assert re.fullmatch(
+        r"[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}",
+        body["display_code"],
+    )
+
+
+def test_session_platform_and_metadata_survive_recovery():
+    client = TestClient(create_app(repository=_repo()))
+    created = client.post(
+        "/api/v1/mobile/session",
+        headers={"Authorization": f"Bearer {VIEW_SECRET}"},
+        json={
+            "device_id": DEVICE_ID,
+            "installation_id": INSTALLATION_ID,
+            "platform": "ios",
+        },
+    )
+
+    assert created.status_code == 200
+    assert created.json()["platform"] == "ios"
+    recovered = client.get("/api/v1/mobile/session")
+    assert recovered.status_code == 200
+    assert recovered.json() == created.json()
+
+
+def test_revoked_installation_cannot_be_reused_with_same_uuid():
+    from uuid import UUID
+
+    repo = _repo()
+    client = TestClient(create_app(repository=repo))
+    payload = {
+        "device_id": DEVICE_ID,
+        "installation_id": INSTALLATION_ID,
+        "platform": "android",
+    }
+    assert client.post(
+        "/api/v1/mobile/session",
+        headers={"Authorization": f"Bearer {VIEW_SECRET}"},
+        json=payload,
+    ).status_code == 200
+    assert client.delete("/api/v1/mobile/session").status_code == 204
+
+    response = client.post(
+        "/api/v1/mobile/session",
+        headers={"Authorization": f"Bearer {VIEW_SECRET}"},
+        json=payload,
+    )
+
+    assert response.status_code == 401
+    installation = repo.get_mobile_installation(
+        DEVICE_ID,
+        UUID(INSTALLATION_ID),
+    )
+    assert installation is not None
+    assert installation.active is False
+
+
+def test_pairing_validation_is_side_effect_free():
+    from datetime import datetime, timezone
+
+    repo = _repo()
+    client = TestClient(create_app(repository=repo))
+
+    response = client.post(
+        "/api/v1/mobile/pairing/validate",
+        headers={"Authorization": f"Bearer {VIEW_SECRET}"},
+        json={"device_id": DEVICE_ID},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"device_id": DEVICE_ID}
+    assert repo.list_mobile_installations(
+        DEVICE_ID,
+        revoked_since=datetime(1970, 1, 1, tzinfo=timezone.utc),
+    ) == ()
+
+
+def test_mobile_session_heartbeat_updates_activity_and_fills_unknown_platform():
+    from datetime import datetime, timedelta, timezone
+    from uuid import UUID
+
+    now = [datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc)]
+    repo = _repo(clock=lambda: now[0])
+    client = TestClient(create_app(repository=repo, clock=lambda: now[0]))
+    assert client.post(
+        "/api/v1/mobile/session",
+        headers={"Authorization": f"Bearer {VIEW_SECRET}"},
+        json={
+            "device_id": DEVICE_ID,
+            "installation_id": INSTALLATION_ID,
+        },
+    ).status_code == 200
+
+    now[0] += timedelta(minutes=5)
+    response = client.post(
+        "/api/v1/mobile/session/heartbeat",
+        json={"platform": "ios"},
+    )
+
+    assert response.status_code == 204
+    installation = repo.get_mobile_installation(
+        DEVICE_ID,
+        UUID(INSTALLATION_ID),
+    )
+    assert installation is not None
+    assert installation.last_seen_at == now[0]
+    assert installation.platform == "ios"
+
+
+def test_mobile_session_heartbeat_rejects_revoked_installation_cookie():
+    from uuid import UUID
+
+    repo = _repo()
+    client = TestClient(create_app(repository=repo))
+    created = client.post(
+        "/api/v1/mobile/session",
+        headers={"Authorization": f"Bearer {VIEW_SECRET}"},
+        json={
+            "device_id": DEVICE_ID,
+            "installation_id": INSTALLATION_ID,
+        },
+    )
+    assert created.status_code == 200
+    cookie = client.cookies.get("alertam_mobile_session")
+    assert cookie
+    assert repo.revoke_mobile_installation(
+        DEVICE_ID,
+        UUID(INSTALLATION_ID),
+    ) is True
+    client.cookies.set(
+        "alertam_mobile_session",
+        cookie,
+        path="/api/v1",
+    )
+
+    response = client.post(
+        "/api/v1/mobile/session/heartbeat",
+        json={"platform": "android"},
+    )
+
+    assert response.status_code == 401

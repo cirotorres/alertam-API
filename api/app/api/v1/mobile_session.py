@@ -1,11 +1,10 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import Callable
 
 from fastapi import APIRouter, Cookie, Header, Response, status
 
 from app.core.errors import InvalidViewCredentialsError
+from app.models.mobile_installation import MobileHeartbeatRequest
 from app.models.mobile_session import (
     MobileSessionRequest,
     MobileSessionResponse,
@@ -13,6 +12,7 @@ from app.models.mobile_session import (
 from app.repositories.devices import DevicesRepository
 from app.security.credentials import parse_bearer_authorization
 from app.services.mobile_session_service import (
+    MobileSessionPrincipal,
     MobileSessionService,
     SESSION_TTL,
 )
@@ -20,6 +20,17 @@ from app.services.mobile_session_service import (
 
 COOKIE_NAME = "alertam_mobile_session"
 COOKIE_PATH = "/api/v1"
+
+
+def _session_response(
+    principal: MobileSessionPrincipal,
+) -> MobileSessionResponse:
+    return MobileSessionResponse(
+        device_id=principal.device_id,
+        installation_id=principal.installation_id,
+        display_code=principal.display_code,
+        platform=principal.platform,
+    )
 
 
 def create_mobile_session_router(
@@ -45,6 +56,7 @@ def create_mobile_session_router(
             request.device_id,
             request.installation_id,
             view_secret,
+            platform=request.platform,
         )
         response.set_cookie(
             key=COOKIE_NAME,
@@ -55,10 +67,7 @@ def create_mobile_session_router(
             httponly=True,
             samesite="strict",
         )
-        return MobileSessionResponse(
-            device_id=principal.device_id,
-            installation_id=principal.installation_id,
-        )
+        return _session_response(principal)
 
     @router.get("", response_model=MobileSessionResponse)
     def recover_session(
@@ -67,11 +76,28 @@ def create_mobile_session_router(
             alias=COOKIE_NAME,
         ),
     ) -> MobileSessionResponse:
-        principal = service.resolve_session(mobile_session)
-        return MobileSessionResponse(
-            device_id=principal.device_id,
-            installation_id=principal.installation_id,
+        return _session_response(
+            service.resolve_session(mobile_session)
         )
+
+    @router.post(
+        "/heartbeat",
+        status_code=status.HTTP_204_NO_CONTENT,
+        response_class=Response,
+    )
+    def heartbeat(
+        request: MobileHeartbeatRequest,
+        mobile_session: str | None = Cookie(
+            default=None,
+            alias=COOKIE_NAME,
+        ),
+    ) -> Response:
+        principal = service.resolve_session(mobile_session)
+        service.touch_installation(
+            principal,
+            platform=request.platform,
+        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @router.delete("", status_code=status.HTTP_204_NO_CONTENT)
     def delete_session(
