@@ -10,6 +10,7 @@ import {
   storeInstallationMetadata,
 } from "./installationMetadata";
 import {
+  isSessionRecoveryBlocked,
   loadPairing,
   savePairing,
 } from "./pairingStorage";
@@ -293,7 +294,7 @@ test("temporary switch retry reuses exactly the same draft", async () => {
   expect(
     await screen.findByRole("button", { name: "Tentar novamente" }),
   ).toBeInTheDocument();
-  expect(screen.getByText(/APP pecem-a WAIT/)).toBeInTheDocument();
+  expect(screen.queryByText(/APP pecem-a/)).not.toBeInTheDocument();
   expect(loadPairing()).toEqual(pairingA);
   expect(loadInstallationId()).toBe(INSTALL_A);
   expect(ids).toHaveBeenCalledTimes(2);
@@ -473,4 +474,39 @@ test("cookie recovery enters app ready with recovered session", async () => {
     await screen.findByText(/APP pecem-cookie READY/),
   ).toBeInTheDocument();
   expect(loadPairing()).toBeNull();
+});
+
+
+test("manual reset blocks stale cookie recovery across remount", async () => {
+  seedActiveA();
+  const clearer = vi.fn().mockRejectedValue(new TypeError("offline"));
+  const first = renderGate({
+    sessionCreator: vi.fn().mockResolvedValue(sessionA),
+    sessionClearer: clearer,
+  });
+
+  fireEvent.click(await screen.findByRole("button", { name: "RESET" }));
+  expect(isSessionRecoveryBlocked()).toBe(true);
+  first.unmount();
+
+  const recoverer = vi.fn().mockResolvedValue({
+    pairing: {
+      deviceId: "stale-cookie",
+      viewSecret: null,
+      pairedAt: "2026-09-30T20:00:00-03:00",
+    } satisfies Pairing,
+    session: {
+      ...sessionA,
+      deviceId: "stale-cookie",
+    },
+  });
+
+  renderGate({ sessionRecoverer: recoverer });
+
+  expect(
+    await screen.findByRole("heading", {
+      name: "Alerta de Movimentações Marítimas",
+    }),
+  ).toBeInTheDocument();
+  expect(recoverer).not.toHaveBeenCalled();
 });

@@ -79,6 +79,15 @@ function toSessionInfo(body: MobileSessionResponse): MobileSessionInfo {
   };
 }
 
+function persistSessionIdentity(session: MobileSessionInfo): void {
+  storeInstallationId(session.installationId);
+  storeInstallationMetadata({
+    installationId: session.installationId,
+    displayCode: session.displayCode,
+    platform: session.platform,
+  });
+}
+
 async function parseSessionResponse(
   response: Response,
   options: {
@@ -155,8 +164,7 @@ export async function createMobileSession(
     expectedInstallationId: installationId,
   });
 
-  storeInstallationId(session.installationId);
-  storeInstallationMetadata(session);
+  persistSessionIdentity(session);
   return session;
 }
 
@@ -193,8 +201,7 @@ export async function recoverMobileSession(): Promise<{
   }
 
   const session = toSessionInfo(body);
-  storeInstallationId(session.installationId);
-  storeInstallationMetadata(session);
+  persistSessionIdentity(session);
 
   return {
     pairing: {

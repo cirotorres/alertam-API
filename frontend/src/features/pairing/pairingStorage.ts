@@ -4,6 +4,8 @@ import {
 } from "./pairing";
 
 export const PAIRING_STORAGE_KEY = "alertam.mobile.pairing.v1";
+export const SESSION_RECOVERY_BLOCK_STORAGE_KEY =
+  "alertam.mobile.session.recovery-blocked.v1";
 
 function isPairing(value: unknown): value is Pairing {
   if (typeof value !== "object" || value === null) {
@@ -53,4 +55,17 @@ export function savePairing(pairing: Pairing): void {
 
 export function clearPairing(): void {
   localStorage.removeItem(PAIRING_STORAGE_KEY);
+}
+
+
+export function blockSessionRecovery(): void {
+  localStorage.setItem(SESSION_RECOVERY_BLOCK_STORAGE_KEY, "1");
+}
+
+export function clearSessionRecoveryBlock(): void {
+  localStorage.removeItem(SESSION_RECOVERY_BLOCK_STORAGE_KEY);
+}
+
+export function isSessionRecoveryBlocked(): boolean {
+  return localStorage.getItem(SESSION_RECOVERY_BLOCK_STORAGE_KEY) === "1";
 }

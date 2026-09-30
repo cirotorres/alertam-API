@@ -126,7 +126,7 @@ test("keeps_single_request_in_flight_and_aborts_on_cleanup", async () => {
   expect(capturedSignal?.aborted).toBe(true);
 });
 
-test("revoked_access_clears_pairing_and_stops_polling", async () => {
+test("revoked_access_reports_status_without_mutating_pairing_storage", async () => {
   savePairing(pairing);
   const fetcher = vi.fn().mockRejectedValue(new AccessRevokedError());
 
@@ -134,7 +134,7 @@ test("revoked_access_clears_pairing_and_stops_polling", async () => {
   await flush();
 
   expect(result.current.status).toBe("revoked");
-  expect(loadPairing()).toBeNull();
+  expect(loadPairing()).toEqual(pairing);
 
   await act(async () => {
     await vi.advanceTimersByTimeAsync(60_000);

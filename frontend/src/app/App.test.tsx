@@ -1,7 +1,11 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 
-import { savePairing } from "../features/pairing/pairingStorage";
+import {
+  isSessionRecoveryBlocked,
+  loadPairing,
+  savePairing,
+} from "../features/pairing/pairingStorage";
 import { App } from "./App";
 
 const TOKEN = "Abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE";
@@ -42,5 +46,6 @@ test("revoked_stored_pairing_shows_explicit_revoked_state", async () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/Escaneie um novo QR Code/i)).toBeInTheDocument();
   });
-  expect(localStorage.length).toBe(0);
+  expect(loadPairing()).toBeNull();
+  expect(isSessionRecoveryBlocked()).toBe(true);
 });

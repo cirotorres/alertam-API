@@ -31,7 +31,10 @@ import {
   type Pairing,
 } from "./pairing";
 import {
+  blockSessionRecovery,
   clearPairing,
+  clearSessionRecoveryBlock,
+  isSessionRecoveryBlocked,
   loadPairing,
   savePairing,
 } from "./pairingStorage";
@@ -139,6 +142,7 @@ export function PairingGate({
     syncedSessionRef.current = null;
     switchDraftRef.current = null;
     clearLocalIdentity();
+    blockSessionRecovery();
     void sessionClearer();
     setSessionInfo(null);
     setSessionReady(false);
@@ -152,6 +156,7 @@ export function PairingGate({
     syncedSessionRef.current = null;
     switchDraftRef.current = null;
     clearLocalIdentity();
+    blockSessionRecovery();
     void sessionClearer();
     setSessionInfo(null);
     setSessionReady(false);
@@ -179,6 +184,7 @@ export function PairingGate({
         platform: session.platform,
       });
       switchDraftRef.current = null;
+      clearSessionRecoveryBlock();
       setSessionInfo(session);
       setSessionReady(true);
       setActive(next);
@@ -420,7 +426,10 @@ export function PairingGate({
       return;
     }
 
-    if (skipNextRecoveryRef.current) {
+    if (
+      skipNextRecoveryRef.current ||
+      isSessionRecoveryBlocked()
+    ) {
       return;
     }
 
@@ -470,23 +479,14 @@ export function PairingGate({
 
   if (mode === "temporary-switch" && active && candidate) {
     return (
-      <div className="pairing-switch-state">
-        {children(
-          active,
-          resetPairing,
-          false,
-          handleAccessRevoked,
-          sessionInfo,
-        )}
-        <PairingScreen
-          title="Troca ainda não confirmada"
-          detail="A resposta da troca não chegou. Tente novamente para confirmar o estado sem gerar outro aparelho."
-        >
-          <button type="button" onClick={() => void executeSwitch()}>
-            Tentar novamente
-          </button>
-        </PairingScreen>
-      </div>
+      <PairingScreen
+        title="Troca ainda não confirmada"
+        detail="A resposta da troca não chegou. Tente novamente para confirmar o estado sem gerar outro aparelho."
+      >
+        <button type="button" onClick={() => void executeSwitch()}>
+          Tentar novamente
+        </button>
+      </PairingScreen>
     );
   }
 

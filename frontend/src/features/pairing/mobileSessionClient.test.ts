@@ -84,7 +84,20 @@ test("create sends platform and persists identity only after valid response", as
     }),
   );
   expect(loadInstallationId()).toBe(INSTALLATION_ID);
-  expect(loadInstallationMetadata()).toEqual(session);
+  expect(loadInstallationMetadata()).toEqual({
+    installationId: INSTALLATION_ID,
+    displayCode: "K7M4Q2",
+    platform: "ios",
+  });
+  expect(
+    JSON.parse(
+      localStorage.getItem(INSTALLATION_METADATA_STORAGE_KEY) ?? "{}",
+    ),
+  ).toEqual({
+    installationId: INSTALLATION_ID,
+    displayCode: "K7M4Q2",
+    platform: "ios",
+  });
 });
 
 test("create rejects inconsistent response without persisting candidate", async () => {
@@ -139,7 +152,11 @@ test("recovery stores server identity and returns cookie-only pairing plus sessi
     platform: "ios",
   });
   expect(loadInstallationId()).toBe(INSTALLATION_ID);
-  expect(loadInstallationMetadata()).toEqual(recovered?.session);
+  expect(loadInstallationMetadata()).toEqual({
+    installationId: INSTALLATION_ID,
+    displayCode: "K7M4Q2",
+    platform: "ios",
+  });
 });
 
 test("validate candidate is side-effect free", async () => {

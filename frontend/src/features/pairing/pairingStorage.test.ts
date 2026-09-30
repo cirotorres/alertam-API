@@ -3,7 +3,11 @@ import { beforeEach, expect, test } from "vitest";
 import type { Pairing } from "./pairing";
 import {
   PAIRING_STORAGE_KEY,
+  SESSION_RECOVERY_BLOCK_STORAGE_KEY,
+  blockSessionRecovery,
   clearPairing,
+  clearSessionRecoveryBlock,
+  isSessionRecoveryBlocked,
   loadPairing,
   savePairing,
 } from "./pairingStorage";
@@ -49,4 +53,19 @@ test("clear_pairing_removes_local_credentials", () => {
 
   expect(loadPairing()).toBeNull();
   expect(localStorage.getItem(PAIRING_STORAGE_KEY)).toBeNull();
+});
+
+
+test("session recovery block persists until explicitly cleared", () => {
+  expect(isSessionRecoveryBlocked()).toBe(false);
+
+  blockSessionRecovery();
+
+  expect(isSessionRecoveryBlocked()).toBe(true);
+  expect(localStorage.getItem(SESSION_RECOVERY_BLOCK_STORAGE_KEY)).toBe("1");
+
+  clearSessionRecoveryBlock();
+
+  expect(isSessionRecoveryBlocked()).toBe(false);
+  expect(localStorage.getItem(SESSION_RECOVERY_BLOCK_STORAGE_KEY)).toBeNull();
 });

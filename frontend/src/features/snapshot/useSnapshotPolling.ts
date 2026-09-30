@@ -9,7 +9,6 @@ import {
   getSnapshot,
 } from "../../api/snapshotClient";
 import type { Pairing } from "../pairing/pairing";
-import { clearPairing } from "../pairing/pairingStorage";
 
 export type SnapshotStatus =
   | "loading"
@@ -98,7 +97,6 @@ export function useSnapshotPolling(
 
         if (error instanceof AccessRevokedError) {
           terminal = true;
-          clearPairing();
           setStatus("revoked");
         } else if (error instanceof SnapshotUnavailableError) {
           setData(null);
