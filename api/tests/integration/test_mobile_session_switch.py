@@ -256,3 +256,30 @@ def test_switch_requires_existing_signed_source_cookie():
 
     assert response.status_code == 401
     assert repo.get_mobile_installation(DEVICE_B, INSTALL_B) is None
+
+
+def test_switch_replay_does_not_issue_session_for_revoked_target():
+    repo = _repo()
+    client = TestClient(create_app(repository=repo, clock=lambda: NOW))
+    old_cookie = _create_a_session(client)
+
+    first = client.post(
+        "/api/v1/mobile/session/switch",
+        headers={"Authorization": f"Bearer {VIEW_B}"},
+        json=_switch_payload(),
+    )
+    assert first.status_code == 200
+    assert repo.revoke_mobile_installation(DEVICE_B, INSTALL_B) is True
+
+    client.cookies.set(
+        "alertam_mobile_session",
+        old_cookie,
+        path="/api/v1",
+    )
+    replay = client.post(
+        "/api/v1/mobile/session/switch",
+        headers={"Authorization": f"Bearer {VIEW_B}"},
+        json=_switch_payload(),
+    )
+
+    assert replay.status_code == 401

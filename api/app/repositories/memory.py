@@ -251,7 +251,11 @@ class MemoryDeviceRepository:
                 if previous != payload:
                     raise MobileInstallationSwitchConflictError()
                 target = self._mobile_installations.get(to_installation_id)
-                if target is None or target.device_id != to_device_id:
+                if (
+                    target is None
+                    or target.device_id != to_device_id
+                    or not target.active
+                ):
                     return None
                 return target
 

@@ -70,7 +70,8 @@ begin
         select mi.*
         from public.mobile_installations mi
         where mi.installation_id = v_previous.to_installation_id
-          and mi.device_id = v_previous.to_device_id;
+          and mi.device_id = v_previous.to_device_id
+          and mi.active = true;
         return;
     end if;
 
@@ -87,6 +88,31 @@ begin
     for update;
 
     if not found or v_source.active = false then
+        select *
+        into v_previous
+        from public.mobile_session_switches ms
+        where ms.switch_id = p_switch_id
+        for update;
+
+        if found then
+            if (
+                v_previous.from_device_id <> p_from_device_id
+                or v_previous.from_installation_id <> p_from_installation_id
+                or v_previous.to_device_id <> p_to_device_id
+                or v_previous.to_installation_id <> p_to_installation_id
+                or v_previous.platform <> v_platform
+            ) then
+                raise exception 'mobile_session_switch_conflict'
+                    using errcode = 'P0001';
+            end if;
+
+            return query
+            select mi.*
+            from public.mobile_installations mi
+            where mi.installation_id = v_previous.to_installation_id
+              and mi.device_id = v_previous.to_device_id
+              and mi.active = true;
+        end if;
         return;
     end if;
 

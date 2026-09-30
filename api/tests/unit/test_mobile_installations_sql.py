@@ -123,3 +123,12 @@ def test_switch_rpc_checks_replay_before_source_active_and_revokes_dependents():
     assert "update public.push_installations" in fn
     assert "update public.mobile_installations" in fn
     assert "insert into public.mobile_session_switches" in fn
+
+
+def test_switch_rpc_rechecks_switch_after_waiting_for_source_lock():
+    sql = MIGRATION_014.read_text(encoding="utf-8").lower()
+    fn = sql.split(
+        "create or replace function public.switch_mobile_installation(", 1
+    )[1].split("$$;", 1)[0]
+
+    assert fn.count("where ms.switch_id = p_switch_id") >= 2
