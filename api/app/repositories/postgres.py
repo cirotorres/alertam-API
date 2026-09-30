@@ -17,6 +17,7 @@ from app.repositories.devices import (
     DeviceAuthRecord,
     MobileInstallationDisplayCodeConflictError,
     MobileInstallationRecord,
+    MobileInstallationSwitchConflictError,
     PersistenceUnavailableError,
     SnapshotCandidate,
     StoredSnapshot,
@@ -228,6 +229,58 @@ class PostgresDeviceRepository:
         if row is None or not isinstance(row[0], bool):
             raise PersistenceUnavailableError()
         return row[0]
+
+    def switch_mobile_installation(
+        self,
+        from_device_id: str,
+        from_installation_id: UUID,
+        to_device_id: str,
+        to_installation_id: UUID,
+        *,
+        platform: str,
+        display_code: str,
+        switch_id: UUID,
+    ) -> MobileInstallationRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select installation_id, device_id, active,
+                           created_at, last_seen_at, revoked_at,
+                           platform, display_code
+                    from public.switch_mobile_installation(
+                        %s, %s, %s, %s, %s, %s, %s
+                    )
+                    """,
+                    (
+                        switch_id,
+                        from_device_id,
+                        from_installation_id,
+                        to_device_id,
+                        to_installation_id,
+                        platform,
+                        display_code,
+                    ),
+                ).fetchone()
+        except UniqueViolation as exc:
+            constraint = getattr(
+                getattr(exc, "diag", None),
+                "constraint_name",
+                None,
+            )
+            if (
+                constraint == "mobile_installations_display_code_unique"
+                or "mobile_installations_display_code_unique" in str(exc)
+            ):
+                raise MobileInstallationDisplayCodeConflictError() from exc
+            raise PersistenceUnavailableError() from exc
+        except psycopg.errors.RaiseException as exc:
+            if "mobile_session_switch_conflict" in str(exc):
+                raise MobileInstallationSwitchConflictError() from exc
+            raise PersistenceUnavailableError() from exc
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._mobile_installation_from_row(row)
 
     @classmethod
     def _mobile_installation_from_row(

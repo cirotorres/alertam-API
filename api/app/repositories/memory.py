@@ -15,6 +15,7 @@ from app.repositories.devices import (
     DeviceAuthRecord,
     MobileInstallationDisplayCodeConflictError,
     MobileInstallationRecord,
+    MobileInstallationSwitchConflictError,
     SnapshotCandidate,
     StoredSnapshot,
 )
@@ -62,6 +63,9 @@ class MemoryDeviceRepository:
         self._tracking_events_by_id: dict[str, StoredVesselTrackingEvent] = {}
         self._tracking_event_ingestion_sequence = 0
         self._mobile_installations: dict[UUID, MobileInstallationRecord] = {}
+        self._mobile_session_switches: dict[
+            UUID, tuple[str, UUID, str, UUID, str]
+        ] = {}
         self._tracked_vessels: dict[UUID, TrackedVesselRecord] = {}
         self._push_installations: dict[object, PushInstallation] = {}
         self._push_deliveries: dict[tuple[str, object], PushDelivery] = {}
@@ -222,6 +226,106 @@ class MemoryDeviceRepository:
                     updated_at=now,
                 )
             return True
+
+    def switch_mobile_installation(
+        self,
+        from_device_id: str,
+        from_installation_id: UUID,
+        to_device_id: str,
+        to_installation_id: UUID,
+        *,
+        platform: str,
+        display_code: str,
+        switch_id: UUID,
+    ) -> MobileInstallationRecord | None:
+        with self._lock:
+            payload = (
+                from_device_id,
+                from_installation_id,
+                to_device_id,
+                to_installation_id,
+                platform,
+            )
+            previous = self._mobile_session_switches.get(switch_id)
+            if previous is not None:
+                if previous != payload:
+                    raise MobileInstallationSwitchConflictError()
+                target = self._mobile_installations.get(to_installation_id)
+                if target is None or target.device_id != to_device_id:
+                    return None
+                return target
+
+            if from_device_id == to_device_id:
+                raise MobileInstallationSwitchConflictError()
+
+            source = self._mobile_installations.get(from_installation_id)
+            if (
+                source is None
+                or source.device_id != from_device_id
+                or not source.active
+                or to_device_id not in self._devices
+            ):
+                return None
+
+            if to_installation_id in self._mobile_installations:
+                raise MobileInstallationSwitchConflictError()
+
+            if any(
+                item.display_code == display_code
+                for item in self._mobile_installations.values()
+            ):
+                raise MobileInstallationDisplayCodeConflictError(display_code)
+
+            now = self._clock()
+            target = MobileInstallationRecord(
+                installation_id=to_installation_id,
+                device_id=to_device_id,
+                active=True,
+                created_at=now,
+                last_seen_at=now,
+                revoked_at=None,
+                platform=platform,
+                display_code=display_code,
+            )
+            source_revoked = replace(
+                source,
+                active=False,
+                last_seen_at=now,
+                revoked_at=source.revoked_at or now,
+            )
+            tracked_updates = {
+                tracked_id: replace(
+                    tracked,
+                    active=False,
+                    stopped_at=tracked.stopped_at or now,
+                )
+                for tracked_id, tracked in self._tracked_vessels.items()
+                if (
+                    tracked.installation_id == from_installation_id
+                    and tracked.device_id == from_device_id
+                    and tracked.active
+                )
+            }
+            push = self._push_installations.get(from_installation_id)
+            push_revoked = None
+            if push is not None and push.device_id == from_device_id:
+                push_revoked = replace(
+                    push,
+                    endpoint=None,
+                    p256dh=None,
+                    auth=None,
+                    active=False,
+                    last_seen_at=now,
+                    updated_at=now,
+                )
+
+            self._mobile_installations[to_installation_id] = target
+            self._mobile_installations[from_installation_id] = source_revoked
+            self._tracked_vessels.update(tracked_updates)
+            if push_revoked is not None:
+                self._push_installations[from_installation_id] = push_revoked
+            self._mobile_session_switches[switch_id] = payload
+            return target
 
     def get_snapshot(self, device_id: str) -> StoredSnapshot | None:
         return self._snapshots.get(device_id)

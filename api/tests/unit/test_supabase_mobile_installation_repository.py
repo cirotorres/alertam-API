@@ -143,3 +143,41 @@ def test_supabase_maps_display_code_unique_violation():
             platform="ios",
             display_code="K7M4Q2",
         )
+
+
+def test_supabase_switch_mobile_installation_uses_atomic_rpc():
+    switch_id = UUID("20000000-0000-4000-8000-000000000001")
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json=[ROW])
+
+    repo = SupabaseDeviceRepository(
+        "https://example.supabase.co",
+        "sb_secret_backend",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    switched = repo.switch_mobile_installation(
+        "pecem-a",
+        UUID("10000000-0000-4000-8000-000000000009"),
+        "pecem-01",
+        INSTALL,
+        platform="ios",
+        display_code="K7M4Q2",
+        switch_id=switch_id,
+    )
+
+    assert switched is not None
+    request = calls[0]
+    assert request.url.path.endswith("/rpc/switch_mobile_installation")
+    assert json.loads(request.content) == {
+        "p_switch_id": str(switch_id),
+        "p_from_device_id": "pecem-a",
+        "p_from_installation_id": "10000000-0000-4000-8000-000000000009",
+        "p_to_device_id": "pecem-01",
+        "p_to_installation_id": str(INSTALL),
+        "p_platform": "ios",
+        "p_display_code": "K7M4Q2",
+    }

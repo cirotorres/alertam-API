@@ -48,6 +48,7 @@ def reset_database():
             "010_mobile_installations.sql",
             "011_tracked_vessels.sql",
             "013_mobile_installation_management.sql",
+            "014_mobile_session_switch.sql",
         )
     yield
 
@@ -155,3 +156,52 @@ def test_rotation_deactivates_mobile_and_push_installations():
             (INSTALL_B,),
         ).fetchone()[0]
     assert active is False
+
+
+def test_postgres_mobile_session_switch_is_idempotent_and_conflict_safe():
+    from app.repositories.devices import MobileInstallationSwitchConflictError
+
+    repository = repo()
+    switch_id = UUID("20000000-0000-4000-8000-000000000001")
+    source = repository.ensure_mobile_installation(
+        "pecem-01",
+        INSTALL_A,
+        platform="ios",
+        display_code="K7M4Q2",
+    )
+    assert source is not None
+
+    first = repository.switch_mobile_installation(
+        "pecem-01",
+        INSTALL_A,
+        "other-01",
+        INSTALL_B,
+        platform="android",
+        display_code="P8X4TR",
+        switch_id=switch_id,
+    )
+    replay = repository.switch_mobile_installation(
+        "pecem-01",
+        INSTALL_A,
+        "other-01",
+        INSTALL_B,
+        platform="android",
+        display_code="Z7Z7Z7",
+        switch_id=switch_id,
+    )
+
+    assert first is not None
+    assert replay == first
+    old = repository.get_mobile_installation("pecem-01", INSTALL_A)
+    assert old is not None and old.active is False
+
+    with pytest.raises(MobileInstallationSwitchConflictError):
+        repository.switch_mobile_installation(
+            "pecem-01",
+            INSTALL_A,
+            "other-01",
+            UUID("10000000-0000-4000-8000-000000000099"),
+            platform="android",
+            display_code="Q7D2AA",
+            switch_id=switch_id,
+        )

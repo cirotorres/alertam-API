@@ -20,6 +20,10 @@ class MobileInstallationDisplayCodeConflictError(Exception):
     pass
 
 
+class MobileInstallationSwitchConflictError(Exception):
+    pass
+
+
 @dataclass(frozen=True)
 class DeviceAuthRecord:
     device_id: str
@@ -114,6 +118,18 @@ class DevicesRepository(DeviceCreator, Protocol):
         device_id: str,
         installation_id: UUID,
     ) -> bool: ...
+
+    def switch_mobile_installation(
+        self,
+        from_device_id: str,
+        from_installation_id: UUID,
+        to_device_id: str,
+        to_installation_id: UUID,
+        *,
+        platform: str,
+        display_code: str,
+        switch_id: UUID,
+    ) -> MobileInstallationRecord | None: ...
 
     def get_snapshot(self, device_id: str) -> StoredSnapshot | None: ...
 

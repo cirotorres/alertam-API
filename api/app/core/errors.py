@@ -146,6 +146,15 @@ class MobileInstallationNotFoundError(ApiError):
         )
 
 
+class MobileSessionSwitchConflictError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=409,
+            code="mobile_session_switch_conflict",
+            message="Esta troca de AlertaM conflita com uma operação anterior.",
+        )
+
+
 class VesselTrackingTargetNotFoundError(ApiError):
     def __init__(self) -> None:
         super().__init__(

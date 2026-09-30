@@ -16,3 +16,12 @@ class MobileSessionResponse(BaseModel):
     installation_id: UUID
     display_code: str
     platform: str
+
+
+class MobileSessionSwitchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    device_id: str = Field(min_length=1, max_length=200)
+    installation_id: UUID
+    platform: str = Field(min_length=1, max_length=32)
+    switch_id: UUID

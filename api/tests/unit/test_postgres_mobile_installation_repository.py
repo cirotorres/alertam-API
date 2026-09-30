@@ -134,3 +134,47 @@ def test_postgres_maps_display_code_unique_violation(monkeypatch):
             platform="ios",
             display_code="K7M4Q2",
         )
+
+
+def test_postgres_switch_mobile_installation_uses_atomic_rpc(monkeypatch):
+    switch_id = UUID("20000000-0000-4000-8000-000000000001")
+    connection = Connection()
+    original_execute = connection.execute
+
+    def execute(sql, params):
+        if "switch_mobile_installation" in sql:
+            connection.calls.append((" ".join(sql.split()), params))
+            return Result(ROW)
+        return original_execute(sql, params)
+
+    connection.execute = execute
+    monkeypatch.setattr(
+        "app.repositories.postgres.psycopg.connect",
+        lambda *_args, **_kwargs: connection,
+    )
+    repo = PostgresDeviceRepository("postgresql://example")
+
+    switched = repo.switch_mobile_installation(
+        "pecem-a",
+        UUID("10000000-0000-4000-8000-000000000009"),
+        "pecem-01",
+        INSTALL,
+        platform="ios",
+        display_code="K7M4Q2",
+        switch_id=switch_id,
+    )
+
+    assert switched is not None
+    call = next(
+        call for call in connection.calls
+        if "switch_mobile_installation" in call[0]
+    )
+    assert call[1] == (
+        switch_id,
+        "pecem-a",
+        UUID("10000000-0000-4000-8000-000000000009"),
+        "pecem-01",
+        INSTALL,
+        "ios",
+        "K7M4Q2",
+    )

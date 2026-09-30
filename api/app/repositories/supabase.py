@@ -14,6 +14,7 @@ from app.repositories.devices import (
     DeviceAuthRecord,
     MobileInstallationDisplayCodeConflictError,
     MobileInstallationRecord,
+    MobileInstallationSwitchConflictError,
     PersistenceUnavailableError,
     SnapshotCandidate,
     StoredSnapshot,
@@ -273,6 +274,55 @@ class SupabaseDeviceRepository:
             if not isinstance(updated, bool):
                 raise TypeError("Resultado de revogação inválido.")
             return updated
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def switch_mobile_installation(
+        self,
+        from_device_id: str,
+        from_installation_id: UUID,
+        to_device_id: str,
+        to_installation_id: UUID,
+        *,
+        platform: str,
+        display_code: str,
+        switch_id: UUID,
+    ) -> MobileInstallationRecord | None:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/switch_mobile_installation",
+                headers=self._headers(),
+                json={
+                    "p_switch_id": str(switch_id),
+                    "p_from_device_id": from_device_id,
+                    "p_from_installation_id": str(from_installation_id),
+                    "p_to_device_id": to_device_id,
+                    "p_to_installation_id": str(to_installation_id),
+                    "p_platform": platform,
+                    "p_display_code": display_code,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise ValueError("Resposta de troca mobile inválida.")
+            if not data:
+                return None
+            if len(data) != 1 or not isinstance(data[0], dict):
+                raise ValueError("Resposta de troca mobile inválida.")
+            return self._mobile_installation_from_mapping(data[0])
+        except httpx.HTTPStatusError as exc:
+            text = exc.response.text
+            if "mobile_installations_display_code_unique" in text:
+                raise MobileInstallationDisplayCodeConflictError() from exc
+            if "mobile_session_switch_conflict" in text:
+                raise MobileInstallationSwitchConflictError() from exc
+            raise PersistenceUnavailableError() from exc
         except (
             httpx.HTTPError,
             KeyError,

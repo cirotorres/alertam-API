@@ -9,18 +9,31 @@ from uuid import UUID
 
 from app.core.errors import (
     InvalidViewCredentialsError,
+    MobileSessionSwitchConflictError,
     PersistenceUnavailableApiError,
 )
 from app.repositories.devices import (
     DeviceAuthRecord,
     DevicesRepository,
+    MobileInstallationDisplayCodeConflictError,
+    MobileInstallationSwitchConflictError,
     PersistenceUnavailableError,
 )
 from app.security.credentials import verify_secret
-from app.services.mobile_installation_service import MobileInstallationService
+from app.services.mobile_installation_service import (
+    MobileInstallationService,
+    generate_display_code,
+    normalize_mobile_platform,
+)
 
 
 SESSION_TTL = timedelta(days=30)
+
+
+@dataclass(frozen=True)
+class MobileSessionIdentity:
+    device_id: str
+    installation_id: UUID
 
 
 @dataclass(frozen=True)
@@ -72,14 +85,15 @@ class MobileSessionService:
             display_code=installation.display_code,
             platform=installation.platform,
         )
-        expires_at = int((self._clock() + SESSION_TTL).timestamp())
-        payload = self._encode_payload({
-            "device_id": device_id,
-            "installation_id": str(installation_id),
-            "exp": expires_at,
-        })
-        signature = self._sign(payload, auth.view_secret_hash)
-        return f"{payload}.{signature}", principal
+        assert auth.view_secret_hash is not None
+        return (
+            self._issue_token(
+                principal.device_id,
+                principal.installation_id,
+                auth.view_secret_hash,
+            ),
+            principal,
+        )
 
     def validate_pairing(
         self,
@@ -92,33 +106,12 @@ class MobileSessionService:
         self,
         token: str | None,
     ) -> MobileSessionPrincipal:
-        if not token:
-            raise InvalidViewCredentialsError()
-
-        try:
-            payload, signature = token.split(".", 1)
-            body = self._decode_payload(payload)
-            device_id = str(body["device_id"])
-            installation_id = UUID(str(body["installation_id"]))
-            expires_at = int(body["exp"])
-        except (ValueError, KeyError, TypeError, json.JSONDecodeError):
-            raise InvalidViewCredentialsError() from None
-
-        if not device_id or expires_at <= int(self._clock().timestamp()):
-            raise InvalidViewCredentialsError()
-
-        auth = self._get_auth(device_id)
-        if auth is None or auth.view_secret_hash is None:
-            raise InvalidViewCredentialsError()
-
-        expected = self._sign(payload, auth.view_secret_hash)
-        if not hmac.compare_digest(signature, expected):
-            raise InvalidViewCredentialsError()
+        identity = self._resolve_signed_identity(token)
 
         try:
             installation = self._repository.get_mobile_installation(
-                device_id,
-                installation_id,
+                identity.device_id,
+                identity.installation_id,
             )
         except PersistenceUnavailableError as exc:
             raise PersistenceUnavailableApiError() from exc
@@ -126,11 +119,67 @@ class MobileSessionService:
             raise InvalidViewCredentialsError()
 
         return MobileSessionPrincipal(
-            device_id=device_id,
-            installation_id=installation_id,
+            device_id=identity.device_id,
+            installation_id=identity.installation_id,
             display_code=installation.display_code,
             platform=installation.platform,
         )
+
+    def switch_session(
+        self,
+        token: str | None,
+        *,
+        target_device_id: str,
+        target_installation_id: UUID,
+        target_view_secret: str,
+        platform: str,
+        switch_id: UUID,
+    ) -> tuple[str, MobileSessionPrincipal]:
+        source = self._resolve_signed_identity(token)
+        target_auth = self._require_view_auth(
+            target_device_id,
+            target_view_secret,
+        )
+        normalized_platform = normalize_mobile_platform(platform)
+
+        for _attempt in range(8):
+            try:
+                installation = self._repository.switch_mobile_installation(
+                    source.device_id,
+                    source.installation_id,
+                    target_device_id,
+                    target_installation_id,
+                    platform=normalized_platform,
+                    display_code=generate_display_code(),
+                    switch_id=switch_id,
+                )
+            except MobileInstallationDisplayCodeConflictError:
+                continue
+            except MobileInstallationSwitchConflictError as exc:
+                raise MobileSessionSwitchConflictError() from exc
+            except PersistenceUnavailableError as exc:
+                raise PersistenceUnavailableApiError() from exc
+
+            if installation is None:
+                raise InvalidViewCredentialsError()
+
+            principal = MobileSessionPrincipal(
+                device_id=installation.device_id,
+                installation_id=installation.installation_id,
+                display_code=installation.display_code,
+                platform=installation.platform,
+            )
+            assert target_auth.view_secret_hash is not None
+            return (
+                self._issue_token(
+                    principal.device_id,
+                    principal.installation_id,
+                    target_auth.view_secret_hash,
+                ),
+                principal,
+            )
+
+        raise PersistenceUnavailableApiError()
 
     def touch_installation(
         self,
@@ -167,6 +216,38 @@ class MobileSessionService:
         except PersistenceUnavailableError as exc:
             raise PersistenceUnavailableApiError() from exc
 
+    def _resolve_signed_identity(
+        self,
+        token: str | None,
+    ) -> MobileSessionIdentity:
+        if not token:
+            raise InvalidViewCredentialsError()
+
+        try:
+            payload, signature = token.split(".", 1)
+            body = self._decode_payload(payload)
+            device_id = str(body["device_id"])
+            installation_id = UUID(str(body["installation_id"]))
+            expires_at = int(body["exp"])
+        except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+            raise InvalidViewCredentialsError() from None
+
+        if not device_id or expires_at <= int(self._clock().timestamp()):
+            raise InvalidViewCredentialsError()
+
+        auth = self._get_auth(device_id)
+        if auth is None or auth.view_secret_hash is None:
+            raise InvalidViewCredentialsError()
+
+        expected = self._sign(payload, auth.view_secret_hash)
+        if not hmac.compare_digest(signature, expected):
+            raise InvalidViewCredentialsError()
+
+        return MobileSessionIdentity(
+            device_id=device_id,
+            installation_id=installation_id,
+        )
+
     def _require_view_auth(
         self,
         device_id: str,
@@ -186,6 +267,21 @@ class MobileSessionService:
             return self._repository.get_device_auth(device_id)
         except PersistenceUnavailableError as exc:
             raise PersistenceUnavailableApiError() from exc
+
+    def _issue_token(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        view_secret_hash: str,
+    ) -> str:
+        expires_at = int((self._clock() + SESSION_TTL).timestamp())
+        payload = self._encode_payload({
+            "device_id": device_id,
+            "installation_id": str(installation_id),
+            "exp": expires_at,
+        })
+        signature = self._sign(payload, view_secret_hash)
+        return f"{payload}.{signature}"
 
     @staticmethod
     def _sign(payload: str, view_secret_hash: str) -> str:

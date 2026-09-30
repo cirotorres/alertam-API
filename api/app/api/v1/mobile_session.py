@@ -8,6 +8,7 @@ from app.models.mobile_installation import MobileHeartbeatRequest
 from app.models.mobile_session import (
     MobileSessionRequest,
     MobileSessionResponse,
+    MobileSessionSwitchRequest,
 )
 from app.repositories.devices import DevicesRepository
 from app.security.credentials import parse_bearer_authorization
@@ -79,6 +80,39 @@ def create_mobile_session_router(
         return _session_response(
             service.resolve_session(mobile_session)
         )
+
+    @router.post("/switch", response_model=MobileSessionResponse)
+    def switch_session(
+        request: MobileSessionSwitchRequest,
+        response: Response,
+        authorization: str | None = Header(
+            default=None,
+            alias="Authorization",
+        ),
+        mobile_session: str | None = Cookie(
+            default=None,
+            alias=COOKIE_NAME,
+        ),
+    ) -> MobileSessionResponse:
+        target_view_secret = parse_bearer_authorization(authorization)
+        token, principal = service.switch_session(
+            mobile_session,
+            target_device_id=request.device_id,
+            target_installation_id=request.installation_id,
+            target_view_secret=target_view_secret,
+            platform=request.platform,
+            switch_id=request.switch_id,
+        )
+        response.set_cookie(
+            key=COOKIE_NAME,
+            value=token,
+            max_age=int(SESSION_TTL.total_seconds()),
+            path=COOKIE_PATH,
+            secure=cookie_secure,
+            httponly=True,
+            samesite="strict",
+        )
+        return _session_response(principal)
 
     @router.post(
         "/heartbeat",

@@ -91,3 +91,35 @@ def test_rotate_view_secret_still_revokes_mobile_tracking_and_push():
     assert "update public.tracked_vessels" in rotate
     assert "update public.push_installations" in rotate
     assert "endpoint = null" in rotate
+
+
+MIGRATION_014 = MIGRATIONS / "014_mobile_session_switch.sql"
+
+
+def test_switch_migration_persists_idempotency_and_atomic_rpc():
+    sql = MIGRATION_014.read_text(encoding="utf-8").lower()
+
+    assert "create table if not exists public.mobile_session_switches" in sql
+    assert "switch_id uuid primary key" in sql
+    assert "from_device_id" in sql
+    assert "from_installation_id" in sql
+    assert "to_device_id" in sql
+    assert "to_installation_id" in sql
+    assert "completed_at" in sql
+    assert "create or replace function public.switch_mobile_installation" in sql
+    assert "mobile_session_switch_conflict" in sql
+
+
+def test_switch_rpc_checks_replay_before_source_active_and_revokes_dependents():
+    sql = MIGRATION_014.read_text(encoding="utf-8").lower()
+    fn = sql.split(
+        "create or replace function public.switch_mobile_installation(", 1
+    )[1].split("$$;", 1)[0]
+
+    replay_pos = fn.index("where ms.switch_id = p_switch_id")
+    source_pos = fn.index("where mi.installation_id = p_from_installation_id")
+    assert replay_pos < source_pos
+    assert "update public.tracked_vessels" in fn
+    assert "update public.push_installations" in fn
+    assert "update public.mobile_installations" in fn
+    assert "insert into public.mobile_session_switches" in fn
