@@ -31,6 +31,8 @@ class MobileInstallationRecord:
     created_at: datetime
     last_seen_at: datetime
     revoked_at: datetime | None = None
+    platform: str = "other"
+    display_code: str = ""
 
 
 @dataclass(frozen=True)
@@ -77,12 +79,30 @@ class DevicesRepository(DeviceCreator, Protocol):
         self,
         device_id: str,
         installation_id: UUID,
+        *,
+        platform: str = "other",
+        display_code: str | None = None,
     ) -> MobileInstallationRecord | None: ...
 
     def get_mobile_installation(
         self,
         device_id: str,
         installation_id: UUID,
+    ) -> MobileInstallationRecord | None: ...
+
+    def list_mobile_installations(
+        self,
+        device_id: str,
+        *,
+        revoked_since: datetime,
+    ) -> tuple[MobileInstallationRecord, ...]: ...
+
+    def touch_mobile_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        *,
+        platform: str,
     ) -> MobileInstallationRecord | None: ...
 
     def revoke_mobile_installation(

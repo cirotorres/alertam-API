@@ -85,13 +85,18 @@ class MemoryDeviceRepository:
         self,
         device_id: str,
         installation_id: UUID,
+        *,
+        platform: str = "other",
+        display_code: str | None = None,
     ) -> MobileInstallationRecord | None:
         with self._lock:
             if device_id not in self._devices:
                 return None
             now = self._clock()
             current = self._mobile_installations.get(installation_id)
-            if current is not None and current.device_id != device_id:
+            if current is not None and (
+                current.device_id != device_id or not current.active
+            ):
                 return None
             if current is None:
                 current = MobileInstallationRecord(
@@ -101,13 +106,13 @@ class MemoryDeviceRepository:
                     created_at=now,
                     last_seen_at=now,
                     revoked_at=None,
+                    platform=platform,
+                    display_code=display_code or "",
                 )
             else:
                 current = replace(
                     current,
-                    active=True,
                     last_seen_at=now,
-                    revoked_at=None,
                 )
             self._mobile_installations[installation_id] = current
             return current
@@ -121,6 +126,55 @@ class MemoryDeviceRepository:
         if current is None or current.device_id != device_id:
             return None
         return current
+
+    def list_mobile_installations(
+        self,
+        device_id: str,
+        *,
+        revoked_since: datetime,
+    ) -> tuple[MobileInstallationRecord, ...]:
+        items = [
+            item
+            for item in self._mobile_installations.values()
+            if item.device_id == device_id
+            and (
+                item.active
+                or (
+                    item.revoked_at is not None
+                    and item.revoked_at >= revoked_since
+                )
+            )
+        ]
+        items.sort(key=lambda item: (item.created_at, str(item.installation_id)))
+        return tuple(items)
+
+    def touch_mobile_installation(
+        self,
+        device_id: str,
+        installation_id: UUID,
+        *,
+        platform: str,
+    ) -> MobileInstallationRecord | None:
+        with self._lock:
+            current = self._mobile_installations.get(installation_id)
+            if (
+                current is None
+                or current.device_id != device_id
+                or not current.active
+            ):
+                return None
+            next_platform = (
+                platform
+                if current.platform == "other" and platform != "other"
+                else current.platform
+            )
+            updated = replace(
+                current,
+                last_seen_at=self._clock(),
+                platform=next_platform,
+            )
+            self._mobile_installations[installation_id] = updated
+            return updated
 
     def revoke_mobile_installation(
         self,
