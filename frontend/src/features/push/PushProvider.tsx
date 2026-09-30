@@ -22,6 +22,10 @@ import {
   getOrCreateInstallationId,
   loadInstallationId,
 } from "./installationId";
+import {
+  loadPushPreferenceSnapshot,
+  storePushPreferenceSnapshot,
+} from "./pushPreferenceStorage";
 
 
 const DEFAULT_PREFERENCES: PushPreferences = {
@@ -110,20 +114,89 @@ export function PushProvider({
     }
 
     let cancelled = false;
-    void getPushInstallation(installationId)
-      .then((installation) => {
+    void (async () => {
+      try {
+        const installation = await getPushInstallation(installationId);
         if (cancelled) {
           return;
         }
+
         setError(null);
-        if (!installation) {
+        if (installation) {
+          setActive(installation.active);
+          setPreferences(installation.preferences);
+          storePushPreferenceSnapshot({
+            optedIn: installation.active,
+            preferences: installation.preferences,
+          });
+          return;
+        }
+
+        const saved = loadPushPreferenceSnapshot();
+        if (
+          !saved?.optedIn ||
+          Notification.permission !== "granted"
+        ) {
           setActive(false);
           return;
         }
-        setActive(installation.active);
-        setPreferences(installation.preferences);
-      })
-      .catch((cause: unknown) => {
+
+        const registration =
+          await navigator.serviceWorker.getRegistration();
+        const subscription =
+          await registration?.pushManager.getSubscription();
+        if (cancelled) {
+          return;
+        }
+        if (!subscription) {
+          setActive(false);
+          return;
+        }
+
+        let registeredOnServer = false;
+        try {
+          await registerPushInstallation(
+            installationId,
+            subscription,
+          );
+          registeredOnServer = true;
+          const rebound = await updatePushPreferences(
+            installationId,
+            saved.preferences,
+          );
+          if (cancelled) {
+            return;
+          }
+          setActive(rebound.active);
+          setPreferences(rebound.preferences);
+          setPermission(
+            Notification.permission === "denied"
+              ? "denied"
+              : "granted",
+          );
+          storePushPreferenceSnapshot({
+            optedIn: rebound.active,
+            preferences: rebound.preferences,
+          });
+        } catch (cause) {
+          if (cancelled) {
+            return;
+          }
+          if (cause instanceof AccessRevokedError) {
+            onAccessRevoked?.();
+            return;
+          }
+          if (registeredOnServer) {
+            try {
+              await deletePushInstallation(installationId);
+            } catch {
+              // Best effort rollback for a partially restored Push binding.
+            }
+          }
+          setActive(false);
+          setError("Não foi possível reativar as notificações.");
+        }
+      } catch (cause) {
         if (cancelled) {
           return;
         }
@@ -132,7 +205,8 @@ export function PushProvider({
           return;
         }
         setError("Não foi possível consultar as notificações.");
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -179,7 +253,15 @@ export function PushProvider({
       );
       setActive(installation.active);
       setPreferences(installation.preferences);
-      setPermission(Notification.permission === "denied" ? "denied" : "granted");
+      setPermission(
+        Notification.permission === "denied"
+          ? "denied"
+          : "granted",
+      );
+      storePushPreferenceSnapshot({
+        optedIn: installation.active,
+        preferences: installation.preferences,
+      });
     } catch (cause) {
       if (cause instanceof AccessRevokedError) {
         onAccessRevoked?.();
@@ -216,7 +298,16 @@ export function PushProvider({
     }
 
     setActive(false);
-  }, [onAccessRevoked, sessionReady, supported]);
+    storePushPreferenceSnapshot({
+      optedIn: false,
+      preferences,
+    });
+  }, [
+    onAccessRevoked,
+    preferences,
+    sessionReady,
+    supported,
+  ]);
 
   const updatePreference = useCallback(
     async (key: PushPreferenceKey, enabled: boolean) => {
@@ -235,6 +326,10 @@ export function PushProvider({
           { [key]: enabled },
         );
         setPreferences(installation.preferences);
+        storePushPreferenceSnapshot({
+          optedIn: true,
+          preferences: installation.preferences,
+        });
       } catch (cause) {
         if (cause instanceof AccessRevokedError) {
           onAccessRevoked?.();

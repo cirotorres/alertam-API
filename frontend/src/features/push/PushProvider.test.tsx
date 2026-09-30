@@ -25,6 +25,10 @@ import {
   usePush,
   type PushState,
 } from "./PushProvider";
+import {
+  loadPushPreferenceSnapshot,
+  storePushPreferenceSnapshot,
+} from "./pushPreferenceStorage";
 
 
 const INSTALLATION_ID = "11111111-2222-4333-8444-555555555555";
@@ -138,6 +142,7 @@ function Probe() {
       <span data-testid="confirmed">
         {push.preferences.confirmed ? "yes" : "no"}
       </span>
+      <span data-testid="error">{push.error ?? ""}</span>
       <button type="button" onClick={() => void push.enablePush()}>
         enable
       </button>
@@ -212,6 +217,10 @@ test("enable_requests_permission_then_subscribes_with_vapid_key", async () => {
     generated,
     browser.subscription,
   );
+  expect(loadPushPreferenceSnapshot()).toEqual({
+    optedIn: true,
+    preferences: ACTIVE_INSTALLATION.preferences,
+  });
 });
 
 
@@ -250,6 +259,10 @@ test("disable_is_best_effort_and_does_not_revoke_pairing", async () => {
   expect(browser.getSubscription).toHaveBeenCalled();
   expect(unsubscribe).toHaveBeenCalled();
   expect(reset).not.toHaveBeenCalled();
+  expect(loadPushPreferenceSnapshot()).toEqual({
+    optedIn: false,
+    preferences: ACTIVE_INSTALLATION.preferences,
+  });
 });
 
 
@@ -331,4 +344,127 @@ test("disable_does_not_wait_for_service_worker_ready_when_no_registration_exists
   await waitFor(() => {
     expect(screen.getByTestId("active")).toHaveTextContent("no");
   });
+});
+
+
+test("preference_update_persists_the_latest_snapshot", async () => {
+  localStorage.setItem(
+    "alertam.mobile.installation.v1",
+    INSTALLATION_ID,
+  );
+  installBrowser({ permission: "granted" });
+  api.getPushInstallation.mockResolvedValue(ACTIVE_INSTALLATION);
+  api.updatePushPreferences.mockResolvedValue({
+    ...ACTIVE_INSTALLATION,
+    preferences: {
+      ...ACTIVE_INSTALLATION.preferences,
+      confirmed: false,
+    },
+  });
+
+  renderProvider();
+  await waitFor(() => {
+    expect(screen.getByTestId("active")).toHaveTextContent("yes");
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "preference" }));
+
+  await waitFor(() => {
+    expect(screen.getByTestId("confirmed")).toHaveTextContent("no");
+  });
+  expect(loadPushPreferenceSnapshot()).toEqual({
+    optedIn: true,
+    preferences: {
+      ...ACTIVE_INSTALLATION.preferences,
+      confirmed: false,
+    },
+  });
+});
+
+test("remount_rebinds_existing_browser_subscription_to_new_installation", async () => {
+  const savedPreferences = {
+    confirmed: false,
+    updated: true,
+    completed: false,
+    cancelled: true,
+  };
+  localStorage.setItem(
+    "alertam.mobile.installation.v1",
+    INSTALLATION_ID,
+  );
+  storePushPreferenceSnapshot({
+    optedIn: true,
+    preferences: savedPreferences,
+  });
+  const browser = installBrowser({
+    permission: "granted",
+    getSubscription: async () => ({
+      toJSON: () => ({
+        endpoint: "https://push.example/reused",
+        keys: { p256dh: "p", auth: "a" },
+      }),
+      unsubscribe: vi.fn().mockResolvedValue(true),
+    } as unknown as PushSubscription),
+  });
+  api.getPushInstallation.mockResolvedValue(null);
+  api.registerPushInstallation.mockResolvedValue(ACTIVE_INSTALLATION);
+  api.updatePushPreferences.mockResolvedValue({
+    ...ACTIVE_INSTALLATION,
+    preferences: savedPreferences,
+  });
+
+  renderProvider();
+
+  await waitFor(() => {
+    expect(screen.getByTestId("active")).toHaveTextContent("yes");
+  });
+  expect(browser.requestPermission).not.toHaveBeenCalled();
+  expect(browser.subscribe).not.toHaveBeenCalled();
+  expect(api.registerPushInstallation).toHaveBeenCalledWith(
+    INSTALLATION_ID,
+    expect.anything(),
+  );
+  expect(api.updatePushPreferences).toHaveBeenCalledWith(
+    INSTALLATION_ID,
+    savedPreferences,
+  );
+  expect(loadPushPreferenceSnapshot()).toEqual({
+    optedIn: true,
+    preferences: savedPreferences,
+  });
+});
+
+test("temporary_rebind_failure_keeps_app_session_and_push_inactive", async () => {
+  localStorage.setItem(
+    "alertam.mobile.installation.v1",
+    INSTALLATION_ID,
+  );
+  storePushPreferenceSnapshot({
+    optedIn: true,
+    preferences: ACTIVE_INSTALLATION.preferences,
+  });
+  installBrowser({
+    permission: "granted",
+    getSubscription: async () => ({
+      toJSON: () => ({
+        endpoint: "https://push.example/reused",
+        keys: { p256dh: "p", auth: "a" },
+      }),
+      unsubscribe: vi.fn().mockResolvedValue(true),
+    } as unknown as PushSubscription),
+  });
+  api.getPushInstallation.mockResolvedValue(null);
+  api.registerPushInstallation.mockRejectedValue(new TemporaryApiError());
+  const revoked = vi.fn();
+
+  renderProvider({ onAccessRevoked: revoked });
+
+  await waitFor(() => {
+    expect(screen.getByTestId("error")).toHaveTextContent(
+      "Não foi possível reativar as notificações.",
+    );
+  });
+  expect(screen.getByTestId("active")).toHaveTextContent("no");
+  expect(revoked).not.toHaveBeenCalled();
+  expect(loadPushPreferenceSnapshot()?.optedIn).toBe(true);
 });

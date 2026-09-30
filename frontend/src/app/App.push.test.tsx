@@ -13,6 +13,8 @@ const wiring = vi.hoisted(() => ({
   pushProps: [] as Array<Record<string, unknown>>,
   routeProps: [] as Array<Record<string, unknown>>,
   snapshotMounts: 0,
+  eventMounts: 0,
+  trackingMounts: 0,
 }));
 
 vi.mock("../features/pairing/PairingGate", async () => {
@@ -81,19 +83,31 @@ vi.mock("../features/snapshot/SnapshotProvider", async () => {
   };
 });
 
-vi.mock("../features/events/EventProvider", () => ({
-  EventProvider: (props: any) => {
-    wiring.eventProps.push(props);
-    return props.children;
-  },
-}));
+vi.mock("../features/events/EventProvider", async () => {
+  const React = await import("react");
+  return {
+    EventProvider: (props: any) => {
+      wiring.eventProps.push(props);
+      React.useEffect(() => {
+        wiring.eventMounts += 1;
+      }, []);
+      return props.children;
+    },
+  };
+});
 
-vi.mock("../features/tracking/TrackingProvider", () => ({
-  TrackingProvider: (props: any) => {
-    wiring.trackingProps.push(props);
-    return props.children;
-  },
-}));
+vi.mock("../features/tracking/TrackingProvider", async () => {
+  const React = await import("react");
+  return {
+    TrackingProvider: (props: any) => {
+      wiring.trackingProps.push(props);
+      React.useEffect(() => {
+        wiring.trackingMounts += 1;
+      }, []);
+      return props.children;
+    },
+  };
+});
 
 vi.mock("../features/push/PushProvider", () => ({
   PushProvider: (props: any) => {
@@ -134,17 +148,27 @@ test("wires access revocation separately from manual pairing reset", () => {
   );
 });
 
-test("changing installation id remounts the provider tree", async () => {
+test("changing installation id remounts snapshot events and tracking", async () => {
   wiring.snapshotMounts = 0;
+  wiring.eventMounts = 0;
+  wiring.trackingMounts = 0;
   render(<App />);
 
-  await waitFor(() => expect(wiring.snapshotMounts).toBe(1));
+  await waitFor(() => {
+    expect(wiring.snapshotMounts).toBe(1);
+    expect(wiring.eventMounts).toBe(1);
+    expect(wiring.trackingMounts).toBe(1);
+  });
 
   fireEvent.click(
     screen.getByRole("button", { name: "SWITCH TEST SESSION" }),
   );
 
-  await waitFor(() => expect(wiring.snapshotMounts).toBe(2));
+  await waitFor(() => {
+    expect(wiring.snapshotMounts).toBe(2);
+    expect(wiring.eventMounts).toBe(2);
+    expect(wiring.trackingMounts).toBe(2);
+  });
   expect(wiring.routeProps.at(-1)?.installation).toEqual(
     expect.objectContaining({
       installationId: INSTALL_B,
