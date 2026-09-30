@@ -210,6 +210,60 @@ def test_load_admin_credentials_uses_prod_env_without_exposing_unrelated_values(
     assert key == "sb_secret_admin"
 
 
+def test_load_admin_credentials_rejects_vercel_sensitive_placeholder(tmp_path: Path):
+    env_file = tmp_path / ".env.prod"
+    env_file.write_text(
+        "SUPABASE_URL=https://project.supabase.co\n"
+        'SUPABASE_SECRET_KEY="[SENSITIVE]"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"\[SENSITIVE\]") as exc_info:
+        load_admin_credentials(env_file, environ={})
+
+    assert "SUPABASE_SECRET_KEY" in str(exc_info.value)
+
+
+def test_load_admin_credentials_uses_legacy_key_when_current_key_is_placeholder(
+    tmp_path: Path,
+):
+    env_file = tmp_path / ".env.prod"
+    env_file.write_text(
+        "SUPABASE_URL=https://project.supabase.co\n"
+        "SUPABASE_SECRET_KEY=[SENSITIVE]\n"
+        "SUPABASE_SERVICE_ROLE_KEY=legacy-service-role\n",
+        encoding="utf-8",
+    )
+
+    url, key = load_admin_credentials(env_file, environ={})
+
+    assert url == "https://project.supabase.co"
+    assert key == "legacy-service-role"
+
+
+def test_sync_device_secret_explains_supabase_admin_401_without_leaking_key():
+    secret = "test-admin-key-should-never-appear"
+    client = FakeSupabaseClient(existing=False)
+    client.get = lambda *args, **kwargs: FakeResponse(
+        {"message": "invalid api key"},
+        status_code=401,
+    )
+
+    with pytest.raises(ValueError, match="401") as exc_info:
+        sync_device_secret(
+            client,
+            "https://project.supabase.co",
+            secret,
+            "pecem-01",
+            "hash-novo",
+        )
+
+    message = str(exc_info.value)
+    assert "credenciais administrativas" in message
+    assert "SUPABASE_SECRET_KEY" in message
+    assert secret not in message
+
+
 def test_apply_provisioning_generates_independent_device_and_writes_desktop_env(
     tmp_path: Path,
 ):

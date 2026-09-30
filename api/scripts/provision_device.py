@@ -91,16 +91,35 @@ def load_admin_credentials(
         value = runtime.get(name)
         if value is None or not str(value).strip():
             value = file_values.get(name, "")
-        return str(value).strip()
+        return str(value).strip().strip('"').strip("'")
 
+    placeholder = "[SENSITIVE]"
     supabase_url = resolve("SUPABASE_URL")
-    server_key = resolve("SUPABASE_SECRET_KEY") or resolve(
-        "SUPABASE_SERVICE_ROLE_KEY"
+    current_key = resolve("SUPABASE_SECRET_KEY")
+    legacy_key = resolve("SUPABASE_SERVICE_ROLE_KEY")
+    server_key = (
+        current_key
+        if current_key and current_key != placeholder
+        else legacy_key
+        if legacy_key and legacy_key != placeholder
+        else ""
     )
+
+    if supabase_url == placeholder:
+        raise ValueError(
+            "SUPABASE_URL contém o placeholder [SENSITIVE] da Vercel. "
+            f"Preencha um valor local válido em {env_path}."
+        )
+
     missing: list[str] = []
     if not supabase_url:
         missing.append("SUPABASE_URL")
     if not server_key:
+        if current_key == placeholder or legacy_key == placeholder:
+            raise ValueError(
+                "SUPABASE_SECRET_KEY contém o placeholder [SENSITIVE] da Vercel. "
+                f"Preencha uma chave administrativa local válida em {env_path}."
+            )
         missing.append("SUPABASE_SECRET_KEY")
     if missing:
         raise ValueError(
@@ -120,6 +139,17 @@ def _admin_headers(server_key: str) -> dict[str, str]:
     if not server_key.startswith("sb_secret_"):
         headers["Authorization"] = f"Bearer {server_key}"
     return headers
+
+
+def _raise_for_supabase_admin(response) -> None:
+    status_code = getattr(response, "status_code", None)
+    if status_code in {401, 403}:
+        raise ValueError(
+            "Supabase recusou as credenciais administrativas "
+            f"(HTTP {status_code}). Verifique SUPABASE_URL e "
+            "SUPABASE_SECRET_KEY/SUPABASE_SERVICE_ROLE_KEY."
+        )
+    response.raise_for_status()
 
 
 def sync_device_secret(
@@ -144,7 +174,7 @@ def sync_device_secret(
         headers=headers,
         params=params,
     )
-    response.raise_for_status()
+    _raise_for_supabase_admin(response)
     rows = response.json()
     if not isinstance(rows, list):
         raise ValueError("resposta inválida ao consultar dispositivo")
@@ -172,7 +202,7 @@ def sync_device_secret(
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             },
         )
-        response.raise_for_status()
+        _raise_for_supabase_admin(response)
         return "updated"
 
     response = client.post(
@@ -183,7 +213,7 @@ def sync_device_secret(
             "device_secret_hash": device_secret_hash,
         },
     )
-    response.raise_for_status()
+    _raise_for_supabase_admin(response)
     return "created"
 
 
