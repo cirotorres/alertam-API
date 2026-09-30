@@ -7,6 +7,7 @@
 | 022 | [Detalhes de Alertas e linha do tempo da manobra](022-alert-details-maneuver-timeline.md) | Implementação local concluída e validada | Alertas clicáveis, gaveta detalhada, POB × conclusão observada, timeline por maneuver_id e detalhes equivalentes no Desktop |
 | 023 | [Ship Tracking](023-ship-tracking.md) | Planos 1–3 implementados; Tk/Xephyr validado; rollout externo pendente | Acompanhamento persistente por navio/instalação, VesselTrackingEvent, push seletivo, timeline unificada e tracking local no Desktop |
 | 024 | [Tempo operacional da manobra e refinamentos de UX](024-operational-maneuver-timing-ux-refinements.md) | SPEC aprovada; planos TDD preparados para revisão | Separa horário operacional de observação do AlertaM, persiste ATRAC real e corrige UX de tracking, sheets, scroll e footer |
+| 025 | [WebPilot HTTP, meteorologia observada e shadow de movimentações](025-webpilot-http-observed-weather-shadow-migration.md) | Aprovada para planejamento; implementação não iniciada | Separa autenticação/coleta WebPilot, adota meteorologia observada com fallback explícito, evolui MobileSnapshot v2 e prepara shadow HTTP com gate de equivalência sem cutover |
 
 ## Dependências cross-repo
 
@@ -21,3 +22,4 @@ A SPEC 021 trata o novo canal de ManeuverEvent, feed mobile e Web Push, consumin
 A SPEC 022 evolui esse canal com detalhe/timeline por manobra e requer mudanças coordenadas em Desktop, API e PWA.
 A SPEC 023 depende da 022 para reutilizar timeline/detalhes e adiciona Ship Tracking com `VesselTrackingEvent`, persistência por instalação e tracking local no Desktop.
 A SPEC 024 refina a 022/023 após validação real, sem substituir seus contratos: adiciona horário operacional opcional ao ManeuverEvent e corrige UX coordenada entre Desktop e PWA.
+A SPEC 025 cruza Desktop, API e PWA para separar autenticação/coleta WebPilot, introduzir meteorologia observada e validar a futura coleta HTTP de movimentações em shadow; ela não realiza o cutover operacional.
