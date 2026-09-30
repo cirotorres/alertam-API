@@ -12,6 +12,9 @@ build/
 !.env.example
 !.env.*.example
 
+# Vercel local project link
+.vercel/
+
 # IDE / OS
 .vscode/
 .idea/
