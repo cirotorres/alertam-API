@@ -23,7 +23,7 @@ test("renders_alertam_shell_title", async () => {
   ).toBeInTheDocument();
 });
 
-test("revoked_stored_pairing_returns_to_qr_gate", async () => {
+test("revoked_stored_pairing_shows_explicit_revoked_state", async () => {
   savePairing({
     deviceId: "pecem-01",
     viewSecret: TOKEN,
@@ -38,9 +38,9 @@ test("revoked_stored_pairing_returns_to_qr_gate", async () => {
 
   await waitFor(() => {
     expect(
-      screen.getByRole("heading", { name: "Alerta de Movimentações Marítimas" }),
+      screen.getByRole("heading", { name: "Acesso revogado" }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Conectar Celular/i)).toBeInTheDocument();
+    expect(screen.getByText(/Escaneie um novo QR Code/i)).toBeInTheDocument();
   });
   expect(localStorage.length).toBe(0);
 });

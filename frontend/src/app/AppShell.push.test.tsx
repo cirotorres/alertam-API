@@ -122,10 +122,12 @@ function renderShell(options: {
   eventState?: EventState;
   pushState?: PushState;
   onPairingCleared?: () => void;
+  onAccessRevoked?: () => void;
   alertDetailFetcher?: AlertDetailFetcher;
   trackingState?: TrackingState;
 } = {}) {
   const reset = options.onPairingCleared ?? vi.fn();
+  const revoked = options.onAccessRevoked ?? vi.fn();
   const alertDetailFetcher =
     options.alertDetailFetcher ?? vi.fn().mockResolvedValue(detailForEvent());
   render(
@@ -137,6 +139,7 @@ function renderShell(options: {
               <AppRoutes
                 pairing={pairing}
                 onPairingCleared={reset}
+                onAccessRevoked={revoked}
                 alertDetailFetcher={alertDetailFetcher}
               />
             </MemoryRouter>
@@ -161,14 +164,21 @@ beforeEach(() => {
 });
 
 
-test("active_push_enables_foreground_heartbeat", () => {
+test("active_push_heartbeat_uses_access_revoked_callback", () => {
   const reset = vi.fn();
+  const revoked = vi.fn();
   renderShell({
     pushState: { ...basePushState, active: true },
     onPairingCleared: reset,
+    onAccessRevoked: revoked,
   });
 
   expect(heartbeat.useForegroundHeartbeat).toHaveBeenCalledWith(
+    true,
+    undefined,
+    revoked,
+  );
+  expect(heartbeat.useForegroundHeartbeat).not.toHaveBeenCalledWith(
     true,
     undefined,
     reset,

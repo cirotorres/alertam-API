@@ -1,7 +1,6 @@
 import pkg from "../../package.json";
 import { useShellContext } from "../app/AppShell";
-import { clearPairing } from "../features/pairing/pairingStorage";
-import { clearInstallationId } from "../features/push/installationId";
+import type { DevicePlatform } from "../features/pairing/devicePlatform";
 import { usePush } from "../features/push/PushProvider";
 
 
@@ -12,10 +11,17 @@ const PREFERENCE_LABELS = [
   ["cancelled", "Cancelamentos"],
 ] as const;
 
+function platformLabel(platform: DevicePlatform): string {
+  if (platform === "ios") return "iPhone/iPad";
+  if (platform === "android") return "Android";
+  return "Outro aparelho";
+}
+
 
 export function ConfigPage() {
   const {
     pairing,
+    installation,
     snapshotState,
     onPairingCleared,
     demoMode,
@@ -33,14 +39,16 @@ export function ConfigPage() {
       try {
         await push.disablePush();
       } catch {
-        // Forget is local-first: remote push cleanup is best-effort.
-      } finally {
-        clearInstallationId();
+        // Remote/browser Push cleanup is best-effort.
       }
     }
-    clearPairing();
+
     onPairingCleared();
   };
+
+  const installationLabel = installation
+    ? `${platformLabel(installation.platform)} · ${installation.displayCode}`
+    : "Não identificado";
 
   return (
     <section className="page-stack">
@@ -51,7 +59,14 @@ export function ConfigPage() {
         </p>
       ) : null}
       <dl className="settings-list">
-        <div><dt>Dispositivo</dt><dd>{pairing.deviceId}</dd></div>
+        <div>
+          <dt>Este aparelho</dt>
+          <dd>{installationLabel}</dd>
+        </div>
+        <div>
+          <dt>AlertaM conectado</dt>
+          <dd>{pairing.deviceId}</dd>
+        </div>
         <div>
           <dt>Última sincronização</dt>
           <dd>{snapshotState.data?.meta.received_at ?? "Aguardando"}</dd>

@@ -5,6 +5,7 @@ import fixture from "../test/fixtures/mobile_snapshot_v1.json";
 import { parseSnapshotReadResponse } from "../api/contract";
 import { StaticEventProvider } from "../features/events/EventProvider";
 import type { EventState } from "../features/events/useEventPolling";
+import type { MobileSessionInfo } from "../features/pairing/mobileSessionClient";
 import type { Pairing } from "../features/pairing/pairing";
 import {
   StaticPushProvider,
@@ -17,6 +18,13 @@ const pairing: Pairing = {
   deviceId: "pecem-01",
   viewSecret: "Abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE",
   pairedAt: "2026-09-26T09:40:00-03:00",
+};
+
+const installation: MobileSessionInfo = {
+  deviceId: "pecem-01",
+  installationId: "11111111-2222-4333-8444-555555555555",
+  displayCode: "K7M4Q2",
+  platform: "ios",
 };
 
 const eventState: EventState = {
@@ -59,7 +67,10 @@ function renderApp(initialEntry = "/") {
       <StaticEventProvider state={eventState}>
         <StaticPushProvider state={pushState}>
           <MemoryRouter initialEntries={[initialEntry]}>
-            <AppRoutes pairing={pairing} />
+            <AppRoutes
+              pairing={pairing}
+              installation={installation}
+            />
           </MemoryRouter>
         </StaticPushProvider>
       </StaticEventProvider>
@@ -200,4 +211,14 @@ test("vessel_photo_temporary_failure_is_visible_in_sheet", async () => {
   ).not.toBeInTheDocument();
 
   vi.unstubAllGlobals();
+});
+
+
+test("shell outlet context exposes installation identity to config", async () => {
+  renderApp("/config");
+
+  expect(await screen.findByText("Este aparelho")).toBeInTheDocument();
+  expect(screen.getByText("iPhone/iPad · K7M4Q2")).toBeInTheDocument();
+  expect(screen.getByText("AlertaM conectado")).toBeInTheDocument();
+  expect(screen.queryByText(installation.installationId)).not.toBeInTheDocument();
 });

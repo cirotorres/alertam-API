@@ -21,6 +21,7 @@ import {
 } from "../features/events/useAlertDetail";
 import { Drawer } from "../components/Drawer";
 import { Header } from "../components/Header";
+import type { MobileSessionInfo } from "../features/pairing/mobileSessionClient";
 import type { Pairing } from "../features/pairing/pairing";
 import { usePush } from "../features/push/PushProvider";
 import { useForegroundHeartbeat } from "../features/push/useForegroundHeartbeat";
@@ -32,7 +33,9 @@ import { useVesselPhoto } from "../features/vessels/useVesselPhoto";
 
 type AppShellProps = {
   pairing: Pairing;
+  installation?: MobileSessionInfo | null;
   onPairingCleared?: () => void;
+  onAccessRevoked?: () => void;
   basePath?: string;
   demoMode?: boolean;
   alertDetailFetcher?: AlertDetailFetcher;
@@ -59,6 +62,7 @@ function maneuverPreferenceEnabled(
 
 export type ShellOutletContext = {
   pairing: Pairing;
+  installation: MobileSessionInfo | null;
   snapshotState: SnapshotState;
   activeBottomTab: BottomTab;
   setActiveBottomTab: (tab: BottomTab) => void;
@@ -69,7 +73,9 @@ export type ShellOutletContext = {
 };
 export function AppShell({
   pairing,
+  installation = null,
   onPairingCleared = noop,
+  onAccessRevoked = noop,
   basePath = "",
   demoMode = false,
   alertDetailFetcher,
@@ -87,7 +93,7 @@ export function AppShell({
   const alertDetail = useAlertDetail(
     alertEventId,
     alertDetailFetcher,
-    onPairingCleared,
+    onAccessRevoked,
   );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [documentVisible, setDocumentVisible] = useState(
@@ -104,7 +110,7 @@ export function AppShell({
   useForegroundHeartbeat(
     pushState.active && !demoMode,
     undefined,
-    onPairingCleared,
+    onAccessRevoked,
   );
 
   useEffect(() => {
@@ -261,6 +267,7 @@ export function AppShell({
 
   const outletContext: ShellOutletContext = {
     pairing,
+    installation,
     snapshotState,
     activeBottomTab,
     setActiveBottomTab,

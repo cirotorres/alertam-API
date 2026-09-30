@@ -664,7 +664,7 @@ test("config_explains_denied_permission_without_prompting_again", async () => {
 });
 
 
-test("forget_clears_installation_and_pairing_even_if_push_disable_fails", async () => {
+test("forget_delegates_cleanup_even_if_push_disable_fails", async () => {
   const installationKey = "alertam.mobile.installation.v1";
   localStorage.setItem(
     installationKey,
@@ -696,8 +696,10 @@ test("forget_clears_installation_and_pairing_even_if_push_disable_fails", async 
 
   await waitFor(() => {
     expect(disablePush).toHaveBeenCalledTimes(1);
-    expect(localStorage.getItem(installationKey)).toBeNull();
-    expect(loadPairing()).toBeNull();
     expect(reset).toHaveBeenCalledTimes(1);
   });
+  expect(localStorage.getItem(installationKey)).toBe(
+    "11111111-2222-4333-8444-555555555555",
+  );
+  expect(loadPairing()).toEqual(pairing);
 });

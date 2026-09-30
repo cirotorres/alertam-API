@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 
 import type { AlertDetailFetcher } from "../features/events/useAlertDetail";
+import type { MobileSessionInfo } from "../features/pairing/mobileSessionClient";
 import type { Pairing } from "../features/pairing/pairing";
 import { AlertsPage } from "../pages/AlertsPage";
 import { AboutPage } from "../pages/AboutPage";
@@ -13,7 +14,9 @@ import { AppShell } from "./AppShell";
 
 type AppRoutesProps = {
   pairing: Pairing;
+  installation?: MobileSessionInfo | null;
   onPairingCleared?: () => void;
+  onAccessRevoked?: () => void;
   basePath?: string;
   demoMode?: boolean;
   alertDetailFetcher?: AlertDetailFetcher;
@@ -21,7 +24,9 @@ type AppRoutesProps = {
 
 export function AppRoutes({
   pairing,
+  installation = null,
   onPairingCleared,
+  onAccessRevoked,
   basePath = "",
   demoMode = false,
   alertDetailFetcher,
@@ -35,7 +40,9 @@ export function AppRoutes({
         element={
           <AppShell
             pairing={pairing}
+            installation={installation}
             onPairingCleared={onPairingCleared}
+            onAccessRevoked={onAccessRevoked}
             basePath={basePath}
             demoMode={demoMode}
             alertDetailFetcher={alertDetailFetcher}

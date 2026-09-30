@@ -28,26 +28,35 @@ function AppContent() {
 
   return (
     <PairingGate>
-      {(pairing, resetPairing, sessionReady) => (
+      {(
+        pairing,
+        resetPairing,
+        sessionReady,
+        handleAccessRevoked,
+        sessionInfo,
+      ) => (
         <SnapshotProvider
+          key={sessionInfo?.installationId ?? `pending:${pairing.deviceId}`}
           pairing={pairing}
-          onAccessRevoked={resetPairing}
+          onAccessRevoked={handleAccessRevoked}
         >
           <EventProvider
             sessionReady={sessionReady}
-            onAccessRevoked={resetPairing}
+            onAccessRevoked={handleAccessRevoked}
           >
             <TrackingProvider
               sessionReady={sessionReady}
-              onAccessRevoked={resetPairing}
+              onAccessRevoked={handleAccessRevoked}
             >
               <PushProvider
                 sessionReady={sessionReady}
-                onAccessRevoked={resetPairing}
+                onAccessRevoked={handleAccessRevoked}
               >
                 <AppRoutes
                   pairing={pairing}
+                  installation={sessionInfo}
                   onPairingCleared={resetPairing}
+                  onAccessRevoked={handleAccessRevoked}
                 />
               </PushProvider>
             </TrackingProvider>

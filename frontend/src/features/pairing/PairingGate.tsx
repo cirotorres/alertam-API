@@ -84,6 +84,7 @@ type PairingGateProps = {
     resetPairing: () => void,
     sessionReady: boolean,
     handleAccessRevoked: () => void,
+    sessionInfo: MobileSessionInfo | null,
   ) => ReactNode;
 };
 
@@ -396,6 +397,7 @@ export function PairingGate({
         return;
       }
 
+      skipNextRecoveryRef.current = false;
       const next: Pairing = {
         deviceId: parsed.deviceId,
         viewSecret: parsed.viewSecret,
@@ -419,7 +421,6 @@ export function PairingGate({
     }
 
     if (skipNextRecoveryRef.current) {
-      skipNextRecoveryRef.current = false;
       return;
     }
 
@@ -475,6 +476,7 @@ export function PairingGate({
           resetPairing,
           false,
           handleAccessRevoked,
+          sessionInfo,
         )}
         <PairingScreen
           title="Troca ainda não confirmada"
@@ -497,6 +499,7 @@ export function PairingGate({
             resetPairing,
             sessionReady,
             handleAccessRevoked,
+            sessionInfo,
           )}
           <PairingScreen
             title="Não foi possível confirmar o novo acesso"
@@ -545,6 +548,7 @@ export function PairingGate({
           resetPairing,
           sessionReady,
           handleAccessRevoked,
+          sessionInfo,
         )}
       </>
     );
