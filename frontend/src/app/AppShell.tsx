@@ -23,6 +23,7 @@ import { Drawer } from "../components/Drawer";
 import { Header } from "../components/Header";
 import type { MobileSessionInfo } from "../features/pairing/mobileSessionClient";
 import type { Pairing } from "../features/pairing/pairing";
+import { useMobileSessionHeartbeat } from "../features/pairing/useMobileSessionHeartbeat";
 import { usePush } from "../features/push/PushProvider";
 import { useForegroundHeartbeat } from "../features/push/useForegroundHeartbeat";
 import { useSnapshotState } from "../features/snapshot/SnapshotProvider";
@@ -34,6 +35,7 @@ import { useVesselPhoto } from "../features/vessels/useVesselPhoto";
 type AppShellProps = {
   pairing: Pairing;
   installation?: MobileSessionInfo | null;
+  sessionReady?: boolean;
   onPairingCleared?: () => void;
   onAccessRevoked?: () => void;
   basePath?: string;
@@ -74,6 +76,7 @@ export type ShellOutletContext = {
 export function AppShell({
   pairing,
   installation = null,
+  sessionReady = false,
   onPairingCleared = noop,
   onAccessRevoked = noop,
   basePath = "",
@@ -109,6 +112,12 @@ export function AppShell({
 
   useForegroundHeartbeat(
     pushState.active && !demoMode,
+    undefined,
+    onAccessRevoked,
+  );
+
+  useMobileSessionHeartbeat(
+    sessionReady && !demoMode,
     undefined,
     onAccessRevoked,
   );

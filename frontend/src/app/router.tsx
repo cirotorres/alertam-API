@@ -15,6 +15,7 @@ import { AppShell } from "./AppShell";
 type AppRoutesProps = {
   pairing: Pairing;
   installation?: MobileSessionInfo | null;
+  sessionReady?: boolean;
   onPairingCleared?: () => void;
   onAccessRevoked?: () => void;
   basePath?: string;
@@ -25,6 +26,7 @@ type AppRoutesProps = {
 export function AppRoutes({
   pairing,
   installation = null,
+  sessionReady = false,
   onPairingCleared,
   onAccessRevoked,
   basePath = "",
@@ -41,6 +43,7 @@ export function AppRoutes({
           <AppShell
             pairing={pairing}
             installation={installation}
+            sessionReady={sessionReady}
             onPairingCleared={onPairingCleared}
             onAccessRevoked={onAccessRevoked}
             basePath={basePath}

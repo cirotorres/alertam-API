@@ -55,6 +55,7 @@ function AppContent() {
                 <AppRoutes
                   pairing={pairing}
                   installation={sessionInfo}
+                  sessionReady={sessionReady}
                   onPairingCleared={resetPairing}
                   onAccessRevoked={handleAccessRevoked}
                 />
