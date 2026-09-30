@@ -41,6 +41,14 @@ Para projetos novos, preferir `SUPABASE_SECRET_KEY`.
 
 ## 2. Aplicar as migrations
 
+Antes de alterar o banco de produção, conferir o estado real:
+
+```bash
+make prod-migrate-status
+```
+
+O comando compara, sem modificar o banco, os arquivos locais com `public.schema_migrations`. Se houver migrations pendentes, aplicar com `make prod-migrate` e repetir o status ao final. Migrations registradas no banco mas ausentes do checkout aparecem como **desconhecidas** e devem ser investigadas antes de qualquer alteração.
+
 Executar na ordem:
 
 1. `supabase/migrations/001_devices.sql`
@@ -49,6 +57,12 @@ Executar na ordem:
 4. `supabase/migrations/004_maneuver_events.sql`
 5. `supabase/migrations/005_push_installations_deliveries.sql`
 6. `supabase/migrations/006_event_retention.sql`
+7. `supabase/migrations/007_maneuver_event_detail_index.sql`
+8. `supabase/migrations/008_vessel_tracking_events.sql`
+9. `supabase/migrations/009_vessel_tracking_retention.sql`
+10. `supabase/migrations/010_mobile_installations.sql`
+11. `supabase/migrations/011_tracked_vessels.sql`
+12. `supabase/migrations/012_vessel_tracking_deliveries.sql`
 
 As migrations:
 

@@ -9,7 +9,7 @@ MIGRATIONS_DIR := api/supabase/migrations
 .PHONY: help run dev dev-up dev-down dev-reset dev-logs dev-ps dev-config dev-info \
         dev-db-shell dev-api-shell api-run sync test test-unit test-contract \
         test-integration test-all docker-build migrate migrate-dev migrate-seed \
-        migrate-list migration-new prod-migrate prod-migrate-check prod-env prod-check \
+        migrate-list migration-new prod-migrate prod-migrate-check prod-migrate-status prod-env prod-check \
         prod prod-up prod-down prod-logs prod-ps prod-config prod-rebuild
 
 help:
@@ -32,7 +32,8 @@ help:
 	  '  make migrate-seed   Aplica migrations e reaplica o seed dev' \
 	  '  make migrate-list   Lista migrations SQL em ordem' \
 	  '  make migration-new NAME=nome  Cria a próxima migration numerada' \
-	  '  make prod-migrate   Aplica migrations no PostgreSQL do Supabase' \
+	  '  make prod-migrate-status Verifica se o Supabase está sincronizado' \
+	  '  make prod-migrate   Aplica migrations pendentes no PostgreSQL do Supabase' \
 	  '' \
 	  'API LOCAL (sem Docker)' \
 	  '  make sync           Sincroniza dependências com uv' \
@@ -142,6 +143,11 @@ prod-migrate-check:
 	  *'<project-ref>'*|*'<password>'*) \
 	    echo 'Erro: SUPABASE_DB_URL ainda contém placeholder.'; exit 1 ;; \
 	esac
+
+prod-migrate-status: prod-migrate-check
+	@db_url="$$(sed -n 's/^SUPABASE_DB_URL=//p' "$(PROD_ENV)" | tail -n 1)"; \
+	cd api && DATABASE_URL="$$db_url" uv run python scripts/migration_status.py \
+		--migrations-dir supabase/migrations
 
 prod-migrate: prod-migrate-check
 	@db_url="$$(sed -n 's/^SUPABASE_DB_URL=//p' "$(PROD_ENV)" | tail -n 1)"; \

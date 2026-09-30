@@ -196,10 +196,20 @@ Além das credenciais HTTP da API, `api/.env.prod` precisa da conexão PostgreSQ
 SUPABASE_DB_URL=postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres
 ```
 
-Depois:
+Antes de aplicar qualquer alteração, conferir se o checkout e o banco estão sincronizados:
+
+```bash
+make prod-migrate-status
+```
+
+Esse comando é somente leitura: compara os arquivos `.sql` locais com `public.schema_migrations`. Quando há pendências, lista cada migration local ainda não aplicada. Quando o banco contém uma migration que não existe no checkout atual, lista-a como **desconhecida** para investigação. O comando retorna sucesso somente quando os dois lados estão sincronizados.
+
+Para aplicar somente as migrations pendentes:
 
 ```bash
 make prod-migrate
 ```
 
-O comando usa a mesma tabela `schema_migrations` e portanto aplica somente arquivos ainda não registrados. A URL PostgreSQL é usada apenas pelo processo de migration e não pela API em runtime.
+Depois, repetir `make prod-migrate-status` para confirmar o estado final. O runner usa a mesma tabela `schema_migrations` e portanto aplica somente arquivos ainda não registrados. A URL PostgreSQL é usada apenas pelos comandos de migration e não pela API em runtime.
+
+O status compara nomes registrados, não checksum do conteúdo. Uma migration já aplicada deve ser tratada como imutável; correções posteriores devem entrar em um novo arquivo de migration.
