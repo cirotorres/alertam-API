@@ -11,6 +11,13 @@ export function loadInstallationId(): string | null {
 }
 
 
+export function createFreshInstallationId(
+  randomUUID: () => string = () => crypto.randomUUID(),
+): string {
+  return randomUUID();
+}
+
+
 export function getOrCreateInstallationId(
   randomUUID: () => string = () => crypto.randomUUID(),
 ): string {

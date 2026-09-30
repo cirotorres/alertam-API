@@ -3,6 +3,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 import {
   INSTALLATION_ID_STORAGE_KEY,
   clearInstallationId,
+  createFreshInstallationId,
   getOrCreateInstallationId,
   loadInstallationId,
 } from "./installationId";
@@ -27,4 +28,14 @@ test("installation_id_persists_across_reloads_until_explicit_clear", () => {
 
   clearInstallationId();
   expect(loadInstallationId()).toBeNull();
+});
+
+
+test("fresh installation id does not persist before promotion", () => {
+  const generated = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+  const randomUUID = vi.fn(() => generated);
+
+  expect(createFreshInstallationId(randomUUID)).toBe(generated);
+  expect(loadInstallationId()).toBeNull();
+  expect(localStorage.getItem(INSTALLATION_ID_STORAGE_KEY)).toBeNull();
 });
