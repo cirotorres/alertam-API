@@ -165,3 +165,37 @@ def test_revoke_mobile_installation_deactivates_push_credentials():
     assert push.endpoint is None
     assert push.p256dh is None
     assert push.auth is None
+
+
+def test_repeated_revoke_preserves_original_revocation_timestamp():
+    now = [NOW]
+    repository = repo(clock=lambda: now[0])
+    repository.ensure_mobile_installation("pecem-01", INSTALL_A)
+    assert repository.revoke_mobile_installation("pecem-01", INSTALL_A) is True
+    first = repository.get_mobile_installation("pecem-01", INSTALL_A)
+    assert first is not None
+
+    now[0] = NOW + timedelta(days=5)
+    assert repository.revoke_mobile_installation("pecem-01", INSTALL_A) is True
+    repeated = repository.get_mobile_installation("pecem-01", INSTALL_A)
+
+    assert repeated is not None
+    assert repeated.revoked_at == first.revoked_at
+    assert repeated.last_seen_at == first.last_seen_at
+
+
+def test_global_rotation_preserves_already_revoked_timestamp():
+    now = [NOW]
+    repository = repo(clock=lambda: now[0])
+    repository.ensure_mobile_installation("pecem-01", INSTALL_A)
+    repository.revoke_mobile_installation("pecem-01", INSTALL_A)
+    first = repository.get_mobile_installation("pecem-01", INSTALL_A)
+    assert first is not None
+
+    now[0] = NOW + timedelta(days=5)
+    assert repository.rotate_view_secret_hash("pecem-01", "new-view") is True
+    rotated = repository.get_mobile_installation("pecem-01", INSTALL_A)
+
+    assert rotated is not None
+    assert rotated.revoked_at == first.revoked_at
+    assert rotated.last_seen_at == first.last_seen_at

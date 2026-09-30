@@ -193,6 +193,8 @@ class MemoryDeviceRepository:
             current = self._mobile_installations.get(installation_id)
             if current is None or current.device_id != device_id:
                 return False
+            if not current.active:
+                return True
             now = self._clock()
             self._mobile_installations[installation_id] = replace(
                 current,
@@ -244,7 +246,10 @@ class MemoryDeviceRepository:
             for installation_id, installation in tuple(
                 self._mobile_installations.items()
             ):
-                if installation.device_id != device_id:
+                if (
+                    installation.device_id != device_id
+                    or not installation.active
+                ):
                     continue
                 self._mobile_installations[installation_id] = replace(
                     installation,
