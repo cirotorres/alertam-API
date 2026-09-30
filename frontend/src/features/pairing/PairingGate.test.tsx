@@ -1,198 +1,426 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 
-import fixture from "../../test/fixtures/mobile_snapshot_v1.json";
-import { parseSnapshotReadResponse } from "../../api/contract";
 import {
   AccessRevokedError,
-  SnapshotUnavailableError,
   TemporaryApiError,
 } from "../../api/snapshotClient";
+import {
+  loadInstallationMetadata,
+  storeInstallationMetadata,
+} from "./installationMetadata";
 import {
   loadPairing,
   savePairing,
 } from "./pairingStorage";
+import {
+  loadInstallationId,
+  storeInstallationId,
+} from "../push/installationId";
 import type { Pairing } from "./pairing";
+import type {
+  MobileSessionDraft,
+  MobileSessionInfo,
+} from "./mobileSessionClient";
 import { PairingGate } from "./PairingGate";
 
-const TOKEN = "Abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE";
-const TOKEN_2 = "Zyxwvutsrqponmlkjihgfedcba9876543210_-ABCDE";
+const TOKEN_A = "Abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE";
+const TOKEN_B = "Zyxwvutsrqponmlkjihgfedcba9876543210_-ABCDE";
+const INSTALL_A = "11111111-2222-4333-8444-555555555555";
+const INSTALL_B = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+const SWITCH_ID = "99999999-8888-4777-8666-555555555555";
+const ORPHAN_ID = "22222222-3333-4444-8555-666666666666";
 
-const response = parseSnapshotReadResponse({
-  snapshot: fixture,
-  meta: {
-    received_at: "2026-09-25T13:40:15-03:00",
-    age_seconds: 3,
-    collector_online: true,
-    stale_after_seconds: 120,
-  },
-});
+const pairingA: Pairing = {
+  deviceId: "pecem-a",
+  viewSecret: TOKEN_A,
+  pairedAt: "2026-09-30T10:00:00-03:00",
+};
+
+const sessionA: MobileSessionInfo = {
+  deviceId: "pecem-a",
+  installationId: INSTALL_A,
+  displayCode: "K7M4Q2",
+  platform: "ios",
+};
+
+function sessionB(
+  installationId = INSTALL_B,
+): MobileSessionInfo {
+  return {
+    deviceId: "pecem-b",
+    installationId,
+    displayCode: "8P2R6X",
+    platform: "android",
+  };
+}
+
+function seedActiveA(): void {
+  savePairing(pairingA);
+  storeInstallationId(INSTALL_A);
+  storeInstallationMetadata({
+    installationId: INSTALL_A,
+    displayCode: "K7M4Q2",
+    platform: "ios",
+  });
+}
+
 beforeEach(() => {
   localStorage.clear();
   window.history.replaceState({}, "", "/");
 });
 
-function renderGate(
-  fetcher = vi.fn().mockResolvedValue(response),
-  options: {
-    sessionCreator?: (pairing: Pairing) => Promise<void>;
-    sessionRecoverer?: () => Promise<Pairing | null>;
-    sessionClearer?: () => Promise<void>;
-  } = {},
-) {
-  return render(
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+function renderGate(options: {
+  candidateValidator?: (pairing: Pairing) => Promise<{ deviceId: string }>;
+  sessionCreator?: (
+    pairing: Pairing,
+    options?: { installationId?: string; platform?: "ios" | "android" | "other" },
+  ) => Promise<MobileSessionInfo>;
+  sessionSwitcher?: (
+    pairing: Pairing,
+    draft: MobileSessionDraft,
+  ) => Promise<MobileSessionInfo>;
+  sessionRecoverer?: () => Promise<{
+    pairing: Pairing;
+    session: MobileSessionInfo;
+  } | null>;
+  sessionClearer?: () => Promise<void>;
+  freshIdFactory?: () => string;
+} = {}) {
+  const candidateValidator =
+    options.candidateValidator ??
+    vi.fn(async (pairing: Pairing) => ({ deviceId: pairing.deviceId }));
+  const sessionCreator =
+    options.sessionCreator ??
+    vi.fn(async (pairing: Pairing, createOptions) => ({
+      deviceId: pairing.deviceId,
+      installationId: createOptions?.installationId ?? INSTALL_A,
+      displayCode: "K7M4Q2",
+      platform: createOptions?.platform ?? "ios",
+    }));
+  const sessionSwitcher =
+    options.sessionSwitcher ??
+    vi.fn(async (_pairing: Pairing, draft: MobileSessionDraft) =>
+      sessionB(draft.installationId),
+    );
+  const sessionRecoverer =
+    options.sessionRecoverer ?? vi.fn().mockResolvedValue(null);
+  const sessionClearer =
+    options.sessionClearer ?? vi.fn().mockResolvedValue(undefined);
+
+  const rendered = render(
     <PairingGate
-      fetcher={fetcher}
-      sessionCreator={
-        options.sessionCreator ?? vi.fn().mockResolvedValue(undefined)
-      }
-      sessionRecoverer={
-        options.sessionRecoverer ?? vi.fn().mockResolvedValue(null)
-      }
-      sessionClearer={
-        options.sessionClearer ?? vi.fn().mockResolvedValue(undefined)
-      }
+      candidateValidator={candidateValidator}
+      sessionCreator={sessionCreator}
+      sessionSwitcher={sessionSwitcher}
+      sessionRecoverer={sessionRecoverer}
+      sessionClearer={sessionClearer}
+      freshIdFactory={options.freshIdFactory}
     >
-      {(pairing) => <div>APP {pairing.deviceId}</div>}
-    </PairingGate>,
-  );
-}
-
-test("without_pairing_asks_for_desktop_qr", async () => {
-  renderGate();
-  expect(
-    await screen.findByRole("heading", {
-      name: "Alerta de Movimentações Marítimas",
-    }),
-  ).toBeInTheDocument();
-  expect(screen.getByText(/Conectar Celular/i)).toBeInTheDocument();
-});
-
-test("valid_qr_clears_fragment_before_fetch_and_persists_after_200", async () => {
-  window.history.replaceState({}, "", `/#/pair/pecem-01?token=${TOKEN}`);
-  const fetcher = vi.fn(async () => {
-    expect(window.location.hash).toBe("");
-    expect(document.body.textContent).not.toContain(TOKEN);
-    return response;
-  });
-
-  renderGate(fetcher);
-
-  expect(await screen.findByText("APP pecem-01")).toBeInTheDocument();
-  expect(loadPairing()?.viewSecret).toBe(TOKEN);
-  expect(window.location.hash).toBe("");
-});
-test("valid_qr_with_404_is_persisted_as_waiting_device", async () => {
-  window.history.replaceState({}, "", `/#/pair/pecem-01?token=${TOKEN}`);
-  const fetcher = vi.fn().mockRejectedValue(new SnapshotUnavailableError());
-
-  renderGate(fetcher);
-
-  expect(await screen.findByText("APP pecem-01")).toBeInTheDocument();
-  expect(loadPairing()?.viewSecret).toBe(TOKEN);
-});
-
-test("revoked_candidate_never_replaces_previous_pairing", async () => {
-  const previous: Pairing = {
-    deviceId: "pecem-antigo",
-    viewSecret: TOKEN_2,
-    pairedAt: "2026-09-26T08:00:00-03:00",
-  };
-  savePairing(previous);
-  window.history.replaceState({}, "", `/#/pair/pecem-novo?token=${TOKEN}`);
-  const fetcher = vi.fn().mockRejectedValue(new AccessRevokedError());
-
-  renderGate(fetcher);
-
-  expect(await screen.findByText("APP pecem-antigo")).toBeInTheDocument();
-  expect(loadPairing()).toEqual(previous);
-});
-test("temporary_error_keeps_candidate_only_in_memory_and_retry_can_confirm", async () => {
-  window.history.replaceState({}, "", `/#/pair/pecem-01?token=${TOKEN}`);
-  const fetcher = vi
-    .fn()
-    .mockRejectedValueOnce(new TemporaryApiError())
-    .mockResolvedValueOnce(response);
-
-  renderGate(fetcher);
-
-  const retry = await screen.findByRole("button", { name: "Tentar novamente" });
-  expect(loadPairing()).toBeNull();
-  expect(document.body.textContent).not.toContain(TOKEN);
-
-  fireEvent.click(retry);
-
-  await waitFor(() => expect(screen.getByText("APP pecem-01")).toBeInTheDocument());
-  expect(fetcher).toHaveBeenCalledTimes(2);
-  expect(loadPairing()?.viewSecret).toBe(TOKEN);
-});
-
-
-test("recovers_cookie_session_when_local_storage_is_empty", async () => {
-  const recovered: Pairing = {
-    deviceId: "pecem-cookie",
-    viewSecret: null,
-    pairedAt: "2026-09-26T15:00:00-03:00",
-  };
-  const recoverer = vi.fn().mockResolvedValue(recovered);
-
-  renderGate(undefined, { sessionRecoverer: recoverer });
-
-  expect(await screen.findByText("APP pecem-cookie")).toBeInTheDocument();
-  expect(recoverer).toHaveBeenCalledTimes(1);
-  expect(loadPairing()).toBeNull();
-});
-
-test("valid_qr_creates_server_session_before_promoting_pairing", async () => {
-  window.history.replaceState({}, "", `/#/pair/pecem-01?token=${TOKEN}`);
-  const creator = vi.fn().mockResolvedValue(undefined);
-
-  renderGate(undefined, { sessionCreator: creator });
-
-  expect(await screen.findByText("APP pecem-01")).toBeInTheDocument();
-  expect(creator).toHaveBeenCalledTimes(1);
-  expect(creator).toHaveBeenCalledWith(
-    expect.objectContaining({
-      deviceId: "pecem-01",
-      viewSecret: TOKEN,
-    }),
-  );
-});
-
-
-test("reset_does_not_immediately_recover_the_same_cookie_session", async () => {
-  const previous: Pairing = {
-    deviceId: "pecem-01",
-    viewSecret: TOKEN,
-    pairedAt: "2026-09-26T15:00:00-03:00",
-  };
-  savePairing(previous);
-
-  const recoverer = vi.fn().mockResolvedValue({
-    deviceId: "pecem-cookie",
-    viewSecret: null,
-    pairedAt: "2026-09-26T15:01:00-03:00",
-  } satisfies Pairing);
-  const clearer = vi.fn().mockResolvedValue(undefined);
-
-  render(
-    <PairingGate
-      fetcher={vi.fn().mockResolvedValue(response)}
-      sessionCreator={vi.fn().mockResolvedValue(undefined)}
-      sessionRecoverer={recoverer}
-      sessionClearer={clearer}
-    >
-      {(pairing, reset) => (
+      {(pairing, reset, sessionReady, handleAccessRevoked) => (
         <div>
-          <span>APP {pairing.deviceId}</span>
+          <span>
+            APP {pairing.deviceId} {sessionReady ? "READY" : "WAIT"}
+          </span>
           <button type="button" onClick={reset}>RESET</button>
+          <button type="button" onClick={handleAccessRevoked}>REVOKED</button>
         </div>
       )}
     </PairingGate>,
   );
 
-  expect(await screen.findByText("APP pecem-01")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "RESET" }));
+  return {
+    ...rendered,
+    candidateValidator,
+    sessionCreator,
+    sessionSwitcher,
+    sessionRecoverer,
+    sessionClearer,
+  };
+}
+
+test("without pairing asks for desktop QR", async () => {
+  renderGate();
+
+  expect(
+    await screen.findByRole("heading", {
+      name: "Alerta de Movimentações Marítimas",
+    }),
+  ).toBeInTheDocument();
+});
+
+test("invalid QR B preserves active A and clears fragment before validation", async () => {
+  seedActiveA();
+  window.history.replaceState(
+    {},
+    "",
+    `/#/pair/pecem-b?token=${TOKEN_B}`,
+  );
+  const validator = vi.fn(async () => {
+    expect(window.location.hash).toBe("");
+    throw new AccessRevokedError();
+  });
+
+  renderGate({ candidateValidator: validator });
+
+  expect(await screen.findByText(/APP pecem-a/)).toBeInTheDocument();
+  expect(loadPairing()).toEqual(pairingA);
+  expect(loadInstallationId()).toBe(INSTALL_A);
+  expect(loadInstallationMetadata()?.displayCode).toBe("K7M4Q2");
+});
+
+test("valid QR B asks confirmation before create or switch", async () => {
+  seedActiveA();
+  window.history.replaceState(
+    {},
+    "",
+    `/#/pair/pecem-b?token=${TOKEN_B}`,
+  );
+  const creator = vi.fn();
+  const switcher = vi.fn();
+
+  renderGate({
+    sessionCreator: creator,
+    sessionSwitcher: switcher,
+  });
+
+  expect(
+    await screen.findByRole("heading", { name: "Trocar de AlertaM?" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/Atual: pecem-a/)).toBeInTheDocument();
+  expect(screen.getByText(/Novo: pecem-b/)).toBeInTheDocument();
+  expect(creator).not.toHaveBeenCalled();
+  expect(switcher).not.toHaveBeenCalled();
+  expect(loadPairing()).toEqual(pairingA);
+});
+
+test("cancel switch discards candidate and keeps A", async () => {
+  seedActiveA();
+  window.history.replaceState(
+    {},
+    "",
+    `/#/pair/pecem-b?token=${TOKEN_B}`,
+  );
+  const switcher = vi.fn();
+
+  renderGate({ sessionSwitcher: switcher });
+
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Cancelar" }),
+  );
+
+  expect(await screen.findByText(/APP pecem-a/)).toBeInTheDocument();
+  expect(switcher).not.toHaveBeenCalled();
+  expect(loadPairing()).toEqual(pairingA);
+  expect(loadInstallationId()).toBe(INSTALL_A);
+});
+
+test("confirm switch promotes B only after successful server switch", async () => {
+  seedActiveA();
+  window.history.replaceState(
+    {},
+    "",
+    `/#/pair/pecem-b?token=${TOKEN_B}`,
+  );
+  const ids = vi.fn()
+    .mockReturnValueOnce(INSTALL_B)
+    .mockReturnValueOnce(SWITCH_ID);
+  const switcher = vi.fn(
+    async (_pairing: Pairing, draft: MobileSessionDraft) =>
+      sessionB(draft.installationId),
+  );
+
+  renderGate({
+    freshIdFactory: ids,
+    sessionSwitcher: switcher,
+  });
+
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Trocar AlertaM" }),
+  );
+
+  expect(await screen.findByText(/APP pecem-b READY/)).toBeInTheDocument();
+  expect(ids).toHaveBeenCalledTimes(2);
+  expect(switcher).toHaveBeenCalledWith(
+    expect.objectContaining({
+      deviceId: "pecem-b",
+      viewSecret: TOKEN_B,
+    }),
+    {
+      installationId: INSTALL_B,
+      platform: "other",
+      switchId: SWITCH_ID,
+    },
+  );
+  expect(loadPairing()?.deviceId).toBe("pecem-b");
+  expect(loadPairing()?.viewSecret).toBe(TOKEN_B);
+  expect(loadInstallationId()).toBe(INSTALL_B);
+  expect(loadInstallationMetadata()).toEqual({
+    installationId: INSTALL_B,
+    displayCode: "8P2R6X",
+    platform: "android",
+  });
+});
+
+test("temporary switch retry reuses exactly the same draft", async () => {
+  seedActiveA();
+  window.history.replaceState(
+    {},
+    "",
+    `/#/pair/pecem-b?token=${TOKEN_B}`,
+  );
+  const ids = vi.fn()
+    .mockReturnValueOnce(INSTALL_B)
+    .mockReturnValueOnce(SWITCH_ID);
+  const switcher = vi.fn()
+    .mockRejectedValueOnce(new TemporaryApiError())
+    .mockResolvedValueOnce(sessionB());
+
+  renderGate({
+    freshIdFactory: ids,
+    sessionSwitcher: switcher,
+  });
+
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Trocar AlertaM" }),
+  );
+
+  expect(
+    await screen.findByRole("button", { name: "Tentar novamente" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/APP pecem-a WAIT/)).toBeInTheDocument();
+  expect(loadPairing()).toEqual(pairingA);
+  expect(loadInstallationId()).toBe(INSTALL_A);
+  expect(ids).toHaveBeenCalledTimes(2);
+
+  const firstDraft = switcher.mock.calls[0]?.[1];
+  fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
+
+  expect(await screen.findByText(/APP pecem-b READY/)).toBeInTheDocument();
+  expect(switcher).toHaveBeenCalledTimes(2);
+  expect(switcher.mock.calls[1]?.[1]).toEqual(firstDraft);
+  expect(ids).toHaveBeenCalledTimes(2);
+});
+
+test("same Desktop reuses current installation without switch confirmation", async () => {
+  seedActiveA();
+  window.history.replaceState(
+    {},
+    "",
+    `/#/pair/pecem-a?token=${TOKEN_B}`,
+  );
+  const freshIdFactory = vi.fn(() => INSTALL_B);
+  const creator = vi.fn().mockResolvedValue(sessionA);
+  const switcher = vi.fn();
+
+  renderGate({
+    freshIdFactory,
+    sessionCreator: creator,
+    sessionSwitcher: switcher,
+  });
+
+  expect(await screen.findByText(/APP pecem-a READY/)).toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Trocar de AlertaM?" }),
+  ).not.toBeInTheDocument();
+  expect(creator).toHaveBeenCalledWith(
+    expect.objectContaining({
+      deviceId: "pecem-a",
+      viewSecret: TOKEN_B,
+    }),
+    expect.objectContaining({
+      installationId: INSTALL_A,
+    }),
+  );
+  expect(freshIdFactory).not.toHaveBeenCalled();
+  expect(switcher).not.toHaveBeenCalled();
+  expect(loadPairing()?.viewSecret).toBe(TOKEN_B);
+});
+
+test("same Desktop creates one fresh installation when old UUID is revoked", async () => {
+  seedActiveA();
+  window.history.replaceState(
+    {},
+    "",
+    `/#/pair/pecem-a?token=${TOKEN_B}`,
+  );
+  const freshIdFactory = vi.fn(() => INSTALL_B);
+  const creator = vi.fn()
+    .mockRejectedValueOnce(new AccessRevokedError())
+    .mockResolvedValueOnce({
+      ...sessionA,
+      installationId: INSTALL_B,
+      displayCode: "P8X4TR",
+    });
+
+  renderGate({
+    freshIdFactory,
+    sessionCreator: creator,
+  });
+
+  expect(await screen.findByText(/APP pecem-a READY/)).toBeInTheDocument();
+  expect(creator).toHaveBeenCalledTimes(2);
+  expect(creator.mock.calls[0]?.[1]).toEqual(
+    expect.objectContaining({ installationId: INSTALL_A }),
+  );
+  expect(creator.mock.calls[1]?.[1]).toEqual(
+    expect.objectContaining({ installationId: INSTALL_B }),
+  );
+  expect(freshIdFactory).toHaveBeenCalledTimes(1);
+  expect(loadInstallationId()).toBe(INSTALL_B);
+});
+
+test("first pairing ignores orphan installation id left in storage", async () => {
+  storeInstallationId(ORPHAN_ID);
+  window.history.replaceState(
+    {},
+    "",
+    `/#/pair/pecem-b?token=${TOKEN_B}`,
+  );
+  const freshIdFactory = vi.fn(() => INSTALL_B);
+  const creator = vi.fn().mockResolvedValue(sessionB());
+
+  renderGate({
+    freshIdFactory,
+    sessionCreator: creator,
+  });
+
+  expect(await screen.findByText(/APP pecem-b READY/)).toBeInTheDocument();
+  expect(creator).toHaveBeenCalledWith(
+    expect.objectContaining({ deviceId: "pecem-b" }),
+    expect.objectContaining({ installationId: INSTALL_B }),
+  );
+  expect(creator.mock.calls[0]?.[1]?.installationId).not.toBe(ORPHAN_ID);
+  expect(loadInstallationId()).toBe(INSTALL_B);
+});
+
+test("manual reset clears pairing installation and metadata without recovery loop", async () => {
+  seedActiveA();
+  const recoverer = vi.fn().mockResolvedValue({
+    pairing: {
+      deviceId: "cookie",
+      viewSecret: null,
+      pairedAt: "2026-09-30T11:00:00-03:00",
+    },
+    session: {
+      ...sessionA,
+      deviceId: "cookie",
+    },
+  });
+  const clearer = vi.fn().mockResolvedValue(undefined);
+
+  renderGate({
+    sessionCreator: vi.fn().mockResolvedValue(sessionA),
+    sessionRecoverer: recoverer,
+    sessionClearer: clearer,
+  });
+
+  fireEvent.click(await screen.findByRole("button", { name: "RESET" }));
 
   expect(
     await screen.findByRole("heading", {
@@ -201,60 +429,48 @@ test("reset_does_not_immediately_recover_the_same_cookie_session", async () => {
   ).toBeInTheDocument();
   expect(clearer).toHaveBeenCalledTimes(1);
   expect(recoverer).not.toHaveBeenCalled();
+  expect(loadPairing()).toBeNull();
+  expect(loadInstallationId()).toBeNull();
+  expect(loadInstallationMetadata()).toBeNull();
 });
 
+test("access revoked clears local identity and shows explicit revoked state", async () => {
+  seedActiveA();
 
-test("stored_pairing_exposes_session_ready_only_after_cookie_sync", async () => {
-  const previous: Pairing = {
-    deviceId: "pecem-01",
-    viewSecret: TOKEN,
-    pairedAt: "2026-09-26T15:00:00-03:00",
-  };
-  savePairing(previous);
-  let resolveSession!: () => void;
-  const creator = vi.fn(
-    () => new Promise<void>((resolve) => {
-      resolveSession = resolve;
-    }),
-  );
+  renderGate({
+    sessionCreator: vi.fn().mockResolvedValue(sessionA),
+  });
 
-  render(
-    <PairingGate
-      fetcher={vi.fn().mockResolvedValue(response)}
-      sessionCreator={creator}
-      sessionRecoverer={vi.fn().mockResolvedValue(null)}
-      sessionClearer={vi.fn().mockResolvedValue(undefined)}
-    >
-      {(pairing, _reset, sessionReady) => (
-        <div>APP {pairing.deviceId} {sessionReady ? "READY" : "WAIT"}</div>
-      )}
-    </PairingGate>,
-  );
+  fireEvent.click(await screen.findByRole("button", { name: "REVOKED" }));
 
-  expect(await screen.findByText("APP pecem-01 WAIT")).toBeInTheDocument();
-  resolveSession();
-  expect(await screen.findByText("APP pecem-01 READY")).toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", { name: "Acesso revogado" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/Escaneie um novo QR Code/i)).toBeInTheDocument();
+  expect(loadPairing()).toBeNull();
+  expect(loadInstallationId()).toBeNull();
+  expect(loadInstallationMetadata()).toBeNull();
 });
 
-test("cookie_recovery_enters_app_with_session_ready", async () => {
-  const recovered: Pairing = {
-    deviceId: "pecem-cookie",
-    viewSecret: null,
-    pairedAt: "2026-09-26T15:00:00-03:00",
+test("cookie recovery enters app ready with recovered session", async () => {
+  const recovered = {
+    pairing: {
+      deviceId: "pecem-cookie",
+      viewSecret: null,
+      pairedAt: "2026-09-30T12:00:00-03:00",
+    } satisfies Pairing,
+    session: {
+      ...sessionA,
+      deviceId: "pecem-cookie",
+    },
   };
 
-  render(
-    <PairingGate
-      fetcher={vi.fn().mockResolvedValue(response)}
-      sessionCreator={vi.fn().mockResolvedValue(undefined)}
-      sessionRecoverer={vi.fn().mockResolvedValue(recovered)}
-      sessionClearer={vi.fn().mockResolvedValue(undefined)}
-    >
-      {(pairing, _reset, sessionReady) => (
-        <div>APP {pairing.deviceId} {sessionReady ? "READY" : "WAIT"}</div>
-      )}
-    </PairingGate>,
-  );
+  renderGate({
+    sessionRecoverer: vi.fn().mockResolvedValue(recovered),
+  });
 
-  expect(await screen.findByText("APP pecem-cookie READY")).toBeInTheDocument();
+  expect(
+    await screen.findByText(/APP pecem-cookie READY/),
+  ).toBeInTheDocument();
+  expect(loadPairing()).toBeNull();
 });
