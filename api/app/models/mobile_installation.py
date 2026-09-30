@@ -1,3 +1,6 @@
+from datetime import datetime
+from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -15,3 +18,19 @@ class MobileHeartbeatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     platform: str | None = Field(default=None, max_length=32)
+
+
+class MobileInstallationAdminItem(BaseModel):
+    installation_id: UUID
+    display_code: str
+    platform: str
+    active: bool
+    created_at: datetime
+    last_seen_at: datetime
+    revoked_at: datetime | None
+
+
+class MobileInstallationsAdminResponse(BaseModel):
+    active_count: int
+    active: list[MobileInstallationAdminItem]
+    recently_revoked: list[MobileInstallationAdminItem]

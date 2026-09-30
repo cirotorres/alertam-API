@@ -137,6 +137,15 @@ class PushInstallationNotFoundError(ApiError):
         )
 
 
+class MobileInstallationNotFoundError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=404,
+            code="mobile_installation_not_found",
+            message="Instalação mobile não encontrada.",
+        )
+
+
 class VesselTrackingTargetNotFoundError(ApiError):
     def __init__(self) -> None:
         super().__init__(
