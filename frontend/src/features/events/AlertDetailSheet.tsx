@@ -118,20 +118,9 @@ function Summary({
             ) : null}
           </dl>
 
-          <h3>Monitoramento do AlertaM</h3>
-          <dl className="alert-detail-sheet__summary-grid">
-            {event.first_observed_at &&
-            event.maneuver_type !== "DESATRACACAO" ? (
-              <div>
-                <dt>Primeira observação</dt>
-                <dd>{formatObservedAt(event.first_observed_at)}</dd>
-              </div>
-            ) : null}
-            <div>
-              <dt>Confirmação</dt>
-              <dd>{formatObservedAt(event.occurred_at)}</dd>
-            </div>
-          </dl>
+          <p className="alert-detail-sheet__registered-at">
+            Registrado pelo AlertaM às {formatObservedAt(event.occurred_at)}
+          </p>
         </>
       ) : (
         <>
@@ -144,17 +133,10 @@ function Summary({
               <dt>Berço vigente</dt>
               <dd>{event.berth ?? "—"}</dd>
             </div>
-            <div>
-              <dt>Observado pelo AlertaM</dt>
-              <dd>{formatObservedAt(event.occurred_at)}</dd>
-            </div>
-            {event.first_observed_at ? (
-              <div>
-                <dt>Primeira observação</dt>
-                <dd>{formatObservedAt(event.first_observed_at)}</dd>
-              </div>
-            ) : null}
           </dl>
+          <p className="alert-detail-sheet__registered-at">
+            Registrado pelo AlertaM às {formatObservedAt(event.occurred_at)}
+          </p>
           <p className="alert-detail-sheet__pob-current">
             POB vigente: {event.pob ?? "—"}
           </p>
@@ -244,7 +226,13 @@ export function AlertDetailSheet({
             ) : null}
             <section className="alert-detail-sheet__timeline-section">
               <h3>Linha do tempo</h3>
-              <ol className="alert-detail-sheet__timeline">
+              <p className="alert-detail-sheet__timeline-direction">
+                Do mais antigo ao mais recente
+              </p>
+              <ol
+                className="alert-detail-sheet__timeline alert-detail-sheet__timeline--connected"
+                data-testid="alert-timeline"
+              >
                 {detail.events.map((event, index) => {
                   const projected = projectAlertTimelineItem(
                     detail.events,
@@ -260,24 +248,20 @@ export function AlertDetailSheet({
                     >
                       <div className="alert-detail-sheet__timeline-head">
                         <strong>{projected.title}</strong>
-                        <time dateTime={event.occurred_at}>
-                          {event.event_type === "COMPLETED"
-                            ? `Confirmação AlertaM: ${formatObservedAt(event.occurred_at)}`
-                            : formatObservedAt(event.occurred_at)}
-                        </time>
                       </div>
                       {projected.lines.map((line) => (
                         <p key={line}>{line}</p>
                       ))}
-                      {projected.firstObservedAt ? (
-                        <p>
-                          Primeira observação:{" "}
-                          {formatObservedAt(projected.firstObservedAt)}
-                        </p>
-                      ) : null}
                       {projected.auxiliary ? (
                         <small>{projected.auxiliary}</small>
                       ) : null}
+                      <time
+                        className="alert-detail-sheet__registered-at"
+                        dateTime={event.occurred_at}
+                      >
+                        Registrado pelo AlertaM às{" "}
+                        {formatObservedAt(event.occurred_at)}
+                      </time>
                     </li>
                   );
                 })}

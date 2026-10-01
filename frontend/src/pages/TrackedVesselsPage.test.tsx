@@ -110,6 +110,11 @@ test("deep_link_opens_timeline_highlights_event_and_close_keeps_page", async () 
   const selected = await screen.findByTestId(`tracking-event-${EVENT_ID}`);
   expect(selected).toHaveClass("is-selected");
   expect(selected).toHaveTextContent(/ETA/);
+  expect(screen.getByText("Do mais antigo ao mais recente")).toBeInTheDocument();
+  expect(selected).toHaveTextContent(/Registrado pelo AlertaM às/);
+  expect(
+    selected.closest(".alert-detail-sheet__timeline--connected"),
+  ).not.toBeNull();
 
   fireEvent.click(
     screen.getByRole("button", { name: "Fechar detalhes do acompanhamento" }),

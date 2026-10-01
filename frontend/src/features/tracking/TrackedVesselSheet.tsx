@@ -72,23 +72,32 @@ export function TrackedVesselSheet({
           ) : timeline === null ? (
             <p role="status">Carregando linha do tempo...</p>
           ) : (
-            <ol className="alert-detail-sheet__timeline">
-              {projectTrackingTimeline(timeline).map((item) => (
-                <li
-                  key={item.eventId}
-                  data-testid={`tracking-event-${item.eventId}`}
-                  className={
-                    item.eventId === selectedEventId ? "is-selected" : undefined
-                  }
-                >
-                  <strong>{item.title}</strong>
-                  {item.detail ? <small>{item.detail}</small> : null}
-                  <time dateTime={item.occurredAt}>
-                    {new Date(item.occurredAt).toLocaleString()}
-                  </time>
-                </li>
-              ))}
-            </ol>
+            <>
+              <p className="alert-detail-sheet__timeline-direction">
+                Do mais antigo ao mais recente
+              </p>
+              <ol className="alert-detail-sheet__timeline alert-detail-sheet__timeline--connected">
+                {projectTrackingTimeline(timeline).map((item) => (
+                  <li
+                    key={item.eventId}
+                    data-testid={`tracking-event-${item.eventId}`}
+                    className={
+                      item.eventId === selectedEventId ? "is-selected" : undefined
+                    }
+                  >
+                    <strong>{item.title}</strong>
+                    {item.detail ? <small>{item.detail}</small> : null}
+                    <time
+                      className="alert-detail-sheet__registered-at"
+                      dateTime={item.occurredAt}
+                    >
+                      Registrado pelo AlertaM às{" "}
+                      {new Date(item.occurredAt).toLocaleString()}
+                    </time>
+                  </li>
+                ))}
+              </ol>
+            </>
           )}
         </div>
       ) : null}

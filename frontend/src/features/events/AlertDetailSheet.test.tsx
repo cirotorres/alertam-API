@@ -146,6 +146,10 @@ test("alert_detail_sheet_renders_summary_and_preserves_api_timeline_order", () =
   expect(screen.getAllByText("Atracação atualizada")).toHaveLength(2);
   expect(screen.getAllByText("POB vigente: 28/09 13:30")).toHaveLength(2);
 
+  expect(screen.getByText("Do mais antigo ao mais recente")).toBeInTheDocument();
+  const timeline = screen.getByTestId("alert-timeline");
+  expect(timeline).toHaveClass("alert-detail-sheet__timeline--connected");
+
   const items = screen.getAllByTestId("alert-timeline-event");
   expect(items).toHaveLength(3);
   expect(within(items[0]!).getByText("Atracação confirmada")).toBeInTheDocument();
@@ -195,11 +199,13 @@ test("alert_detail_completed_uses_operational_duration_not_observation_delay", (
   expect(screen.getByText("05:28")).toBeInTheDocument();
   expect(screen.getByText("Tempo da movimentação")).toBeInTheDocument();
   expect(screen.getByText("2h58")).toBeInTheDocument();
-  expect(screen.getByText("Monitoramento do AlertaM")).toBeInTheDocument();
-  expect(screen.getByText("Primeira observação")).toBeInTheDocument();
-  expect(screen.getAllByText(/29\/09.*10:45/).length).toBeGreaterThan(0);
-  expect(screen.getByText("Confirmação")).toBeInTheDocument();
-  expect(screen.getAllByText(/29\/09.*10:46/).length).toBeGreaterThan(0);
+  expect(
+    screen.getAllByText(/Registrado pelo AlertaM às.*10:46/).length,
+  ).toBeGreaterThan(0);
+  expect(screen.queryByText("Monitoramento do AlertaM")).not.toBeInTheDocument();
+  expect(screen.queryByText("Primeira observação")).not.toBeInTheDocument();
+  expect(screen.queryByText("Confirmação")).not.toBeInTheDocument();
+  expect(screen.queryByText(/29\/09.*10:45/)).not.toBeInTheDocument();
   expect(screen.queryByText(/Diferença para o POB/i)).not.toBeInTheDocument();
 });
 
@@ -237,6 +243,10 @@ test("alert_detail_completed_departure_shows_approximate_duration", () => {
   expect(screen.getByText("12:45")).toBeInTheDocument();
   expect(screen.getByText("Tempo aproximado da desatracação")).toBeInTheDocument();
   expect(screen.getByText("15 min")).toBeInTheDocument();
+  expect(
+    screen.getAllByText(/Registrado pelo AlertaM às.*12:46/).length,
+  ).toBeGreaterThan(0);
+  expect(screen.queryByText("Primeira observação")).not.toBeInTheDocument();
   expect(screen.queryByText(/Horário operacional não disponível/i)).not.toBeInTheDocument();
 });
 
