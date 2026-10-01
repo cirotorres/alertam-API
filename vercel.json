@@ -3,10 +3,12 @@
   "services": {
     "api": {
       "root": "api/",
+      "framework": "fastapi",
       "entrypoint": "main:app"
     },
     "frontend": {
       "root": "frontend/",
+      "framework": "vite",
       "rewrites": [
         {
           "source": "/(.*)",

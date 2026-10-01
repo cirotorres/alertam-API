@@ -34,10 +34,12 @@ def test_vercel_services_config_points_to_same_fastapi_entrypoint():
     assert config["$schema"] == "https://openapi.vercel.sh/vercel.json"
     assert config["services"]["api"] == {
         "root": "api/",
+        "framework": "fastapi",
         "entrypoint": "main:app",
     }
     assert config["services"]["frontend"] == {
         "root": "frontend/",
+        "framework": "vite",
         "rewrites": [
             {
                 "source": "/(.*)",
