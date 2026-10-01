@@ -1,6 +1,6 @@
 # SPEC 026 — Gestão de aparelhos mobile, revogação e troca segura de pareamento
 
-**Status:** Planos 1–2 (API/Supabase + PWA) implementados e validados localmente; Plano 3 Desktop pendente
+**Status:** Planos 1–3 implementados e validados localmente; migrations/deploy/smoke real pendentes
 **Data:** 2026-09-30  
 **Escopo:** AlertaM Desktop + API FastAPI/Supabase + PWA React/Vite  
 **Repositórios:** `/home/ciro/dev/prog/alertamaritimo` + `/home/ciro/dev/prog/alertamaritimoAPI`  
