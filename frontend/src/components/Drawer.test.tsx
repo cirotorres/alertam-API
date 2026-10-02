@@ -46,6 +46,17 @@ test("long_left_drag_dismisses_drawer", async () => {
 });
 
 
+test("drawer_locks_background_scroll_while_rendered", () => {
+  const { unmount } = renderDrawer();
+
+  expect(document.documentElement).toHaveClass("has-open-drawer");
+
+  unmount();
+
+  expect(document.documentElement).not.toHaveClass("has-open-drawer");
+});
+
+
 test("drawer_keeps_weather_out_of_general_navigation", () => {
   renderDrawer();
   expect(screen.queryByRole("link", { name: "Tempo" })).not.toBeInTheDocument();

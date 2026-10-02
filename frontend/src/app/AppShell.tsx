@@ -296,10 +296,12 @@ export function AppShell({
     routePath("/historico"),
     routePath("/acompanhados"),
     routePath("/tempo"),
+    routePath("/config"),
   ].includes(location.pathname);
 
   const bottomNavActive: BottomNavItem | null =
-    location.pathname === routePath("/acompanhados")
+    location.pathname === routePath("/acompanhados") ||
+    location.pathname === routePath("/config")
       ? null
       : location.pathname === routePath("/tempo")
         ? "weather"

@@ -2537,3 +2537,58 @@ html.has-open-bottom-sheet .bottom-sheet-frame__backdrop.is-open {
 .tracking-toggle__error {
   color: var(--alertam-danger, #a61b1b);
 }
+
+
+/* Drawer aberto: mantém o app ao fundo totalmente imóvel no touch/iOS. */
+html.has-open-drawer,
+html.has-open-drawer body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+html.has-open-drawer .mobile-header,
+html.has-open-drawer .mobile-content,
+html.has-open-drawer .bottom-nav {
+  pointer-events: none;
+}
+
+html.has-open-drawer .mobile-content {
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+html.has-open-drawer .mobile-content .page-stack,
+html.has-open-drawer .mobile-content .operational-list {
+  overflow-y: hidden !important;
+  overscroll-behavior: none;
+}
+
+.drawer-overlay {
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+.drawer {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Páginas que convivem com o footer fixo precisam terminar acima dele. */
+.page-stack--with-bottom-nav {
+  box-sizing: border-box;
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom));
+  scroll-padding-bottom: calc(7rem + env(safe-area-inset-bottom));
+}
+
+.about-signature {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--alertam-border);
+  color: var(--alertam-muted);
+  font-size: 0.82rem;
+}
+
+.about-signature strong {
+  color: var(--alertam-text);
+  font-weight: 700;
+}

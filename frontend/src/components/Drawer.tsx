@@ -68,6 +68,14 @@ export function Drawer({
     return () => document.removeEventListener("keydown", handleKey);
   }, [open, onClose]);
 
+  useEffect(() => {
+    if (!rendered) return;
+    document.documentElement.classList.add("has-open-drawer");
+    return () => {
+      document.documentElement.classList.remove("has-open-drawer");
+    };
+  }, [rendered]);
+
   if (!rendered && !installHelpOpen) return null;
   const handleInstall = async () => {
     if (pwa.state === "installed") return;

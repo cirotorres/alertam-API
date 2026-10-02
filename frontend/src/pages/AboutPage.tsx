@@ -10,6 +10,9 @@ export function AboutPage() {
       </p>
       <p>Versão {pkg.version}</p>
       <p>Dados operacionais recebidos do AlertaM Desktop.</p>
+      <p className="about-signature">
+        Desenvolvido por: <strong>Ciro Torres</strong>
+      </p>
     </section>
   );
 }

@@ -433,7 +433,31 @@ test("config_shows_device_and_can_forget_pairing", async () => {
 test("about_page_does_not_expose_infrastructure_secrets", async () => {
   renderRoute("/sobre");
   expect(await screen.findByRole("heading", { name: "Sobre o AlertaM" })).toBeInTheDocument();
+  expect(screen.getByText(/Desenvolvido por:/)).toHaveTextContent(
+    "Desenvolvido por: Ciro Torres",
+  );
   expect(document.body.textContent).not.toMatch(/SUPABASE|DEVICE_SECRET|service_role/i);
+});
+
+
+test("config_keeps_operational_footer_without_false_active_tab", async () => {
+  renderRoute("/config");
+
+  expect(
+    await screen.findByRole("heading", { name: "Configurações" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("navigation", { name: "Navegação inferior" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Manobras confirmadas" }),
+  ).not.toHaveAttribute("aria-current");
+  expect(
+    screen.getByRole("button", { name: "Tempo" }),
+  ).not.toHaveAttribute("aria-current");
+  expect(
+    screen.getByRole("button", { name: "Esquecer este aparelho" }),
+  ).toBeInTheDocument();
 });
 
 test.each([

@@ -75,7 +75,7 @@ export function ConfigPage() {
     : "Não identificado";
 
   return (
-    <section className="page-stack">
+    <section className="page-stack page-stack--with-bottom-nav">
       <h1>Configurações</h1>
       {demoMode ? (
         <p className="demo-note">
