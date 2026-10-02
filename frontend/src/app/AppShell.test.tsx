@@ -219,6 +219,6 @@ test("shell outlet context exposes installation identity to config", async () =>
 
   expect(await screen.findByText("Este aparelho")).toBeInTheDocument();
   expect(screen.getByText("iPhone/iPad · K7M4Q2")).toBeInTheDocument();
-  expect(screen.getByText("AlertaM conectado")).toBeInTheDocument();
+  expect(screen.getByText("Identificação do AlertaM")).toBeInTheDocument();
   expect(screen.queryByText(installation.installationId)).not.toBeInTheDocument();
 });

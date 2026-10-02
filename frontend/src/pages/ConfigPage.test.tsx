@@ -81,7 +81,7 @@ test("shows this device and connected AlertaM without exposing technical UUID", 
 
   expect(screen.getByText("Este aparelho")).toBeInTheDocument();
   expect(screen.getByText("iPhone/iPad · K7M4Q2")).toBeInTheDocument();
-  expect(screen.getByText("AlertaM conectado")).toBeInTheDocument();
+  expect(screen.getByText("Identificação do AlertaM")).toBeInTheDocument();
   expect(screen.getByText("pecem-55ee08ee")).toBeInTheDocument();
   expect(screen.queryByText(INSTALLATION_ID)).not.toBeInTheDocument();
   expect(screen.queryByText("Dispositivo")).not.toBeInTheDocument();
@@ -112,4 +112,24 @@ test("forget delegates identity cleanup to PairingGate reset", async () => {
     INSTALLATION_ID,
   );
   expect(localStorage.getItem(INSTALLATION_METADATA_STORAGE_KEY)).not.toBeNull();
+});
+
+
+test("formats last synchronization in pt-BR instead of raw ISO", () => {
+  render(<ConfigPage />);
+
+  const label = screen.getByText("Última sincronização");
+  const value = label.parentElement?.querySelector("dd");
+  expect(value).not.toBeNull();
+  expect(value?.textContent).not.toContain("2026-09-30T");
+  expect(value?.textContent).toContain("30/09/2026");
+  expect(value?.textContent).toMatch(/\d{2}:\d{2}:\d{2}/);
+});
+
+
+test("labels connected desktop with the same AlertaM identifier", () => {
+  render(<ConfigPage />);
+
+  expect(screen.getByText("Identificação do AlertaM")).toBeInTheDocument();
+  expect(screen.getByText("pecem-55ee08ee")).toBeInTheDocument();
 });

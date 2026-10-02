@@ -17,6 +17,24 @@ function platformLabel(platform: DevicePlatform): string {
   return "Outro aparelho";
 }
 
+function formatSynchronization(value: string | null | undefined): string {
+  if (!value) return "Aguardando";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  })
+    .format(date)
+    .replace(",", " ·");
+}
+
 
 export function ConfigPage() {
   const {
@@ -64,12 +82,12 @@ export function ConfigPage() {
           <dd>{installationLabel}</dd>
         </div>
         <div>
-          <dt>AlertaM conectado</dt>
+          <dt>Identificação do AlertaM</dt>
           <dd>{pairing.deviceId}</dd>
         </div>
         <div>
           <dt>Última sincronização</dt>
-          <dd>{snapshotState.data?.meta.received_at ?? "Aguardando"}</dd>
+          <dd>{formatSynchronization(snapshotState.data?.meta.received_at)}</dd>
         </div>
         <div><dt>Versão</dt><dd>{pkg.version}</dd></div>
         <div>

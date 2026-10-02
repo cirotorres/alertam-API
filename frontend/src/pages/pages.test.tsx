@@ -579,7 +579,7 @@ test("config_controls_push_and_four_independent_preferences", async () => {
     inactiveState,
   );
 
-  await screen.findByText("2026-09-25T13:40:15-03:00");
+  await screen.findByText(/25\/09\/2026/);
   await waitFor(() => {
     expect(firstEventFetcher).toHaveBeenCalledTimes(1);
   });
@@ -608,7 +608,7 @@ test("config_controls_push_and_four_independent_preferences", async () => {
       updatePreference,
     },
   );
-  await screen.findByText("2026-09-25T13:40:15-03:00");
+  await screen.findByText(/25\/09\/2026/);
   await waitFor(() => {
     expect(secondEventFetcher).toHaveBeenCalledTimes(1);
   });
