@@ -15,7 +15,7 @@ import {
 
 
 const POLL_INTERVAL_MS = 30_000;
-const PAGE_LIMIT = 100;
+const PAGE_LIMIT = 50;
 
 export type EventStatus =
   | "idle"

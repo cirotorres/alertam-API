@@ -2,9 +2,9 @@
 
 | Campo | Valor |
 |---|---|
-| Status | Implementação local concluída — validação externa pendente (Postgres/Supabase real + smoke Web Push real) |
+| Status | Implementação concluída — Supabase/retenção real validados; smoke Web Push real pendente |
 | Criado em | 2026-09-27 |
-| Atualizado em | 2026-09-27 |
+| Atualizado em | 2026-10-02 |
 | Escopo | FastAPI/Supabase + PWA React/Vite |
 | Design canônico | `/home/ciro/dev/prog/alertamaritimo/docs/superpowers/specs/2026-09-27-ciclo-manobras-eventos-push-design.md` |
 | Dependência Desktop | Etapa 1 concluída nos commits `95efb1e` e `cf80473` |
@@ -68,8 +68,9 @@ UUID não é relógio: a API mantém uma ordem de ingestão estável.
 
 O feed é device-scoped pela sessão mobile.
 Retenção: 30 dias.
+O PWA carrega 50 eventos por vez e oferece **Carregar mais** explicitamente quando há página anterior.
 Alertas mostra eventos individuais.
-Histórico agrupa por `maneuver_id`, preservando a sequência do ciclo.
+Histórico agrupa por `maneuver_id`, preservando a sequência do ciclo; ao carregar mais eventos, os ciclos são reagrupados sobre o conjunto carregado.
 
 O click de push abre:
 
@@ -314,15 +315,22 @@ Gate local da Etapa 2 em 2026-09-27:
 - service worker usa `injectManifest`, push e `notificationclick`;
 - Config controla opt-in, quatro categorias, disable e forget local-first;
 - migration 006 implementa retenção de 30 dias, removendo deliveries antes de eventos;
+- migration 015 habilita `pg_cron` e agenda `cleanup_event_retention()` diariamente às 03:15 UTC;
+- PWA pagina Alertas/Histórico em lotes de 50 com ação explícita **Carregar mais**;
 - API: 245 testes coletados, **229 pass + 16 skip**; todos os skips são por `TEST_POSTGRES_DSN` ausente;
 - frontend unit/component: **140/140** após o hardening final;
 - Playwright: **26 pass + 18 skips intencionais**, zero falhas, em quatro viewports;
 - build PWA: exit 0, `injectManifest` e `dist/sw.js` gerado;
 - `git diff --check`: limpo no gate final.
 
-### Limitações externas ainda abertas
+### Validação externa / limitações ainda abertas
 
-- migrations 004, 005 e 006 **não foram validadas contra Postgres/Supabase real** nesta sessão, pois `TEST_POSTGRES_DSN` não está configurado;
-- o Supabase Cron de retenção ainda precisa ser habilitado somente após essa validação real;
-- **não houve smoke Web Push real** com subscription/browser/provider externo; os testes usam gateway/browser mocks e lógica do service worker;
-- deploy final e smoke em aparelho real continuam necessários antes de declarar validação de produção.
+Em 2026-10-02, o Supabase de produção foi conferido diretamente:
+- 15/15 migrations aplicadas, sem pendências ou migrations desconhecidas;
+- `pg_cron` ativo por meio da migration 015;
+- job `alertam-cleanup-event-retention` ativo em `15 3 * * *`;
+- execução manual de `cleanup_event_retention()` validada sem remover os 16 eventos ainda recentes.
+
+Permanece aberto:
+- **smoke Web Push real** com subscription/browser/provider externo; os testes usam gateway/browser mocks e lógica do service worker;
+- deploy/smoke do frontend em aparelho real após mudanças de UI continuam necessários para evidência final de produção.

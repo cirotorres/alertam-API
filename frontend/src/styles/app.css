@@ -367,6 +367,7 @@ textarea {
 .drawer > button {
   display: flex;
   align-items: center;
+  gap: 0.8rem;
   min-height: 44px;
   padding: 0 var(--space-3);
   border: 0;
@@ -389,6 +390,19 @@ textarea {
   margin: var(--space-4) 0;
   background: var(--alertam-border);
 }
+
+.drawer__item-icon {
+  width: 1.2rem;
+  height: 1.2rem;
+  flex: 0 0 1.2rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: #5f6b75;
+}
+
 
 .status-card {
   display: flex;
@@ -2039,6 +2053,36 @@ textarea {
   color: var(--alertam-muted);
   font-size: 0.78rem;
 }
+
+
+.timeline__load-more {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-4) 0 var(--space-2);
+}
+
+.timeline__load-more button {
+  min-width: 9rem;
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--alertam-blue-700);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--alertam-blue-900);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.timeline__load-more button:hover,
+.timeline__load-more button:focus-visible {
+  background: var(--alertam-blue-100);
+}
+
+.timeline__load-more button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 
 
 /* Shared bottom-sheet frame and alert detail content. */

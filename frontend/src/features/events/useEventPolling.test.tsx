@@ -83,6 +83,10 @@ test("does_not_fetch_until_enabled_and_initial_page_does_not_emit_new_event", as
   await flush();
 
   expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(fetcher).toHaveBeenCalledWith(
+    { limit: 50 },
+    expect.any(AbortSignal),
+  );
   expect(result.current.events).toHaveLength(1);
   expect(result.current.newEvent).toBeNull();
 });
@@ -114,13 +118,13 @@ test("polls_every_30s_pauses_hidden_and_emits_only_post_baseline_event", async (
   expect(result.current.newEvent?.ingestion_id).toBe(3);
 });
 
-test("drains_burst_pages_of_100_without_gap_or_duplicates", async () => {
-  const burst = Array.from({ length: 100 }, (_, i) => event(i + 2));
+test("drains_burst_pages_of_50_without_gap_or_duplicates", async () => {
+  const burst = Array.from({ length: 50 }, (_, i) => event(i + 2));
   const fetcher = vi
     .fn()
     .mockResolvedValueOnce(page([event(1)]))
     .mockResolvedValueOnce(page(burst))
-    .mockResolvedValueOnce(page([event(102), event(103)]));
+    .mockResolvedValueOnce(page([event(52), event(53)]));
   const { result } = renderHook(() => useEventPolling(true, fetcher));
   await flush();
 
@@ -130,9 +134,9 @@ test("drains_burst_pages_of_100_without_gap_or_duplicates", async () => {
   await flush();
 
   expect(fetcher).toHaveBeenCalledTimes(3);
-  expect(result.current.events).toHaveLength(103);
-  expect(result.current.events.at(-1)?.ingestion_id).toBe(103);
-  expect(new Set(result.current.events.map((item) => item.event_id)).size).toBe(103);
+  expect(result.current.events).toHaveLength(53);
+  expect(result.current.events.at(-1)?.ingestion_id).toBe(53);
+  expect(new Set(result.current.events.map((item) => item.event_id)).size).toBe(53);
 });
 
 test("keeps_single_request_in_flight_and_aborts_when_hidden", async () => {

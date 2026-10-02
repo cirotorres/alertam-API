@@ -357,6 +357,57 @@ test("track_deep_link_neutralizes_alert_sheet_and_keeps_one_interactive_dialog",
   ).not.toBeInTheDocument();
 });
 
+test.each([
+  ["/alertas", "Alertas"],
+  ["/historico", "Histórico"],
+])("%s loads 50 older events on explicit user action", async (route, heading) => {
+  const recent = {
+    ...EVENT_PAGE.events[0]!,
+    event_id: "00000000-0000-4000-8000-000000000951",
+    maneuver_id: "00000000-0000-4000-8000-000000000961",
+    vessel_name: "NAVIO RECENTE",
+    ingestion_id: 51,
+  };
+  const older = {
+    ...EVENT_PAGE.events[1]!,
+    event_id: "00000000-0000-4000-8000-000000000952",
+    maneuver_id: "00000000-0000-4000-8000-000000000962",
+    vessel_name: "NAVIO ANTIGO",
+    ingestion_id: 1,
+  };
+  const eventFetcher = vi
+    .fn()
+    .mockResolvedValueOnce({
+      events: [recent],
+      oldest_cursor: 51,
+      newest_cursor: 51,
+      has_more_before: true,
+    })
+    .mockResolvedValueOnce({
+      events: [older],
+      oldest_cursor: 1,
+      newest_cursor: 1,
+      has_more_before: false,
+    });
+
+  renderRoute(route, vi.fn(), eventFetcher);
+
+  expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
+  const loadMore = await screen.findByRole("button", { name: "Carregar mais" });
+  fireEvent.click(loadMore);
+
+  expect(await screen.findByText("NAVIO ANTIGO")).toBeInTheDocument();
+  expect(eventFetcher).toHaveBeenNthCalledWith(
+    2,
+    { before: 51, limit: 50 },
+    expect.any(AbortSignal),
+  );
+  expect(
+    screen.queryByRole("button", { name: "Carregar mais" }),
+  ).not.toBeInTheDocument();
+});
+
+
 test("alerts_and_history_use_distinct_views", async () => {
   const { unmount } = renderRoute("/alertas");
   expect(await screen.findByRole("heading", { name: "Alertas" })).toBeInTheDocument();

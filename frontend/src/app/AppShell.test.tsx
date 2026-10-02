@@ -95,11 +95,20 @@ test("drawer_has_expected_destinations_and_escape_returns_focus", async () => {
   const menu = screen.getByRole("button", { name: "Abrir menu" });
   fireEvent.click(menu);
 
-  for (const label of ["Mapa", "Alertas", "Histórico", "Config.", "Instalar aplicativo", "Sobre"]) {
+  for (const label of [
+    "Mapa",
+    "Alertas",
+    "Histórico",
+    "Acompanhados",
+    "Configurações",
+    "Instalar aplicativo",
+    "Sobre",
+  ]) {
     expect(screen.getByText(label, { exact: true })).toBeInTheDocument();
   }
 
   const drawer = screen.getByRole("dialog", { name: "Menu principal" });
+  expect(drawer.querySelectorAll(".drawer__item-icon")).toHaveLength(7);
   fireEvent.keyDown(document, { key: "Escape" });
 
   expect(drawer).toHaveClass("is-closing");
