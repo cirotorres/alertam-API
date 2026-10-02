@@ -307,7 +307,8 @@ A janela existente continua focada em conexão:
 
 - QR Code;
 - código temporário de 6 dígitos para conexão à distância;
-- indicação **Válido por 5 minutos**;
+- contagem regressiva baseada no `expires_at` real, exibida como **Expira em MM:SS**;
+- ao zerar, o código passa para **Expirado** e deixa claro que é necessário gerar outro;
 - ação **Gerar novo código**, sem revogar aparelhos ou alterar o QR;
 - link/copiar;
 - estado do acesso;
@@ -687,7 +688,8 @@ Cobertura mínima:
 - chamadas de rede não bloqueiam Tk;
 - mensagens da thread de serviço chegam via fila da UI;
 - janela Conectar Celular mostra código temporário agrupado como `483 721`;
-- janela informa validade de 5 minutos;
+- janela mostra contagem regressiva `MM:SS` até a expiração real do código;
+- ao expirar, a UI mostra **Expirado** sem renovação automática;
 - **Gerar novo código** não revoga aparelhos nem altera o QR;
 - geração do código ocorre fora da Tk main thread.
 
