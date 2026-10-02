@@ -19,7 +19,7 @@ from app.repositories.devices import (
     MobileInstallationSwitchConflictError,
     PersistenceUnavailableError,
 )
-from app.security.credentials import verify_secret
+from app.security.credentials import hash_secret, verify_secret
 from app.services.mobile_installation_service import (
     MobileInstallationService,
     generate_display_code,
@@ -65,8 +65,18 @@ class MobileSessionService:
         view_secret: str,
         *,
         platform: str | None = None,
+        credential_kind: str = "view",
     ) -> tuple[str, MobileSessionPrincipal]:
-        auth = self._require_view_auth(device_id, view_secret)
+        auth = self._require_pairing_auth(
+            device_id,
+            view_secret,
+            credential_kind=credential_kind,
+            purpose=(
+                str(installation_id)
+                if credential_kind == "ticket"
+                else None
+            ),
+        )
 
         try:
             installation = self._installations.ensure(
@@ -99,8 +109,14 @@ class MobileSessionService:
         self,
         device_id: str,
         view_secret: str,
+        *,
+        credential_kind: str = "view",
     ) -> None:
-        self._require_view_auth(device_id, view_secret)
+        self._require_pairing_auth(
+            device_id,
+            view_secret,
+            credential_kind=credential_kind,
+        )
 
     def resolve_session(
         self,
@@ -134,11 +150,18 @@ class MobileSessionService:
         target_view_secret: str,
         platform: str,
         switch_id: UUID,
+        target_credential_kind: str = "view",
     ) -> tuple[str, MobileSessionPrincipal]:
         source = self._resolve_signed_identity(token)
-        target_auth = self._require_view_auth(
+        target_auth = self._require_pairing_auth(
             target_device_id,
             target_view_secret,
+            credential_kind=target_credential_kind,
+            purpose=(
+                str(switch_id)
+                if target_credential_kind == "ticket"
+                else None
+            ),
         )
         normalized_platform = normalize_mobile_platform(platform)
 
@@ -247,6 +270,44 @@ class MobileSessionService:
             device_id=device_id,
             installation_id=installation_id,
         )
+
+    def _require_pairing_auth(
+        self,
+        device_id: str,
+        secret: str,
+        *,
+        credential_kind: str,
+        purpose: str | None = None,
+    ) -> DeviceAuthRecord:
+        if credential_kind == "view":
+            return self._require_view_auth(device_id, secret)
+        if credential_kind != "ticket":
+            raise InvalidViewCredentialsError()
+
+        try:
+            if purpose is None:
+                valid = self._repository.validate_mobile_pairing_ticket(
+                    device_id,
+                    hash_secret(secret),
+                    now=self._clock(),
+                )
+            else:
+                valid = self._repository.consume_mobile_pairing_ticket(
+                    device_id,
+                    hash_secret(secret),
+                    purpose,
+                    now=self._clock(),
+                )
+        except PersistenceUnavailableError as exc:
+            raise PersistenceUnavailableApiError() from exc
+
+        if not valid:
+            raise InvalidViewCredentialsError()
+
+        auth = self._get_auth(device_id)
+        if auth is None or auth.view_secret_hash is None:
+            raise InvalidViewCredentialsError()
+        return auth
 
     def _require_view_auth(
         self,

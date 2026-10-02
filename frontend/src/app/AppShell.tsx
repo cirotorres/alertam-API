@@ -38,6 +38,7 @@ type AppShellProps = {
   sessionReady?: boolean;
   onPairingCleared?: () => void;
   onAccessRevoked?: () => void;
+  onPairingCandidate?: (pairing: Pairing) => void;
   basePath?: string;
   demoMode?: boolean;
   alertDetailFetcher?: AlertDetailFetcher;
@@ -70,6 +71,7 @@ export type ShellOutletContext = {
   setActiveBottomTab: (tab: BottomTab) => void;
   selectVessel: (vessel: VesselV1) => void;
   onPairingCleared: () => void;
+  onPairingCandidate: (pairing: Pairing) => void;
   basePath: string;
   demoMode: boolean;
 };
@@ -79,6 +81,7 @@ export function AppShell({
   sessionReady = false,
   onPairingCleared = noop,
   onAccessRevoked = noop,
+  onPairingCandidate = noop,
   basePath = "",
   demoMode = false,
   alertDetailFetcher,
@@ -282,6 +285,7 @@ export function AppShell({
     setActiveBottomTab,
     selectVessel,
     onPairingCleared,
+    onPairingCandidate,
     basePath,
     demoMode,
   };

@@ -47,6 +47,7 @@ import {
   type MobileSessionDraft,
   type MobileSessionInfo,
 } from "./mobileSessionClient";
+import { PairingConnectPanel } from "./PairingConnectPanel";
 
 type GateMode =
   | "idle"
@@ -55,7 +56,8 @@ type GateMode =
   | "invalid"
   | "confirm-switch"
   | "temporary-switch"
-  | "revoked";
+  | "revoked"
+  | "disconnected";
 
 type SessionCreator = (
   pairing: Pairing,
@@ -88,6 +90,7 @@ type PairingGateProps = {
     sessionReady: boolean,
     handleAccessRevoked: () => void,
     sessionInfo: MobileSessionInfo | null,
+    submitPairingCandidate: (pairing: Pairing) => void,
   ) => ReactNode;
 };
 
@@ -148,7 +151,7 @@ export function PairingGate({
     setSessionReady(false);
     setActive(null);
     setCandidate(null);
-    setMode("idle");
+    setMode("disconnected");
   }, [clearLocalIdentity, sessionClearer]);
 
   const handleAccessRevoked = useCallback(() => {
@@ -187,7 +190,16 @@ export function PairingGate({
       clearSessionRecoveryBlock();
       setSessionInfo(session);
       setSessionReady(true);
-      setActive(next);
+      setActive(
+        next.pairingTicket
+          ? {
+              deviceId: next.deviceId,
+              viewSecret: null,
+              pairingTicket: null,
+              pairedAt: next.pairedAt,
+            }
+          : next,
+      );
       setCandidate(null);
       setMode("idle");
     },
@@ -456,8 +468,25 @@ export function PairingGate({
     return (
       <PairingScreen
         title="Acesso revogado"
-        detail="Este aparelho não possui mais acesso ao AlertaM. Escaneie um novo QR Code para conectar novamente."
-      />
+        detail="Este aparelho não possui mais acesso ao AlertaM. Conecte novamente por QR Code ou código de conexão."
+      >
+        <PairingConnectPanel
+          onCandidate={(next) => void evaluateCandidate(next)}
+        />
+      </PairingScreen>
+    );
+  }
+
+  if (mode === "disconnected") {
+    return (
+      <PairingScreen
+        title="Aparelho desconectado"
+        detail="Este PWA continua instalado. Conecte-o a um AlertaM por QR Code ou código de conexão."
+      >
+        <PairingConnectPanel
+          onCandidate={(next) => void evaluateCandidate(next)}
+        />
+      </PairingScreen>
     );
   }
 
@@ -500,10 +529,11 @@ export function PairingGate({
             sessionReady,
             handleAccessRevoked,
             sessionInfo,
+            (next) => void evaluateCandidate(next),
           )}
           <PairingScreen
             title="Não foi possível confirmar o novo acesso"
-            detail="O AlertaM atual foi preservado. Tente validar o novo QR novamente."
+            detail="O AlertaM atual foi preservado. Tente validar o novo acesso novamente."
           >
             <button
               type="button"
@@ -549,6 +579,7 @@ export function PairingGate({
           sessionReady,
           handleAccessRevoked,
           sessionInfo,
+          (next) => void evaluateCandidate(next),
         )}
       </>
     );
@@ -559,10 +590,14 @@ export function PairingGate({
       title="Alerta de Movimentações Marítimas"
       detail={
         mode === "invalid"
-          ? "O acesso informado não é válido. Gere um novo QR Code em Conectar Celular."
-          : "Abra Conectar Celular no AlertaM Desktop e escaneie o QR Code."
+          ? "O acesso informado não é válido. Use um novo QR Code ou código de conexão."
+          : "Conecte este aparelho ao AlertaM Desktop."
       }
-    />
+    >
+      <PairingConnectPanel
+        onCandidate={(next) => void evaluateCandidate(next)}
+      />
+    </PairingScreen>
   );
 }
 

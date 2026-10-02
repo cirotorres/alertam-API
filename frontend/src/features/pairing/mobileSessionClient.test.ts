@@ -311,3 +311,72 @@ test("clear session only clears remote cookie best effort", async () => {
 
   expect(loadInstallationId()).toBe(INSTALLATION_ID);
 });
+
+
+test("temporary pairing ticket uses Pairing authorization for validation create and switch", async () => {
+  const ticket = "T".repeat(43);
+  const ticketPairing: Pairing = {
+    deviceId: "pecem-02",
+    viewSecret: null,
+    pairingTicket: ticket,
+    pairedAt: "2026-10-02T14:00:00-03:00",
+  };
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ device_id: "pecem-02" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify(
+          sessionBody({
+            device_id: "pecem-02",
+            platform: "ios",
+          }),
+        ),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    )
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify(
+          sessionBody({
+            device_id: "pecem-02",
+            platform: "ios",
+          }),
+        ),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+  vi.stubGlobal("fetch", fetchMock);
+
+  await validatePairingCandidate(ticketPairing);
+  await createMobileSession(ticketPairing, {
+    installationId: INSTALLATION_ID,
+    platform: "ios",
+  });
+  await switchMobileSession(ticketPairing, {
+    installationId: INSTALLATION_ID,
+    platform: "ios",
+    switchId: SWITCH_ID,
+  });
+
+  for (const call of fetchMock.mock.calls) {
+    expect(call[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: `Pairing ${ticket}`,
+        }),
+      }),
+    );
+  }
+});

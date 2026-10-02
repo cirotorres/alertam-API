@@ -1,9 +1,9 @@
 # SPEC 026 — Gestão de aparelhos mobile, revogação e troca segura de pareamento
 
-**Status:** Planos 1–3 implementados e validados localmente; migrations/deploy/smoke real pendentes
-**Data:** 2026-09-30  
-**Escopo:** AlertaM Desktop + API FastAPI/Supabase + PWA React/Vite  
-**Repositórios:** `/home/ciro/dev/prog/alertamaritimo` + `/home/ciro/dev/prog/alertamaritimoAPI`  
+**Status:** Implementação estendida concluída; migrations Supabase 016 aplicadas; deploy/smoke iOS real pendentes
+**Data:** 2026-10-02
+**Escopo:** AlertaM Desktop + API FastAPI/Supabase + PWA React/Vite
+**Repositórios:** `/home/ciro/dev/prog/alertamaritimo` + `/home/ciro/dev/prog/alertamaritimoAPI`
 **Dependências:** SPEC 019 + SPEC 020 + SPEC 021 + SPEC 023
 
 ## 1. Contexto
@@ -34,13 +34,15 @@ até o usuário usar manualmente **Esquecer este aparelho** e escanear novamente
 1. Permitir que o Desktop liste os aparelhos mobile associados ao próprio `device_id`.
 2. Permitir revogação individual, sem afetar os demais aparelhos.
 3. Identificar cada instalação por plataforma simples + código curto humano.
-4. Mostrar a mesma identificação na PWA em Config.
+4. Mostrar a mesma identificação na PWA em Configurações.
 5. Manter revogados visíveis no gerenciamento por 30 dias.
 6. Preservar a rotação global como ação de segurança: **Revogar todos e gerar novo QR**.
 7. Corrigir o fluxo de leitura de um segundo QR sem destruir antecipadamente o pareamento atual.
 8. Pedir confirmação explícita ao trocar entre dois `device_id` diferentes.
 9. Nunca reativar uma identidade de instalação que já foi revogada.
 10. Manter Push e Ship Tracking coerentes com a instalação efetivamente ativa.
+11. Permitir troca/reconexão diretamente dentro do PWA instalado, sem apagar/reinstalar o app.
+12. Oferecer QR interno e código temporário de 6 dígitos como meios equivalentes de iniciar o pareamento.
 
 ## 3. Não objetivos
 
@@ -51,7 +53,7 @@ Esta SPEC não deve:
 - criar nomes amigáveis editáveis para aparelhos;
 - revogar automaticamente aparelhos por tempo de inatividade;
 - migrar acompanhamentos de navios entre Desktops;
-- tornar o código curto um segredo ou mecanismo de autenticação;
+- tornar o `display_code` permanente do aparelho (`K7M4Q2`) um segredo ou mecanismo de autenticação;
 - permitir que a PWA liste outros aparelhos conectados;
 - apagar imediatamente do banco todo registro revogado;
 - criar uma segunda identidade de aparelho concorrente ao `installation_id`;
@@ -100,6 +102,29 @@ O atual **Gerar novo acesso** passa a ser apresentado como:
 **Revogar todos e gerar novo QR**
 
 A confirmação deve informar quantos aparelhos ativos serão desconectados.
+
+### 4.6 Código temporário de conexão
+
+Além do QR Code, o Desktop oferece um código numérico temporário de 6 dígitos, exibido de forma
+humana como **483 721**.
+
+Esse código:
+
+- é válido por 5 minutos;
+- é de uso único para resgate;
+- possui somente uma versão ativa por Desktop;
+- é invalidado quando um novo código é gerado;
+- é invalidado quando o `VIEW_SECRET` é rotacionado;
+- é persistido somente como hash;
+- possui proteção contra tentativas inválidas excessivas;
+- nunca é armazenado como credencial permanente na PWA.
+
+Ao ser resgatado, o servidor devolve um ticket temporário de pareamento. A PWA usa esse ticket
+somente para validar e concluir a criação/troca de sessão; depois disso, permanece autenticada pelo
+cookie HttpOnly normal.
+
+O código temporário não se confunde com `mobile_installations.display_code`. O primeiro conecta;
+o segundo apenas identifica humanamente um aparelho já cadastrado.
 
 ## 5. Identidade e modelo de dados
 
@@ -254,6 +279,26 @@ Revogar significa, numa única operação lógica:
 - desativar/limpar a `push_installation` correspondente;
 - impedir resolução futura da sessão daquela instalação.
 
+### 8.3 Código temporário de conexão
+
+O Desktop autenticado gera o código em:
+
+```text
+POST /api/v1/devices/{device_id}/pairing-code
+Authorization: Device <DEVICE_SECRET>
+```
+
+O celular resgata o código em:
+
+```text
+POST /api/v1/mobile/pairing/code
+body: { "code": "483721" }
+```
+
+O resgate devolve `device_id`, ticket temporário e expiração. Validar o ticket não cria instalação nem troca sessão. O ticket é consumido de forma idempotente somente para a criação/troca autorizada correspondente.
+
+A migration `016_mobile_pairing_codes.sql` mantém um código ativo por Desktop, janelas de tentativas inválidas e invalidação atômica quando `rotate_device_view_secret()` é executado.
+
 ## 9. Gestão no AlertaM Desktop
 
 ### 9.1 Janela Conectar Celular permanece limpa
@@ -261,6 +306,9 @@ Revogar significa, numa única operação lógica:
 A janela existente continua focada em conexão:
 
 - QR Code;
+- código temporário de 6 dígitos para conexão à distância;
+- indicação **Válido por 5 minutos**;
+- ação **Gerar novo código**, sem revogar aparelhos ou alterar o QR;
 - link/copiar;
 - estado do acesso;
 - contador **Aparelhos conectados: N**;
@@ -314,9 +362,9 @@ Listagem e revogação devem seguir o padrão assíncrono existente do Desktop.
 
 A Tk main thread recebe apenas mensagens/resultados já produzidos pelo serviço de infraestrutura.
 
-## 10. PWA Config.
+## 10. PWA Configurações
 
-A página Config. deve separar claramente a identidade do telefone da identidade do Desktop.
+A página Configurações deve separar claramente a identidade do telefone da identidade do Desktop e oferecer **Trocar AlertaM** sem exigir exclusão/reinstalação do PWA.
 
 Exemplo:
 
@@ -337,6 +385,13 @@ campos existentes e acrescentando `display_code` e `platform`. Assim a própria 
 Esses metadados podem ser persistidos localmente para permitir exibição consistente mesmo durante
 indisponibilidade temporária da API.
 
+**Trocar AlertaM** abre uma sheet com duas opções:
+
+- **Ler QR Code** — câmera traseira dentro do PWA, com scanner carregado sob demanda;
+- **Usar código de conexão** — entrada numérica de 6 dígitos.
+
+Ambos os meios produzem o mesmo estado candidato e seguem a mesma confirmação segura antes de trocar de Desktop.
+
 ## 11. Validação de um novo QR sem efeitos colaterais
 
 Ler um QR não deve criar instalação, trocar cookie ou revogar o pareamento atual antes da
@@ -347,6 +402,8 @@ Criar endpoint conceitual:
 ```text
 POST /api/v1/mobile/pairing/validate
 Authorization: Bearer <VIEW_SECRET>
+# ou, para código curto resgatado:
+Authorization: Pairing <TICKET_TEMPORARIO>
 body: { "device_id": "..." }
 ```
 
@@ -412,6 +469,8 @@ Criar contrato dedicado, conceitualmente:
 POST /api/v1/mobile/session/switch
 Cookie: sessão atual A
 Authorization: Bearer <VIEW_SECRET de B>
+# ou
+Authorization: Pairing <TICKET_TEMPORARIO de B>
 ```
 
 Body inclui:
@@ -493,7 +552,7 @@ A PWA deve limpar o estado local que não pode mais ser reutilizado e mostrar:
 Acesso revogado
 
 Este aparelho não possui mais acesso ao AlertaM.
-Escaneie um novo QR Code para conectar novamente.
+Conecte novamente por QR Code ou código de conexão.
 ```
 
 Ao novo pareamento, gerar novo `installation_id`; nunca reaproveitar o revogado.
@@ -531,6 +590,10 @@ Princípios obrigatórios:
 10. `VIEW_SECRET` não deve aparecer em logs.
 11. `switch_id` deve ser imprevisível e não reutilizável com payload divergente.
 12. Cookies mobile permanecem HttpOnly, Secure em produção e SameSite conforme contrato atual.
+13. `display_code` do aparelho e código temporário de conexão são entidades distintas.
+14. O código temporário é armazenado apenas como hash, expira em 5 minutos e é resgatável uma única vez.
+15. O ticket de pareamento também é temporário e não é persistido pela PWA após a sessão ser estabelecida.
+16. Gerar um novo código invalida o anterior; rotacionar o `VIEW_SECRET` invalida qualquer código/ticket pendente.
 ## 20. Compatibilidade e rollout
 
 A evolução deve ser implantada de forma compatível.
@@ -574,7 +637,13 @@ Cobertura mínima unitária/integração:
 - `switch_id` repetido com mesmo payload reconcilia;
 - `switch_id` repetido com payload diferente rejeita;
 - falha transacional não deixa A revogado sem B válido;
-- sessão de instalação revogada é rejeitada.
+- sessão de instalação revogada é rejeitada;
+- código de conexão tem exatamente 6 dígitos e expira em 5 minutos;
+- novo código invalida o anterior;
+- resgate é único e produz ticket temporário;
+- tentativas inválidas excessivas recebem rate limit;
+- rotação global invalida código/ticket temporário pendente;
+- ticket permite retry idempotente da mesma criação/troca e rejeita propósito divergente.
 
 ## 22. Testes PWA
 
@@ -594,7 +663,12 @@ Cobertura mínima:
 - novo pareamento após revogação gera novo UUID;
 - Push é reaplicado após troca quando possível;
 - falha de Push não desfaz a troca;
-- heartbeat não interfere no polling principal.
+- heartbeat não interfere no polling principal;
+- Configurações oferece **Trocar AlertaM** por QR interno ou código de 6 dígitos;
+- scanner usa câmera traseira e é carregado sob demanda;
+- código digitado entra no mesmo fluxo candidato/confirm-switch do QR;
+- **Esquecer este aparelho** leva a uma tela de reconexão com QR + código;
+- acesso revogado também oferece QR + código sem exigir reinstalação do PWA.
 
 ## 23. Testes Desktop
 
@@ -611,7 +685,11 @@ Cobertura mínima:
 - botão global usa texto **Revogar todos e gerar novo QR**;
 - confirmação global informa quantidade de ativos;
 - chamadas de rede não bloqueiam Tk;
-- mensagens da thread de serviço chegam via fila da UI.
+- mensagens da thread de serviço chegam via fila da UI;
+- janela Conectar Celular mostra código temporário agrupado como `483 721`;
+- janela informa validade de 5 minutos;
+- **Gerar novo código** não revoga aparelhos nem altera o QR;
+- geração do código ocorre fora da Tk main thread.
 
 Os testes Tk reais/Xephyr continuam sendo gate para mudanças visuais do Desktop.
 
@@ -626,9 +704,14 @@ Antes de declarar produção validada:
 5. re-parear o revogado e confirmar novo código;
 6. PWA em A lê QR de B e cancela → continua A;
 7. PWA em A lê QR de B e confirma → passa a B;
-8. simular/reproduzir falha de rede durante validação/troca quando viável;
-9. usar revogação global e confirmar que todos perdem acesso;
-10. escanear novo QR e confirmar recuperação normal.
+8. em Configurações, usar **Trocar AlertaM** com QR interno e confirmar o fluxo A→B;
+9. repetir a troca usando o código de 6 dígitos e confirmar o mesmo fluxo de segurança;
+10. confirmar que código expirado (>5 min) e código substituído por outro são rejeitados;
+11. usar **Esquecer este aparelho** e reconectar pelo próprio PWA sem apagar/reinstalar;
+12. revogar o aparelho pelo Desktop e reconectar pela tela **Acesso revogado** usando QR/código;
+13. simular/reproduzir falha de rede durante validação/troca quando viável;
+14. usar revogação global e confirmar que todos perdem acesso;
+15. escanear novo QR e confirmar recuperação normal.
 
 Android não bloqueia conclusão se não houver aparelho disponível no momento, desde que a
 classificação e os testes automatizados estejam cobertos. O smoke iOS real permanece obrigatório,
@@ -639,7 +722,10 @@ pois foi onde o problema original foi observado.
 A SPEC está funcionalmente concluída quando:
 
 - Desktop identifica instalações ativas por plataforma + código;
-- PWA mostra a mesma identificação em Config.;
+- PWA mostra a mesma identificação em Configurações;
+- PWA instalado troca de Desktop por QR interno ou código temporário sem reinstalação;
+- **Esquecer este aparelho** e **Acesso revogado** oferecem reconexão por QR + código;
+- código temporário possui 6 dígitos, 5 minutos de validade e uso único de resgate;
 - revogação individual afeta somente a instalação escolhida;
 - revogados aparecem por 30 dias;
 - não há revogação automática por inatividade;

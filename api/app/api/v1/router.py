@@ -12,6 +12,7 @@ from app.api.v1.mobile_event_details import create_mobile_event_details_router
 from app.api.v1.mobile_events import create_mobile_events_router
 from app.api.v1.mobile_installations import create_mobile_installations_router
 from app.api.v1.mobile_pairing import create_mobile_pairing_router
+from app.api.v1.mobile_pairing_codes import create_mobile_pairing_code_router
 from app.api.v1.mobile_session import create_mobile_session_router
 from app.api.v1.push import create_push_router
 from app.api.v1.snapshots import create_snapshot_router
@@ -82,6 +83,12 @@ def create_v1_router(
     )
     router.include_router(
         create_mobile_pairing_router(
+            repository,
+            clock=clock,
+        )
+    )
+    router.include_router(
+        create_mobile_pairing_code_router(
             repository,
             clock=clock,
         )

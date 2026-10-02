@@ -1,5 +1,9 @@
+import { useState } from "react";
+
 import pkg from "../../package.json";
 import { useShellContext } from "../app/AppShell";
+import { BottomSheetFrame } from "../components/BottomSheetFrame";
+import { PairingConnectPanel } from "../features/pairing/PairingConnectPanel";
 import type { DevicePlatform } from "../features/pairing/devicePlatform";
 import { usePush } from "../features/push/PushProvider";
 
@@ -42,13 +46,15 @@ export function ConfigPage() {
     installation,
     snapshotState,
     onPairingCleared,
+    onPairingCandidate,
     demoMode,
   } = useShellContext();
   const push = usePush();
+  const [switchOpen, setSwitchOpen] = useState(false);
 
   const forget = async () => {
     if (!window.confirm(
-      "Esquecer este aparelho? Será necessário escanear um novo QR Code.",
+      "Esquecer este aparelho? Será necessário conectar novamente por QR Code ou código de conexão.",
     )) {
       return;
     }
@@ -70,7 +76,7 @@ export function ConfigPage() {
 
   return (
     <section className="page-stack">
-      <h1>Config.</h1>
+      <h1>Configurações</h1>
       {demoMode ? (
         <p className="demo-note">
           Configuração ilustrativa: nenhum pareamento real é alterado neste modo.
@@ -82,7 +88,7 @@ export function ConfigPage() {
           <dd>{installationLabel}</dd>
         </div>
         <div>
-          <dt>Identificação do AlertaM</dt>
+          <dt>AlertaM conectado</dt>
           <dd>{pairing.deviceId}</dd>
         </div>
         <div>
@@ -95,6 +101,21 @@ export function ConfigPage() {
           <dd>Disponibilidade detectada pelo dispositivo</dd>
         </div>
       </dl>
+      {!demoMode ? (
+        <section className="pairing-switch-settings">
+          <h2>Conexão</h2>
+          <p>
+            Troque o AlertaM deste PWA sem apagar ou reinstalar o aplicativo.
+          </p>
+          <button
+            className="settings-action"
+            type="button"
+            onClick={() => setSwitchOpen(true)}
+          >
+            Trocar AlertaM
+          </button>
+        </section>
+      ) : null}
       {!demoMode ? (
         <section
           className="push-settings"
@@ -160,6 +181,27 @@ export function ConfigPage() {
         >
           Esquecer este aparelho
         </button>
+      ) : null}
+      {switchOpen ? (
+        <BottomSheetFrame
+          open
+          onClose={() => setSwitchOpen(false)}
+          ariaLabel="Trocar AlertaM"
+          closeLabel="Fechar troca de AlertaM"
+        >
+          <div className="pairing-switch-sheet">
+            <h2>Trocar AlertaM</h2>
+            <p>
+              Leia o QR Code do novo Desktop ou use o código de 6 dígitos.
+            </p>
+            <PairingConnectPanel
+              onCandidate={(candidate) => {
+                setSwitchOpen(false);
+                onPairingCandidate(candidate);
+              }}
+            />
+          </div>
+        </BottomSheetFrame>
       ) : null}
     </section>
   );

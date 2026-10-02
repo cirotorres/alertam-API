@@ -16,6 +16,9 @@ from app.repositories.devices import (
     MobileInstallationDisplayCodeConflictError,
     MobileInstallationRecord,
     MobileInstallationSwitchConflictError,
+    MobilePairingCodeConflictError,
+    MobilePairingCodeRedeemResult,
+    MobilePairingCodeRedeemStatus,
     SnapshotCandidate,
     StoredSnapshot,
 )
@@ -66,6 +69,8 @@ class MemoryDeviceRepository:
         self._mobile_session_switches: dict[
             UUID, tuple[str, UUID, str, UUID, str]
         ] = {}
+        self._mobile_pairing_codes: dict[str, dict[str, object]] = {}
+        self._mobile_pairing_failures: dict[datetime, int] = {}
         self._tracked_vessels: dict[UUID, TrackedVesselRecord] = {}
         self._push_installations: dict[object, PushInstallation] = {}
         self._push_deliveries: dict[tuple[str, object], PushDelivery] = {}
@@ -336,6 +341,111 @@ class MemoryDeviceRepository:
 
     def put_snapshot(self, snapshot: StoredSnapshot) -> None:
         self._snapshots[snapshot.device_id] = snapshot
+
+    def replace_mobile_pairing_code(
+        self,
+        device_id: str,
+        code_hash: str,
+        *,
+        expires_at: datetime,
+    ) -> bool:
+        with self._lock:
+            if device_id not in self._devices:
+                return False
+            if any(
+                item.get("code_hash") == code_hash and other_id != device_id
+                for other_id, item in self._mobile_pairing_codes.items()
+            ):
+                raise MobilePairingCodeConflictError()
+            self._mobile_pairing_codes[device_id] = {
+                "code_hash": code_hash,
+                "expires_at": expires_at,
+                "redeemed_at": None,
+                "ticket_hash": None,
+                "ticket_expires_at": None,
+                "consumed_at": None,
+                "consumed_for": None,
+            }
+            return True
+
+    def redeem_mobile_pairing_code(
+        self,
+        code_hash: str,
+        ticket_hash: str,
+        *,
+        ticket_expires_at: datetime,
+        now: datetime,
+    ) -> MobilePairingCodeRedeemResult:
+        with self._lock:
+            window = now.replace(second=0, microsecond=0)
+            failures = self._mobile_pairing_failures.get(window, 0)
+            if failures >= 30:
+                return MobilePairingCodeRedeemResult(
+                    MobilePairingCodeRedeemStatus.RATE_LIMITED
+                )
+
+            for device_id, item in self._mobile_pairing_codes.items():
+                if (
+                    item.get("code_hash") == code_hash
+                    and item.get("redeemed_at") is None
+                    and isinstance(item.get("expires_at"), datetime)
+                    and item["expires_at"] > now
+                ):
+                    item["redeemed_at"] = now
+                    item["ticket_hash"] = ticket_hash
+                    item["ticket_expires_at"] = ticket_expires_at
+                    return MobilePairingCodeRedeemResult(
+                        MobilePairingCodeRedeemStatus.OK,
+                        device_id=device_id,
+                        ticket_expires_at=ticket_expires_at,
+                    )
+
+            self._mobile_pairing_failures[window] = failures + 1
+            return MobilePairingCodeRedeemResult(
+                MobilePairingCodeRedeemStatus.INVALID
+            )
+
+    def validate_mobile_pairing_ticket(
+        self,
+        device_id: str,
+        ticket_hash: str,
+        *,
+        now: datetime,
+    ) -> bool:
+        with self._lock:
+            item = self._mobile_pairing_codes.get(device_id)
+            return bool(
+                item
+                and item.get("ticket_hash") == ticket_hash
+                and item.get("redeemed_at") is not None
+                and isinstance(item.get("ticket_expires_at"), datetime)
+                and item["ticket_expires_at"] > now
+            )
+
+    def consume_mobile_pairing_ticket(
+        self,
+        device_id: str,
+        ticket_hash: str,
+        purpose: str,
+        *,
+        now: datetime,
+    ) -> bool:
+        with self._lock:
+            item = self._mobile_pairing_codes.get(device_id)
+            if not (
+                item
+                and item.get("ticket_hash") == ticket_hash
+                and item.get("redeemed_at") is not None
+                and isinstance(item.get("ticket_expires_at"), datetime)
+                and item["ticket_expires_at"] > now
+            ):
+                return False
+            consumed_for = item.get("consumed_for")
+            if consumed_for is not None:
+                return consumed_for == purpose
+            item["consumed_at"] = now
+            item["consumed_for"] = purpose
+            return True
 
     def rotate_view_secret_hash(
         self,

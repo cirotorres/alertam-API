@@ -34,6 +34,7 @@ function AppContent() {
         sessionReady,
         handleAccessRevoked,
         sessionInfo,
+        submitPairingCandidate,
       ) => (
         <SnapshotProvider
           key={sessionInfo?.installationId ?? `pending:${pairing.deviceId}`}
@@ -58,6 +59,7 @@ function AppContent() {
                   sessionReady={sessionReady}
                   onPairingCleared={resetPairing}
                   onAccessRevoked={handleAccessRevoked}
+                  onPairingCandidate={submitPairingCandidate}
                 />
               </PushProvider>
             </TrackingProvider>

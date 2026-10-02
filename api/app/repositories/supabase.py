@@ -15,6 +15,9 @@ from app.repositories.devices import (
     MobileInstallationDisplayCodeConflictError,
     MobileInstallationRecord,
     MobileInstallationSwitchConflictError,
+    MobilePairingCodeConflictError,
+    MobilePairingCodeRedeemResult,
+    MobilePairingCodeRedeemStatus,
     PersistenceUnavailableError,
     SnapshotCandidate,
     StoredSnapshot,
@@ -407,6 +410,145 @@ class SupabaseDeviceRepository:
                 generated_at=generated_at,
                 received_at=received_at,
             )
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def replace_mobile_pairing_code(
+        self,
+        device_id: str,
+        code_hash: str,
+        *,
+        expires_at: datetime,
+    ) -> bool:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/replace_mobile_pairing_code",
+                headers=self._headers(),
+                json={
+                    "p_device_id": device_id,
+                    "p_code_hash": code_hash,
+                    "p_expires_at": expires_at.isoformat(),
+                },
+            )
+            if response.status_code == 409:
+                raise MobilePairingCodeConflictError()
+            response.raise_for_status()
+            row = self._extract_row(response.json())
+            updated = row["updated"]
+            if not isinstance(updated, bool):
+                raise TypeError("Resultado de código mobile inválido.")
+            return updated
+        except MobilePairingCodeConflictError:
+            raise
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def redeem_mobile_pairing_code(
+        self,
+        code_hash: str,
+        ticket_hash: str,
+        *,
+        ticket_expires_at: datetime,
+        now: datetime,
+    ) -> MobilePairingCodeRedeemResult:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/redeem_mobile_pairing_code",
+                headers=self._headers(),
+                json={
+                    "p_code_hash": code_hash,
+                    "p_ticket_hash": ticket_hash,
+                    "p_ticket_expires_at": ticket_expires_at.isoformat(),
+                    "p_now": now.isoformat(),
+                },
+            )
+            response.raise_for_status()
+            row = self._extract_row(response.json())
+            status = MobilePairingCodeRedeemStatus(str(row["status"]))
+            expires_at = self._parse_datetime(row.get("ticket_expires_at"))
+            return MobilePairingCodeRedeemResult(
+                status=status,
+                device_id=(
+                    None
+                    if row.get("device_id") is None
+                    else str(row["device_id"])
+                ),
+                ticket_expires_at=expires_at,
+            )
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def validate_mobile_pairing_ticket(
+        self,
+        device_id: str,
+        ticket_hash: str,
+        *,
+        now: datetime,
+    ) -> bool:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/validate_mobile_pairing_ticket",
+                headers=self._headers(),
+                json={
+                    "p_device_id": device_id,
+                    "p_ticket_hash": ticket_hash,
+                    "p_now": now.isoformat(),
+                },
+            )
+            response.raise_for_status()
+            row = self._extract_row(response.json())
+            valid = row["valid"]
+            if not isinstance(valid, bool):
+                raise TypeError("Resultado de ticket mobile inválido.")
+            return valid
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def consume_mobile_pairing_ticket(
+        self,
+        device_id: str,
+        ticket_hash: str,
+        purpose: str,
+        *,
+        now: datetime,
+    ) -> bool:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/consume_mobile_pairing_ticket",
+                headers=self._headers(),
+                json={
+                    "p_device_id": device_id,
+                    "p_ticket_hash": ticket_hash,
+                    "p_purpose": purpose,
+                    "p_now": now.isoformat(),
+                },
+            )
+            response.raise_for_status()
+            row = self._extract_row(response.json())
+            valid = row["valid"]
+            if not isinstance(valid, bool):
+                raise TypeError("Resultado de consumo mobile inválido.")
+            return valid
         except (
             httpx.HTTPError,
             KeyError,

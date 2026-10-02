@@ -18,6 +18,9 @@ from app.repositories.devices import (
     MobileInstallationDisplayCodeConflictError,
     MobileInstallationRecord,
     MobileInstallationSwitchConflictError,
+    MobilePairingCodeConflictError,
+    MobilePairingCodeRedeemResult,
+    MobilePairingCodeRedeemStatus,
     PersistenceUnavailableError,
     SnapshotCandidate,
     StoredSnapshot,
@@ -353,6 +356,125 @@ class PostgresDeviceRepository:
             )
         except (TypeError, ValueError) as exc:
             raise PersistenceUnavailableError() from exc
+
+    def replace_mobile_pairing_code(
+        self,
+        device_id: str,
+        code_hash: str,
+        *,
+        expires_at: datetime,
+    ) -> bool:
+        try:
+            with psycopg.connect(
+                self._database_url,
+                autocommit=True,
+            ) as conn:
+                row = conn.execute(
+                    """
+                    select updated
+                    from public.replace_mobile_pairing_code(%s, %s, %s)
+                    """,
+                    (device_id, code_hash, expires_at),
+                ).fetchone()
+        except UniqueViolation as exc:
+            raise MobilePairingCodeConflictError() from exc
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        if row is None or not isinstance(row[0], bool):
+            raise PersistenceUnavailableError()
+        return row[0]
+
+    def redeem_mobile_pairing_code(
+        self,
+        code_hash: str,
+        ticket_hash: str,
+        *,
+        ticket_expires_at: datetime,
+        now: datetime,
+    ) -> MobilePairingCodeRedeemResult:
+        try:
+            with psycopg.connect(
+                self._database_url,
+                autocommit=True,
+            ) as conn:
+                row = conn.execute(
+                    """
+                    select status, device_id, ticket_expires_at
+                    from public.redeem_mobile_pairing_code(%s, %s, %s, %s)
+                    """,
+                    (code_hash, ticket_hash, ticket_expires_at, now),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        if row is None:
+            raise PersistenceUnavailableError()
+        try:
+            status = MobilePairingCodeRedeemStatus(str(row[0]))
+            expires = (
+                None
+                if row[2] is None
+                else self._aware_datetime(row[2])
+            )
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+        return MobilePairingCodeRedeemResult(
+            status=status,
+            device_id=None if row[1] is None else str(row[1]),
+            ticket_expires_at=expires,
+        )
+
+    def validate_mobile_pairing_ticket(
+        self,
+        device_id: str,
+        ticket_hash: str,
+        *,
+        now: datetime,
+    ) -> bool:
+        try:
+            with psycopg.connect(
+                self._database_url,
+                autocommit=True,
+            ) as conn:
+                row = conn.execute(
+                    """
+                    select valid
+                    from public.validate_mobile_pairing_ticket(%s, %s, %s)
+                    """,
+                    (device_id, ticket_hash, now),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        if row is None or not isinstance(row[0], bool):
+            raise PersistenceUnavailableError()
+        return row[0]
+
+    def consume_mobile_pairing_ticket(
+        self,
+        device_id: str,
+        ticket_hash: str,
+        purpose: str,
+        *,
+        now: datetime,
+    ) -> bool:
+        try:
+            with psycopg.connect(
+                self._database_url,
+                autocommit=True,
+            ) as conn:
+                row = conn.execute(
+                    """
+                    select valid
+                    from public.consume_mobile_pairing_ticket(
+                        %s, %s, %s, %s
+                    )
+                    """,
+                    (device_id, ticket_hash, purpose, now),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        if row is None or not isinstance(row[0], bool):
+            raise PersistenceUnavailableError()
+        return row[0]
 
     def rotate_view_secret_hash(
         self,

@@ -15,6 +15,7 @@ const INSTALLATION_ID = "11111111-2222-4333-8444-555555555555";
 
 const mocked = vi.hoisted(() => ({
   reset: vi.fn(),
+  pairingCandidate: vi.fn(),
   disablePush: vi.fn().mockResolvedValue(undefined),
   context: {
     pairing: {
@@ -37,6 +38,7 @@ const mocked = vi.hoisted(() => ({
       },
     },
     onPairingCleared: vi.fn(),
+    onPairingCandidate: vi.fn(),
     basePath: "",
     demoMode: false,
   },
@@ -46,6 +48,7 @@ vi.mock("../app/AppShell", () => ({
   useShellContext: () => ({
     ...mocked.context,
     onPairingCleared: mocked.reset,
+    onPairingCandidate: mocked.pairingCandidate,
   }),
 }));
 
@@ -72,6 +75,7 @@ import { ConfigPage } from "./ConfigPage";
 beforeEach(() => {
   localStorage.clear();
   mocked.reset.mockClear();
+  mocked.pairingCandidate.mockClear();
   mocked.disablePush.mockClear();
   vi.restoreAllMocks();
 });
@@ -81,7 +85,7 @@ test("shows this device and connected AlertaM without exposing technical UUID", 
 
   expect(screen.getByText("Este aparelho")).toBeInTheDocument();
   expect(screen.getByText("iPhone/iPad · K7M4Q2")).toBeInTheDocument();
-  expect(screen.getByText("Identificação do AlertaM")).toBeInTheDocument();
+  expect(screen.getByText("AlertaM conectado")).toBeInTheDocument();
   expect(screen.getByText("pecem-55ee08ee")).toBeInTheDocument();
   expect(screen.queryByText(INSTALLATION_ID)).not.toBeInTheDocument();
   expect(screen.queryByText("Dispositivo")).not.toBeInTheDocument();
@@ -130,6 +134,58 @@ test("formats last synchronization in pt-BR instead of raw ISO", () => {
 test("labels connected desktop with the same AlertaM identifier", () => {
   render(<ConfigPage />);
 
-  expect(screen.getByText("Identificação do AlertaM")).toBeInTheDocument();
+  expect(screen.getByText("AlertaM conectado")).toBeInTheDocument();
   expect(screen.getByText("pecem-55ee08ee")).toBeInTheDocument();
+});
+
+
+test("switch sheet accepts six-digit code and forwards pairing candidate", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          device_id: "pecem-remoto",
+          pairing_ticket: "T".repeat(43),
+          expires_at: "2026-10-02T17:05:00Z",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    ),
+  );
+
+  render(<ConfigPage />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Trocar AlertaM" }),
+  );
+
+  expect(
+    screen.getByRole("dialog", { name: "Trocar AlertaM" }),
+  ).toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Usar código de conexão" }),
+  );
+  const input = screen.getByRole("textbox", { name: "Código de conexão" });
+  fireEvent.change(input, { target: { value: "483721" } });
+  expect(input).toHaveValue("483 721");
+
+  fireEvent.click(screen.getByRole("button", { name: "Conectar" }));
+
+  await waitFor(() => {
+    expect(mocked.pairingCandidate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deviceId: "pecem-remoto",
+        viewSecret: null,
+        pairingTicket: "T".repeat(43),
+      }),
+    );
+  });
+  expect(
+    screen.queryByRole("dialog", { name: "Trocar AlertaM" }),
+  ).not.toBeInTheDocument();
+
+  vi.unstubAllGlobals();
 });

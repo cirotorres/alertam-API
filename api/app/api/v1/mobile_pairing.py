@@ -8,7 +8,7 @@ from app.models.mobile_installation import (
     PairingValidationResponse,
 )
 from app.repositories.devices import DevicesRepository
-from app.security.credentials import parse_bearer_authorization
+from app.security.credentials import parse_mobile_pairing_authorization
 from app.services.mobile_session_service import MobileSessionService
 
 
@@ -31,8 +31,14 @@ def create_mobile_pairing_router(
             alias="Authorization",
         ),
     ) -> PairingValidationResponse:
-        view_secret = parse_bearer_authorization(authorization)
-        service.validate_pairing(request.device_id, view_secret)
+        credential_kind, secret = parse_mobile_pairing_authorization(
+            authorization
+        )
+        service.validate_pairing(
+            request.device_id,
+            secret,
+            credential_kind=credential_kind,
+        )
         return PairingValidationResponse(device_id=request.device_id)
 
     return router

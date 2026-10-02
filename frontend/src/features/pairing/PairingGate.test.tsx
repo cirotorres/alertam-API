@@ -27,6 +27,7 @@ import { PairingGate } from "./PairingGate";
 
 const TOKEN_A = "Abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE";
 const TOKEN_B = "Zyxwvutsrqponmlkjihgfedcba9876543210_-ABCDE";
+const TICKET_B = "PairingTicketForPecemB_abcdefghijklmnopqrstuvwxyz";
 const INSTALL_A = "11111111-2222-4333-8444-555555555555";
 const INSTALL_B = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 const SWITCH_ID = "99999999-8888-4777-8666-555555555555";
@@ -123,13 +124,31 @@ function renderGate(options: {
       sessionClearer={sessionClearer}
       freshIdFactory={options.freshIdFactory}
     >
-      {(pairing, reset, sessionReady, handleAccessRevoked) => (
+      {(
+        pairing,
+        reset,
+        sessionReady,
+        handleAccessRevoked,
+        _sessionInfo,
+        submitPairingCandidate,
+      ) => (
         <div>
           <span>
             APP {pairing.deviceId} {sessionReady ? "READY" : "WAIT"}
           </span>
           <button type="button" onClick={reset}>RESET</button>
           <button type="button" onClick={handleAccessRevoked}>REVOKED</button>
+          <button
+            type="button"
+            onClick={() => submitPairingCandidate({
+              deviceId: "pecem-b",
+              viewSecret: null,
+              pairingTicket: TICKET_B,
+              pairedAt: "2026-10-02T14:00:00-03:00",
+            })}
+          >
+            CODE-CANDIDATE
+          </button>
         </div>
       )}
     </PairingGate>,
@@ -174,6 +193,26 @@ test("invalid QR B preserves active A and clears fragment before validation", as
   expect(loadInstallationId()).toBe(INSTALL_A);
   expect(loadInstallationMetadata()?.displayCode).toBe("K7M4Q2");
 });
+
+test("candidate submitted inside installed PWA uses safe switch confirmation", async () => {
+  seedActiveA();
+  const switcher = vi.fn();
+
+  renderGate({ sessionSwitcher: switcher });
+
+  fireEvent.click(
+    await screen.findByRole("button", { name: "CODE-CANDIDATE" }),
+  );
+
+  expect(
+    await screen.findByRole("heading", { name: "Trocar de AlertaM?" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/Atual: pecem-a/)).toBeInTheDocument();
+  expect(screen.getByText(/Novo: pecem-b/)).toBeInTheDocument();
+  expect(switcher).not.toHaveBeenCalled();
+  expect(loadPairing()).toEqual(pairingA);
+});
+
 
 test("valid QR B asks confirmation before create or switch", async () => {
   seedActiveA();
@@ -425,8 +464,14 @@ test("manual reset clears pairing installation and metadata without recovery loo
 
   expect(
     await screen.findByRole("heading", {
-      name: "Alerta de Movimentações Marítimas",
+      name: "Aparelho desconectado",
     }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Ler QR Code" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Usar código de conexão" }),
   ).toBeInTheDocument();
   expect(clearer).toHaveBeenCalledTimes(1);
   expect(recoverer).not.toHaveBeenCalled();
@@ -447,7 +492,12 @@ test("access revoked clears local identity and shows explicit revoked state", as
   expect(
     await screen.findByRole("heading", { name: "Acesso revogado" }),
   ).toBeInTheDocument();
-  expect(screen.getByText(/Escaneie um novo QR Code/i)).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Ler QR Code" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Usar código de conexão" }),
+  ).toBeInTheDocument();
   expect(loadPairing()).toBeNull();
   expect(loadInstallationId()).toBeNull();
   expect(loadInstallationMetadata()).toBeNull();

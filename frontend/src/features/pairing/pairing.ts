@@ -1,6 +1,7 @@
 export type Pairing = {
   deviceId: string;
   viewSecret: string | null;
+  pairingTicket?: string | null;
   pairedAt: string;
 };
 

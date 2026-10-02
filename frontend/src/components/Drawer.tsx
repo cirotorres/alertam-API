@@ -1,4 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Bell,
+  Download,
+  Eye,
+  History as HistoryIcon,
+  Info,
+  Map as MapIcon,
+  Settings,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { InstallHelp } from "../features/install/InstallHelp";
@@ -11,82 +20,6 @@ type DrawerProps = {
   basePath?: string;
   demoMode?: boolean;
 };
-
-type DrawerIconKind =
-  | "map"
-  | "alerts"
-  | "history"
-  | "tracked"
-  | "settings"
-  | "install"
-  | "about";
-
-function DrawerIcon({ kind }: { kind: DrawerIconKind }) {
-  const content = (() => {
-    switch (kind) {
-      case "map":
-        return (
-          <>
-            <path d="M3.5 6.5 8.5 4l7 2.5 5-2.5v13.5l-5 2.5-7-2.5-5 2.5V6.5Z" />
-            <path d="M8.5 4v13.5M15.5 6.5V20" />
-          </>
-        );
-      case "alerts":
-        return (
-          <>
-            <path d="M18 8.5a6 6 0 0 0-12 0c0 5.8-2.5 6.5-2.5 6.5h17S18 14.3 18 8.5Z" />
-            <path d="M9.5 18a2.7 2.7 0 0 0 5 0" />
-          </>
-        );
-      case "history":
-        return (
-          <>
-            <path d="M4.2 8.5A8.2 8.2 0 1 1 4 15" />
-            <path d="M4.2 4.5v4h4M12 7.5V12l3 2" />
-          </>
-        );
-      case "tracked":
-        return (
-          <>
-            <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
-            <circle cx="12" cy="12" r="2.6" />
-          </>
-        );
-      case "settings":
-        return (
-          <>
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19 13.5v-3l-2-.7a7.5 7.5 0 0 0-.7-1.7l.9-1.9-2.1-2.1-1.9.9a7.5 7.5 0 0 0-1.7-.7L10.5 2h-3l-.7 2.3a7.5 7.5 0 0 0-1.7.7l-1.9-.9-2.1 2.1.9 1.9a7.5 7.5 0 0 0-.7 1.7L2 10.5v3l2 .7c.2.6.4 1.2.7 1.7l-.9 1.9 2.1 2.1 1.9-.9c.5.3 1.1.5 1.7.7l.7 2.3h3l.7-2.3c.6-.2 1.2-.4 1.7-.7l1.9.9 2.1-2.1-.9-1.9c.3-.5.5-1.1.7-1.7l1.6-.7Z" transform="translate(1.5 0) scale(.875)" />
-          </>
-        );
-      case "install":
-        return (
-          <>
-            <path d="M12 3v11M8 10l4 4 4-4" />
-            <path d="M5 18v2h14v-2" />
-          </>
-        );
-      case "about":
-        return (
-          <>
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 10.5V17M12 7h.01" />
-          </>
-        );
-    }
-  })();
-
-  return (
-    <svg
-      className="drawer__item-icon"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      {content}
-    </svg>
-  );
-}
-
 
 export function Drawer({
   open,
@@ -199,23 +132,23 @@ export function Drawer({
             </div>
             <nav aria-label="Navegação principal">
               <Link ref={firstLinkRef} to={routePath("")} onClick={onClose}>
-                <DrawerIcon kind="map" />
+                <MapIcon className="drawer__item-icon" aria-hidden="true" />
                 <span>Mapa</span>
               </Link>
               <Link to={routePath("/alertas")} onClick={onClose}>
-                <DrawerIcon kind="alerts" />
+                <Bell className="drawer__item-icon" aria-hidden="true" />
                 <span>Alertas</span>
               </Link>
               <Link to={routePath("/historico")} onClick={onClose}>
-                <DrawerIcon kind="history" />
+                <HistoryIcon className="drawer__item-icon" aria-hidden="true" />
                 <span>Histórico</span>
               </Link>
               <Link to={routePath("/acompanhados")} onClick={onClose}>
-                <DrawerIcon kind="tracked" />
+                <Eye className="drawer__item-icon" aria-hidden="true" />
                 <span>Acompanhados</span>
               </Link>
               <Link to={routePath("/config")} onClick={onClose}>
-                <DrawerIcon kind="settings" />
+                <Settings className="drawer__item-icon" aria-hidden="true" />
                 <span>Configurações</span>
               </Link>
             </nav>
@@ -225,13 +158,13 @@ export function Drawer({
               disabled={pwa.state === "installed"}
               onClick={() => void handleInstall()}
             >
-              <DrawerIcon kind="install" />
+              <Download className="drawer__item-icon" aria-hidden="true" />
               <span>
                 {pwa.state === "installed" ? "Aplicativo instalado" : "Instalar aplicativo"}
               </span>
             </button>
             <Link to={routePath("/sobre")} onClick={onClose}>
-              <DrawerIcon kind="about" />
+              <Info className="drawer__item-icon" aria-hidden="true" />
               <span>Sobre</span>
             </Link>
           </aside>

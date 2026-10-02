@@ -24,6 +24,23 @@ class MobileInstallationSwitchConflictError(Exception):
     pass
 
 
+class MobilePairingCodeConflictError(Exception):
+    pass
+
+
+class MobilePairingCodeRedeemStatus(StrEnum):
+    OK = "ok"
+    INVALID = "invalid"
+    RATE_LIMITED = "rate_limited"
+
+
+@dataclass(frozen=True)
+class MobilePairingCodeRedeemResult:
+    status: MobilePairingCodeRedeemStatus
+    device_id: str | None = None
+    ticket_expires_at: datetime | None = None
+
+
 @dataclass(frozen=True)
 class DeviceAuthRecord:
     device_id: str
@@ -132,6 +149,40 @@ class DevicesRepository(DeviceCreator, Protocol):
     ) -> MobileInstallationRecord | None: ...
 
     def get_snapshot(self, device_id: str) -> StoredSnapshot | None: ...
+
+    def replace_mobile_pairing_code(
+        self,
+        device_id: str,
+        code_hash: str,
+        *,
+        expires_at: datetime,
+    ) -> bool: ...
+
+    def redeem_mobile_pairing_code(
+        self,
+        code_hash: str,
+        ticket_hash: str,
+        *,
+        ticket_expires_at: datetime,
+        now: datetime,
+    ) -> MobilePairingCodeRedeemResult: ...
+
+    def validate_mobile_pairing_ticket(
+        self,
+        device_id: str,
+        ticket_hash: str,
+        *,
+        now: datetime,
+    ) -> bool: ...
+
+    def consume_mobile_pairing_ticket(
+        self,
+        device_id: str,
+        ticket_hash: str,
+        purpose: str,
+        *,
+        now: datetime,
+    ) -> bool: ...
 
     def rotate_view_secret_hash(
         self,

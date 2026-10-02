@@ -155,6 +155,24 @@ class MobileSessionSwitchConflictError(ApiError):
         )
 
 
+class InvalidMobilePairingCodeError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=401,
+            code="invalid_mobile_pairing_code",
+            message="Código de conexão inválido ou expirado.",
+        )
+
+
+class MobilePairingCodeRateLimitedError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=429,
+            code="mobile_pairing_code_rate_limited",
+            message="Muitas tentativas. Aguarde um minuto e tente novamente.",
+        )
+
+
 class VesselTrackingTargetNotFoundError(ApiError):
     def __init__(self) -> None:
         super().__init__(

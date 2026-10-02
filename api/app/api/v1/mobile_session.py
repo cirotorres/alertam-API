@@ -11,7 +11,7 @@ from app.models.mobile_session import (
     MobileSessionSwitchRequest,
 )
 from app.repositories.devices import DevicesRepository
-from app.security.credentials import parse_bearer_authorization
+from app.security.credentials import parse_mobile_pairing_authorization
 from app.services.mobile_session_service import (
     MobileSessionPrincipal,
     MobileSessionService,
@@ -52,12 +52,15 @@ def create_mobile_session_router(
             alias="Authorization",
         ),
     ) -> MobileSessionResponse:
-        view_secret = parse_bearer_authorization(authorization)
+        credential_kind, secret = parse_mobile_pairing_authorization(
+            authorization
+        )
         token, principal = service.create_session(
             request.device_id,
             request.installation_id,
-            view_secret,
+            secret,
             platform=request.platform,
+            credential_kind=credential_kind,
         )
         response.set_cookie(
             key=COOKIE_NAME,
@@ -94,14 +97,17 @@ def create_mobile_session_router(
             alias=COOKIE_NAME,
         ),
     ) -> MobileSessionResponse:
-        target_view_secret = parse_bearer_authorization(authorization)
+        credential_kind, secret = parse_mobile_pairing_authorization(
+            authorization
+        )
         token, principal = service.switch_session(
             mobile_session,
             target_device_id=request.device_id,
             target_installation_id=request.installation_id,
-            target_view_secret=target_view_secret,
+            target_view_secret=secret,
             platform=request.platform,
             switch_id=request.switch_id,
+            target_credential_kind=credential_kind,
         )
         response.set_cookie(
             key=COOKIE_NAME,

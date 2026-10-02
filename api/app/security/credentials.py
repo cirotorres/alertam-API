@@ -50,3 +50,19 @@ def parse_bearer_authorization(header: str | None) -> str:
         "Bearer",
         InvalidViewCredentialsError(),
     )
+
+
+def parse_mobile_pairing_authorization(
+    header: str | None,
+) -> tuple[str, str]:
+    if header is None:
+        raise InvalidViewCredentialsError()
+    parts = header.split()
+    if len(parts) != 2 or not parts[1].strip():
+        raise InvalidViewCredentialsError()
+    scheme = parts[0].casefold()
+    if scheme == "bearer":
+        return ("view", parts[1].strip())
+    if scheme == "pairing":
+        return ("ticket", parts[1].strip())
+    raise InvalidViewCredentialsError()

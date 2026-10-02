@@ -18,6 +18,7 @@ type AppRoutesProps = {
   sessionReady?: boolean;
   onPairingCleared?: () => void;
   onAccessRevoked?: () => void;
+  onPairingCandidate?: (pairing: Pairing) => void;
   basePath?: string;
   demoMode?: boolean;
   alertDetailFetcher?: AlertDetailFetcher;
@@ -29,6 +30,7 @@ export function AppRoutes({
   sessionReady = false,
   onPairingCleared,
   onAccessRevoked,
+  onPairingCandidate,
   basePath = "",
   demoMode = false,
   alertDetailFetcher,
@@ -46,6 +48,7 @@ export function AppRoutes({
             sessionReady={sessionReady}
             onPairingCleared={onPairingCleared}
             onAccessRevoked={onAccessRevoked}
+            onPairingCandidate={onPairingCandidate}
             basePath={basePath}
             demoMode={demoMode}
             alertDetailFetcher={alertDetailFetcher}

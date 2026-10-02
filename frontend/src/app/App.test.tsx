@@ -44,7 +44,12 @@ test("revoked_stored_pairing_shows_explicit_revoked_state", async () => {
     expect(
       screen.getByRole("heading", { name: "Acesso revogado" }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Escaneie um novo QR Code/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Ler QR Code" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Usar código de conexão" }),
+    ).toBeInTheDocument();
   });
   expect(loadPairing()).toBeNull();
   expect(isSessionRecoveryBlocked()).toBe(true);

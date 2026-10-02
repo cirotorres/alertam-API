@@ -37,6 +37,16 @@ type PairingValidationResponse = {
   device_id: string;
 };
 
+function pairingAuthorization(pairing: Pairing): string {
+  if (pairing.viewSecret) {
+    return `Bearer ${pairing.viewSecret}`;
+  }
+  if (pairing.pairingTicket) {
+    return `Pairing ${pairing.pairingTicket}`;
+  }
+  throw new AccessRevokedError();
+}
+
 function isDevicePlatform(value: unknown): value is DevicePlatform {
   return value === "ios" || value === "android" || value === "other";
 }
@@ -131,9 +141,7 @@ export async function createMobileSession(
     platform?: DevicePlatform;
   } = {},
 ): Promise<MobileSessionInfo> {
-  if (!pairing.viewSecret) {
-    throw new AccessRevokedError();
-  }
+  const authorization = pairingAuthorization(pairing);
 
   const installationId =
     options.installationId ?? createFreshInstallationId();
@@ -146,7 +154,7 @@ export async function createMobileSession(
       cache: "no-store",
       credentials: "same-origin",
       headers: {
-        Authorization: `Bearer ${pairing.viewSecret}`,
+        Authorization: authorization,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -216,9 +224,7 @@ export async function recoverMobileSession(): Promise<{
 export async function validatePairingCandidate(
   pairing: Pairing,
 ): Promise<{ deviceId: string }> {
-  if (!pairing.viewSecret) {
-    throw new AccessRevokedError();
-  }
+  const authorization = pairingAuthorization(pairing);
 
   let response: Response;
   try {
@@ -227,7 +233,7 @@ export async function validatePairingCandidate(
       cache: "no-store",
       credentials: "same-origin",
       headers: {
-        Authorization: `Bearer ${pairing.viewSecret}`,
+        Authorization: authorization,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ device_id: pairing.deviceId }),
@@ -264,9 +270,7 @@ export async function switchMobileSession(
   candidate: Pairing,
   draft: MobileSessionDraft,
 ): Promise<MobileSessionInfo> {
-  if (!candidate.viewSecret) {
-    throw new AccessRevokedError();
-  }
+  const authorization = pairingAuthorization(candidate);
 
   let response: Response;
   try {
@@ -275,7 +279,7 @@ export async function switchMobileSession(
       cache: "no-store",
       credentials: "same-origin",
       headers: {
-        Authorization: `Bearer ${candidate.viewSecret}`,
+        Authorization: authorization,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

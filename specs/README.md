@@ -8,7 +8,7 @@
 | 023 | [Ship Tracking](023-ship-tracking.md) | Planos 1–3 implementados; Tk/Xephyr validado; rollout externo pendente | Acompanhamento persistente por navio/instalação, VesselTrackingEvent, push seletivo, timeline unificada e tracking local no Desktop |
 | 024 | [Tempo operacional da manobra e refinamentos de UX](024-operational-maneuver-timing-ux-refinements.md) | SPEC aprovada; planos TDD preparados para revisão | Separa horário operacional de observação do AlertaM, persiste ATRAC real e corrige UX de tracking, sheets, scroll e footer |
 | 025 | [WebPilot HTTP, meteorologia observada e shadow de movimentações](025-webpilot-http-observed-weather-shadow-migration.md) | Aprovada para planejamento; implementação não iniciada | Separa autenticação/coleta WebPilot, adota meteorologia observada com fallback explícito, evolui MobileSnapshot v2 e prepara shadow HTTP com gate de equivalência sem cutover |
-| 026 | [Gestão de aparelhos mobile, revogação e troca segura de pareamento](026-mobile-installation-management-safe-pairing-switch.md) | Planos 1–3 concluídos localmente; migrations/deploy/smoke real pendentes | Lista/revoga instalações por Desktop, código curto por aparelho, histórico de 30 dias e troca segura entre QR Codes |
+| 026 | [Gestão de aparelhos mobile, revogação e troca segura de pareamento](026-mobile-installation-management-safe-pairing-switch.md) | Implementação estendida concluída; migration 016 aplicada; deploy/smoke iOS pendentes | Lista/revoga instalações, troca segura dentro do PWA por QR ou código temporário de 6 dígitos e reconexão sem reinstalar |
 
 ## Dependências cross-repo
 
