@@ -2228,6 +2228,10 @@ html.has-open-bottom-sheet .bottom-nav {
   pointer-events: none;
 }
 
+html.has-open-bottom-sheet .bottom-nav {
+  visibility: hidden;
+}
+
 html.has-open-bottom-sheet .mobile-header__menu {
   pointer-events: auto;
 }
