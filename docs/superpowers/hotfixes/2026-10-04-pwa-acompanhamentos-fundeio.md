@@ -812,3 +812,250 @@ Solicita-se R2 independente focada em:
 9. ausência de alterações de rollout antes da revisão.
 
 **STOP:** não aplicar migration, não fazer push, merge ou deploy desta branch integrada antes do parecer R2.
+
+
+## 18. Re-review R2 — Revisor — 2026-10-04
+
+**Tipo:** re-revisão independente da árvore integrada A3 + hotfix, focada no blocker R1-F1 e regressão A3/hotfix.  
+**Resultado:** **APROVADA TECNICAMENTE**. R1-F1 encerrado; nenhum novo finding Critical, Important ou Minor identificado.  
+**Alterações feitas pelo Revisor:** nenhuma alteração de código, migration ou produção; somente testes/read-only e este registro documental.
+
+### 18.1 Base e integração confirmadas
+
+A nova branch integrada está baseada diretamente na linha A3 já materializada:
+
+    feat/api-bootstrap
+    096be75 merge: integra A3 MobileSnapshot v2 em produção
+
+Branch revisada:
+
+    hotfix/pwa-acompanhamentos-fundeio-a3
+    aa5e43b hotfix: porta acompanhamentos e fundeio sobre A3
+
+A hotfix original permanece preservada separadamente:
+
+    hotfix/pwa-acompanhamentos-fundeio
+    2477176 checkpoint: preserva hotfix PWA acompanhamentos e fundeio
+
+A branch integrada está limpa e não foi encontrada expansão para:
+- `docs/superpowers/strategy/`;
+- SPEC 027/Cloud;
+- Plan 4/Shadow.
+
+### 18.2 Fechamento independente de R1-F1
+
+Os arquivos centrais de contrato A3 permaneceram sem alteração pelo forward-port:
+
+- `api/app/models/mobile_snapshot.py`;
+- `api/app/models/read_snapshot.py`;
+- `frontend/src/api/contract.ts`;
+- `frontend/src/pages/WeatherPage.tsx`.
+
+Reprodução independente de type hints:
+
+    snapshot_service_union=True
+    anchorage_detector_union=True
+
+Tanto:
+
+    SnapshotService._dispatch_anchorage_entries(... snapshot: MobileSnapshot)
+
+quanto:
+
+    detect_anchorage_entries(... current: MobileSnapshot)
+
+resolvem para a união discriminada:
+
+    MobileSnapshotV1 | MobileSnapshotV2
+    discriminator='schema_version'
+
+O detector continua consumindo `VesselV1`, que é o contrato compartilhado de vessels entre v1 e v2.
+
+Também foram localizados e executados testes específicos:
+- transição v2 -> FUNDEADO no `SnapshotService`;
+- POST HTTP v2 -> FUNDEADO;
+- schema_version 3 -> `unsupported_snapshot_schema`;
+- roundtrip v1/v2.
+
+**R1-F1 — Critical — ENCERRADO.**
+
+### 18.3 Produção A3 confirmada
+
+Inspeção externa read-only confirmou:
+
+    id=dpl_XqBpgGR6jbaVcZcFuDQgLG2cxbMx
+    target=production
+    readyState=READY
+
+O alias de produção aponta para a linha `feat/api-bootstrap`.
+
+Bundle ativo contém:
+
+    Estação Pecém · observação
+    Open-Meteo · fallback/modelo
+    Open-Meteo Marine
+
+Portanto a regressão v1-only observada na R1 foi corrigida antes do forward-port da hotfix.
+
+### 18.4 Regressão funcional da hotfix
+
+Continuam preservados:
+- não lidos de acompanhamentos com cursor por device + installation;
+- baseline sem replay histórico;
+- leitura somente do acompanhamento aberto;
+- deep-link marcando somente aquele tracking como lido;
+- semântica de `Conclusões` exatamente como aprovada;
+- qualquer seção -> FUNDEADO;
+- vessel novo aparecendo FUNDEADO;
+- FUNDEADO -> FUNDEADO sem repetição;
+- retry idempotente de snapshot sem redispatch;
+- preferência `anchored` independente e default true;
+- localStorage legado de quatro flags -> `anchored=true`;
+- adapters Postgres/Supabase;
+- Web Push de fundeio;
+- decisão best-effort/at-most-once registrada na R1.
+
+A possibilidade de um navio acompanhado receber tanto push de tracking quanto push de entrada no fundeio permanece comportamento aceito nesta hotfix.
+
+### 18.5 Migration 017
+
+Consulta read-only independente em Production:
+
+    Migrations locais:    17
+    Migrations aplicadas: 16
+    Pendentes:            1
+    Desconhecidas:        0
+
+    PENDENTES:
+      017_anchorage_notifications.sql
+
+**Migration 017 continua NÃO aplicada.**
+
+A migration permanece tecnicamente aprovada conforme R1 e compatível com rollout migration-first:
+- adiciona coluna com default true;
+- preserva RPC legado de quatro flags;
+- nova sobrecarga fica restrita a service_role.
+
+### 18.6 Gates independentes R2
+
+Executados pelo Revisor:
+
+- type hints v1|v2 em SnapshotService/detector: **PASS**;
+- suíte combinada API snapshot/model/roundtrip/POST/GET: **PASS**;
+- frontend focado A3 + hotfix: **7 arquivos / 71 testes passed**;
+- API completa `make test` com `-W error`: **PASS**;
+- frontend completo: **48 arquivos / 278 testes passed**;
+- `npm run build`: **PASS**;
+- `git diff --check 096be75..aa5e43b` excluindo somente o MD histórico: **PASS**;
+- conflict markers em arquivos versionados API/frontend: **nenhum**;
+- tratamento `unsupported_snapshot_schema` da A3: preservado;
+- arquivos de contrato/WeatherPage A3: sem diff na hotfix integrada.
+
+O warning React `act(...)` já conhecido permanece não bloqueante.
+
+### 18.7 Parecer R2
+
+- **R1-F1: ENCERRADO.**
+- **A3 v1+v2: PRESERVADA.**
+- **Hotfix funcional: PRESERVADA.**
+- **Migration 017: tecnicamente liberada para a etapa de rollout.**
+- **Hotfix integrada: LIBERADA TECNICAMENTE para rollout controlado.**
+- não há finding pendente nesta revisão.
+
+### 18.8 Ordem de rollout autorizável após decisão explícita do usuário
+
+Quando o usuário autorizar a execução, seguir nesta ordem:
+
+1. aplicar somente `017_anchorage_notifications.sql` em Production;
+2. confirmar read-only:
+   - migration 017 aplicada;
+   - coluna `pref_anchored`;
+   - RPC novo de cinco preferências;
+   - health/API A3 atual continuam operacionais;
+3. materializar este checkpoint R2 em commit documental, sem alterar código aprovado;
+4. opcionalmente push da branch `hotfix/pwa-acompanhamentos-fundeio-a3` como checkpoint remoto;
+5. merge/fast-forward em `feat/api-bootstrap`;
+6. rerodar gate curto pós-merge;
+7. push de `feat/api-bootstrap` para deploy;
+8. confirmar deployment READY e que A3 v1+v2 continua presente;
+9. smoke funcional:
+   - quinta opção `Entradas no fundeio` aparece ON;
+   - acompanhamento novo fica não lido e abrir limpa somente aquele navio;
+   - semântica de Conclusões permanece;
+   - entrada controlada em FUNDEADO gera push com anchored ON;
+   - anchored OFF silencia a categoria;
+   - PWA continua lendo snapshot v1 e v2.
+
+**Esta R2 não executa nem implica automaticamente migration, push, merge ou deploy.**
+
+
+## 19. Rollout autorizado — migration 017 aplicada — Executor — 2026-10-04
+
+**Autorização do usuário:** após R2 aprovada tecnicamente, foi autorizada a sequência de commit + merge + push da hotfix integrada.
+
+### 19.1 Migration-first
+
+Foi seguida a ordem aprovada pelo Revisor.
+
+Antes:
+
+    Migrations locais:    17
+    Migrations aplicadas: 16
+    Pendentes:            1
+
+Foi executado o pipeline do projeto `make prod-migrate` a partir da árvore integrada.
+
+Aplicação:
+
+    Aplicando: 017_anchorage_notifications.sql
+    ALTER TABLE
+    CREATE FUNCTION
+    REVOKE
+    GRANT
+    INSERT 0 1
+    COMMIT
+
+Depois:
+
+    Migrations locais:    17
+    Migrations aplicadas: 17
+    Pendentes:            0
+    Desconhecidas:        0
+    ✓ Banco atualizado
+
+### 19.2 Verificação read-only pós-migration
+
+Coluna:
+
+    pref_anchored = boolean / NOT NULL / default true
+
+RPCs `update_push_preferences`:
+- assinatura legada de 4 flags preservada;
+- assinatura nova com `p_anchored boolean` presente.
+
+Instalações existentes:
+
+    installations_total=15
+    anchored_true=15
+    anchored_false=0
+
+Health da produção A3 após migration:
+
+    GET /api/v1/health -> {"ok":true}
+
+### 19.3 Estado antes do merge/push
+
+- migration 017 aplicada: SIM;
+- código integrado aprovado: `aa5e43b`;
+- parecer R2 presente neste documento: SIM;
+- branch integrada ainda sem push neste instante;
+- `feat/api-bootstrap` ainda em `096be75` antes do merge da hotfix;
+- deploy da hotfix ainda não iniciado neste instante.
+
+Próxima sequência autorizada:
+1. commit documental deste checkpoint/R2;
+2. push da branch integrada;
+3. merge em `feat/api-bootstrap`;
+4. gate curto pós-merge;
+5. push de `feat/api-bootstrap`;
+6. acompanhar deploy automático e smoke.
