@@ -1,6 +1,6 @@
 import type {
   ManeuverV1,
-  MobileSnapshotV1,
+  MobileSnapshot,
   VesselV1,
 } from "../../api/contract";
 
@@ -33,11 +33,11 @@ function shortDateSortValue(value: string | null): number {
   );
 }
 
-export function confirmedManeuvers(snapshot: MobileSnapshotV1): ManeuverV1[] {
+export function confirmedManeuvers(snapshot: MobileSnapshot): ManeuverV1[] {
   return [...snapshot.recent_maneuvers.active];
 }
 
-export function arrivalForecast(snapshot: MobileSnapshotV1): VesselV1[] {
+export function arrivalForecast(snapshot: MobileSnapshot): VesselV1[] {
   const vessels = firstByName(
     snapshot.vessels.filter(
       (v) => (v.section === "FUNDEADO" || v.section === "PREVISTO") && Boolean(v.etb_ets),
@@ -45,7 +45,7 @@ export function arrivalForecast(snapshot: MobileSnapshotV1): VesselV1[] {
   );
   return vessels.sort((a, b) => shortDateSortValue(a.etb_ets) - shortDateSortValue(b.etb_ets));
 }
-export function departureForecast(snapshot: MobileSnapshotV1): VesselV1[] {
+export function departureForecast(snapshot: MobileSnapshot): VesselV1[] {
   return firstByName(
     snapshot.vessels.filter(
       (v) => v.section === "ATRACADO" && Boolean(v.etb_ets),
@@ -53,12 +53,12 @@ export function departureForecast(snapshot: MobileSnapshotV1): VesselV1[] {
   );
 }
 
-export function anchoredVessels(snapshot: MobileSnapshotV1): VesselV1[] {
+export function anchoredVessels(snapshot: MobileSnapshot): VesselV1[] {
   return firstByName(snapshot.vessels.filter((v) => v.section === "FUNDEADO"));
 }
 
 export function vesselByBerth(
-  snapshot: MobileSnapshotV1,
+  snapshot: MobileSnapshot,
   berth: number,
 ): VesselV1 | null {
   let selected: VesselV1 | null = null;
@@ -78,7 +78,7 @@ function newestFirst(a: ManeuverV1, b: ManeuverV1): number {
 }
 
 export function recentAlerts(
-  snapshot: MobileSnapshotV1,
+  snapshot: MobileSnapshot,
   limit = 10,
 ): ManeuverV1[] {
   const active = [...snapshot.recent_maneuvers.active].sort(newestFirst);
@@ -86,7 +86,7 @@ export function recentAlerts(
   return [...active, ...completed].slice(0, Math.max(0, limit));
 }
 
-export function maneuverHistory(snapshot: MobileSnapshotV1): ManeuverV1[] {
+export function maneuverHistory(snapshot: MobileSnapshot): ManeuverV1[] {
   return [
     ...snapshot.recent_maneuvers.active,
     ...snapshot.recent_maneuvers.completed,

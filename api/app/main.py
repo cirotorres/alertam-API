@@ -148,10 +148,18 @@ def create_app(
         exc: RequestValidationError,
     ) -> JSONResponse:
         for error in exc.errors():
-            if (
-                error.get("loc") == ("body", "schema_version")
-                and error.get("type") == "literal_error"
-            ):
+            loc = error.get("loc")
+            error_type = error.get("type")
+            ctx = error.get("ctx") or {}
+            unsupported_schema = (
+                loc == ("body", "schema_version")
+                and error_type == "literal_error"
+            ) or (
+                loc == ("body",)
+                and error_type == "union_tag_invalid"
+                and "schema_version" in str(ctx.get("discriminator", ""))
+            )
+            if unsupported_schema:
                 return JSONResponse(
                     status_code=422,
                     content={

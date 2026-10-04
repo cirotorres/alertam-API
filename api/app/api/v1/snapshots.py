@@ -6,7 +6,7 @@ from typing import Callable
 from fastapi import APIRouter, Cookie, Depends, Header
 
 from app.api.v1.mobile_session import COOKIE_NAME
-from app.models.mobile_snapshot import MobileSnapshotV1
+from app.models.mobile_snapshot import MobileSnapshot
 from app.models.read_snapshot import SnapshotReadResponse
 from app.models.responses import SnapshotAcceptedResponse
 from app.repositories.devices import DevicesRepository
@@ -53,7 +53,7 @@ def create_snapshot_router(
         response_model=SnapshotAcceptedResponse,
     )
     def post_snapshot(
-        snapshot: MobileSnapshotV1,
+        snapshot: MobileSnapshot,
         device: AuthenticatedDevice = Depends(require_device),
     ) -> SnapshotAcceptedResponse:
         return service.accept_authenticated_snapshot(

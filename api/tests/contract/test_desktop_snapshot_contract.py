@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.models.mobile_snapshot import MobileSnapshotV1
+from pydantic import TypeAdapter
+
+from app.models.mobile_snapshot import MobileSnapshot, MobileSnapshotV1
 
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "mobile_snapshot_v1.json"
@@ -56,3 +58,27 @@ def test_root_fixture_uses_exact_mobile_v1_shape():
         "marine",
         "recent_maneuvers",
     }
+
+
+def test_v2_fixtures_match_union_contract_and_contain_no_session_material():
+    fixtures = [
+        Path(__file__).parents[1] / "fixtures" / "mobile_snapshot_v2_webpilot.json",
+        Path(__file__).parents[1] / "fixtures" / "mobile_snapshot_v2_fallback.json",
+    ]
+    adapter = TypeAdapter(MobileSnapshot)
+
+    for fixture in fixtures:
+        payload = json.loads(fixture.read_text(encoding="utf-8"))
+        model = adapter.validate_python(payload)
+        dumped = model.model_dump(mode="json")
+
+        assert dumped["schema_version"] == 2
+        serialized = json.dumps(dumped).lower()
+        for forbidden in (
+            "cookie",
+            "authorization",
+            "session_generation",
+            "html",
+            "webpilot_token",
+        ):
+            assert forbidden not in serialized

@@ -14,6 +14,7 @@ from app.security.credentials import hash_secret
 
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "mobile_snapshot_v1.json"
+V2_FIXTURE = Path(__file__).parents[1] / "fixtures" / "mobile_snapshot_v2_webpilot.json"
 DEVICE_ID = "pecem-01"
 DEVICE_SECRET = "device-secret"
 VIEW_SECRET = "V" * 43
@@ -103,3 +104,28 @@ def test_roundtrip_never_exposes_desktop_internal_fields():
         "view_secret",
     ):
         assert forbidden not in serialized
+
+
+def test_v2_fixture_roundtrips_post_to_mobile_get_without_loss():
+    client = _client()
+    payload = json.loads(V2_FIXTURE.read_text(encoding="utf-8"))
+
+    post = client.post(
+        f"/api/v1/devices/{DEVICE_ID}/snapshot",
+        headers={"Authorization": f"Device {DEVICE_SECRET}"},
+        json=payload,
+    )
+    assert post.status_code == 200
+
+    assert client.put(
+        f"/api/v1/devices/{DEVICE_ID}/view-access",
+        headers={"Authorization": f"Device {DEVICE_SECRET}"},
+        json={"view_secret": VIEW_SECRET},
+    ).status_code == 204
+
+    read = client.get(
+        f"/api/v1/devices/{DEVICE_ID}/snapshot",
+        headers={"Authorization": f"Bearer {VIEW_SECRET}"},
+    )
+    assert read.status_code == 200
+    assert read.json()["snapshot"] == payload
