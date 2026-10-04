@@ -2607,3 +2607,77 @@ html.has-open-drawer .mobile-content .operational-list {
   color: var(--alertam-blue-900);
   font-weight: 800;
 }
+
+.tide-card {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.tide-card__days {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.tide-day {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--alertam-border);
+  border-radius: var(--radius-md);
+  background: var(--alertam-surface);
+}
+
+.tide-day h3 {
+  margin: 0 0 0.55rem;
+  color: var(--alertam-blue-900);
+  font-size: 0.82rem;
+}
+
+.tide-day__events {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.tide-event {
+  display: grid;
+  grid-template-columns: 3.1rem 1fr auto;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 1.65rem;
+  color: var(--alertam-text);
+  font-size: 0.78rem;
+}
+
+.tide-event time {
+  font-weight: 750;
+}
+
+.tide-event strong {
+  color: var(--alertam-blue-900);
+  font-size: 0.68rem;
+}
+
+.tide-event--next {
+  font-weight: 700;
+}
+
+.tide-day__unavailable,
+.tide-card__source {
+  margin: 0;
+  color: var(--alertam-muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.tide-card__source {
+  padding-top: 0.1rem;
+}
+
+@media (max-width: 380px) {
+  .tide-card__days {
+    grid-template-columns: 1fr;
+  }
+}

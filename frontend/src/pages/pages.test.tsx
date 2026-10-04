@@ -30,6 +30,7 @@ import {
 } from "../features/pairing/pairingStorage";
 import { AppRoutes } from "../app/router";
 import { StatusCards } from "../components/StatusCards";
+import { TideTableCard } from "../features/tides/TideTableCard";
 import {
   StaticTrackingProvider,
   type TrackingState,
@@ -523,6 +524,7 @@ test("weather_page_renders_atmospheric_and_marine_snapshot_data", async () => {
   renderRoute("/tempo");
 
   expect(await screen.findByRole("heading", { name: "Tempo e mar" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Tábua de maré · DHN" })).toBeInTheDocument();
   expect(screen.getByText("29,5 °C")).toBeInTheDocument();
   expect(screen.getByText("12,3 kn")).toBeInTheDocument();
   expect(screen.getAllByText("1,2 m")).toHaveLength(2);
@@ -537,6 +539,25 @@ test("weather_page_renders_atmospheric_and_marine_snapshot_data", async () => {
 
 
 
+
+test("tide_card_renders_dhn_today_tomorrow_and_exact_source_rows", () => {
+  render(<TideTableCard now={new Date("2026-10-05T00:30:00Z")} />);
+
+  expect(screen.getByRole("heading", { name: "Tábua de maré · DHN" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: /Hoje · 04 out/i })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: /Amanhã · 05 out/i })).toBeInTheDocument();
+  for (const time of ["04:49", "11:12", "17:06", "23:36", "06:14", "12:31", "18:31"]) {
+    expect(screen.getByText(time)).toBeInTheDocument();
+  }
+  expect(screen.getByText("Próxima")).toBeInTheDocument();
+  expect(screen.getByText(/DHN · 2026 · Carta 711 · UTC−03/)).toBeInTheDocument();
+});
+
+test("tide_card_marks_2027_unavailable_without_inventing_rows", () => {
+  render(<TideTableCard now={new Date("2026-12-31T15:00:00Z")} />);
+
+  expect(screen.getByText("Tábua de maré de 2027 ainda não disponível.")).toBeInTheDocument();
+});
 
 test("weather_page_v2_webpilot_separates_observation_complementary_and_marine", async () => {
   const data = parseSnapshotReadResponse({

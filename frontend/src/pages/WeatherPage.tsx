@@ -1,5 +1,6 @@
 import type { MobileSnapshotV1, MobileSnapshotV2 } from "../api/contract";
 import { useShellContext } from "../app/AppShell";
+import { TideTableCard } from "../features/tides/TideTableCard";
 
 const WEATHER_LABELS: Record<number, string> = {
   0: "Céu limpo",
@@ -353,6 +354,7 @@ export function WeatherPage() {
       ) : (
         <V2Weather snapshot={snapshot} />
       )}
+      <TideTableCard />
     </section>
   );
 }
