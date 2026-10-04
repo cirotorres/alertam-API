@@ -40,6 +40,7 @@ const ACTIVE_INSTALLATION = {
     updated: true,
     completed: true,
     cancelled: true,
+    anchored: true,
   },
   pushEnabledAt: "2026-09-27T18:00:00Z",
   lastSeenAt: "2026-09-27T18:00:00Z",
@@ -301,6 +302,7 @@ test("static_provider_exposes_inert_state_without_real_push_calls", () => {
       updated: true,
       completed: true,
       cancelled: true,
+      anchored: true,
     },
     error: null,
     enablePush: vi.fn().mockResolvedValue(undefined),
@@ -387,6 +389,7 @@ test("remount_rebinds_existing_browser_subscription_to_new_installation", async 
     updated: true,
     completed: false,
     cancelled: true,
+    anchored: true,
   };
   localStorage.setItem(
     "alertam.mobile.installation.v1",

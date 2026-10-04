@@ -29,19 +29,27 @@ export type TrackingEventFetcher = (
 export type TrackingPollingState = {
   status: TrackingPollingStatus;
   newTrackingEvent: TrackingForegroundFeedItem | null;
+  newTrackingEvents: TrackingForegroundFeedItem[];
+  cursor: number | null;
 };
 
 export function useTrackingPolling(
   enabled: boolean,
   fetcher: TrackingEventFetcher = getTrackingEvents,
   onAccessRevoked?: () => void,
+  initialCursor: number | null = null,
 ): TrackingPollingState {
   const [status, setStatus] = useState<TrackingPollingStatus>("idle");
   const [newTrackingEvent, setNewTrackingEvent] =
     useState<TrackingForegroundFeedItem | null>(null);
+  const [newTrackingEvents, setNewTrackingEvents] =
+    useState<TrackingForegroundFeedItem[]>([]);
+  const [cursorState, setCursorState] = useState<number | null>(initialCursor);
 
   useEffect(() => {
     setNewTrackingEvent(null);
+    setNewTrackingEvents([]);
+    setCursorState(initialCursor);
     if (!enabled) {
       setStatus("idle");
       return;
@@ -53,7 +61,8 @@ export function useTrackingPolling(
     let busy = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let controller: AbortController | null = null;
-    let cursor = 0;
+    let cursor = initialCursor ?? 0;
+    const resumeFromSavedCursor = initialCursor !== null;
 
     const clearTimer = () => {
       if (timer !== null) {
@@ -89,9 +98,10 @@ export function useTrackingPolling(
       controller = requestController;
 
       try {
-        let query: TrackingEventQuery = initial
-          ? { limit: PAGE_LIMIT }
-          : { after: cursor, limit: PAGE_LIMIT };
+        let query: TrackingEventQuery =
+          initial && !resumeFromSavedCursor
+            ? { limit: PAGE_LIMIT }
+            : { after: cursor, limit: PAGE_LIMIT };
         const announced: TrackingForegroundFeedItem[] = [];
 
         while (!disposed && !requestController.signal.aborted) {
@@ -99,11 +109,13 @@ export function useTrackingPolling(
           if (disposed || requestController.signal.aborted) return;
 
           const nextCursor = page.newest_cursor ?? cursor;
-          if (!initial) announced.push(...page.events);
+          if (!initial || resumeFromSavedCursor) {
+            announced.push(...page.events);
+          }
           cursor = nextCursor;
 
           if (
-            initial ||
+            (initial && !resumeFromSavedCursor) ||
             page.events.length < PAGE_LIMIT ||
             page.newest_cursor === null
           ) {
@@ -112,10 +124,10 @@ export function useTrackingPolling(
           query = { after: cursor, limit: PAGE_LIMIT };
         }
 
-        if (!initial && announced.length > 0) {
-          announced.sort((a, b) => a.ingestion_id - b.ingestion_id);
-          setNewTrackingEvent(announced.at(-1) ?? null);
-        }
+        announced.sort((a, b) => a.ingestion_id - b.ingestion_id);
+        setNewTrackingEvents(announced);
+        setNewTrackingEvent(announced.at(-1) ?? null);
+        setCursorState(cursor);
         setStatus("online");
       } catch (error) {
         if (
@@ -164,7 +176,12 @@ export function useTrackingPolling(
       controller = null;
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [enabled, fetcher, onAccessRevoked]);
+  }, [enabled, fetcher, initialCursor, onAccessRevoked]);
 
-  return { status, newTrackingEvent };
+  return {
+    status,
+    newTrackingEvent,
+    newTrackingEvents,
+    cursor: cursorState,
+  };
 }

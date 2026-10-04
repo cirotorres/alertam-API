@@ -33,6 +33,7 @@ const DEFAULT_PREFERENCES: PushPreferences = {
   updated: true,
   completed: true,
   cancelled: true,
+  anchored: true,
 };
 
 export type PushState = {

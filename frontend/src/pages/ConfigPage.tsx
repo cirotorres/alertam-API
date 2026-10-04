@@ -13,6 +13,7 @@ const PREFERENCE_LABELS = [
   ["updated", "Atualizações"],
   ["completed", "Conclusões"],
   ["cancelled", "Cancelamentos"],
+  ["anchored", "Entradas no fundeio"],
 ] as const;
 
 function platformLabel(platform: DevicePlatform): string {

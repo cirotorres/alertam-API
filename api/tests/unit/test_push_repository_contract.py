@@ -72,12 +72,15 @@ def test_two_installations_keep_independent_preferences_and_hide_subscription_in
             updated=True,
             completed=True,
             cancelled=True,
+            anchored=False,
         ),
     )
 
     assert changed is not None
     assert changed.preferences.confirmed is False
+    assert changed.preferences.anchored is False
     assert repo.get_push_installation("pecem-01", INSTALL_B).preferences.confirmed is True
+    assert repo.get_push_installation("pecem-01", INSTALL_B).preferences.anchored is True
 
 
 def test_reactivation_resets_push_enabled_at_but_active_refresh_preserves_it():

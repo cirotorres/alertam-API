@@ -33,6 +33,7 @@ const INSTALLATION = {
     updated: true,
     completed: true,
     cancelled: true,
+    anchored: true,
   },
   push_enabled_at: "2026-09-27T18:00:00Z",
   last_seen_at: "2026-09-27T18:00:00Z",
@@ -164,4 +165,14 @@ test("foreground_heartbeat_posts_to_current_installation", async () => {
       credentials: "same-origin",
     }),
   );
+});
+
+
+test("parses_anchorage_preference_from_server", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(jsonResponse(INSTALLATION));
+  vi.stubGlobal("fetch", fetchMock);
+
+  const installation = await getPushInstallation(INSTALLATION.installation_id);
+
+  expect(installation?.preferences.anchored).toBe(true);
 });

@@ -17,6 +17,7 @@ from app.repositories.events import (
     StoredManeuverEvent,
 )
 from app.repositories.tracking import TrackedVesselRecord
+from app.services.anchorage_entry import AnchorageEntryEvent
 
 
 class PushGateway(Protocol):
@@ -34,6 +35,60 @@ _TERMINAL_DELIVERY_STATUSES = {
     PushDeliveryStatus.IGNORED_BEFORE_OPT_IN,
     PushDeliveryStatus.PERMANENT_FAILURE,
 }
+
+
+class AnchoragePushDispatchService:
+    def __init__(
+        self,
+        repository: AlertaRepository,
+        gateway: PushGateway,
+        *,
+        foreground_fresh_seconds: int = 75,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._repository = repository
+        self._gateway = gateway
+        self._foreground_fresh_seconds = foreground_fresh_seconds
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
+
+    def dispatch_event(self, event: AnchorageEntryEvent) -> None:
+        installations = self._repository.list_active_push_installations(
+            event.device_id
+        )
+        for installation in installations:
+            if event.occurred_at < installation.push_enabled_at:
+                continue
+            if not installation.preferences.anchored:
+                continue
+            if installation.last_foreground_at is not None:
+                age = (
+                    self._clock() - installation.last_foreground_at
+                ).total_seconds()
+                if age <= self._foreground_fresh_seconds:
+                    continue
+            try:
+                self._gateway.send(
+                    installation,
+                    build_anchorage_push_message(event),
+                )
+            except PermanentPushError:
+                self._repository.deactivate_push_installation(
+                    event.device_id,
+                    installation.installation_id,
+                )
+            except TransientPushError:
+                continue
+
+
+def build_anchorage_push_message(
+    event: AnchorageEntryEvent,
+) -> dict[str, str]:
+    return {
+        "event_id": str(event.event_id),
+        "title": "Entrada no fundeio",
+        "body": f"{event.vessel_name} · Fundeado",
+        "url": "/",
+    }
 
 
 class PushDispatchService:

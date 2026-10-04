@@ -97,6 +97,26 @@ test("baseline_does_not_replay_and_next_poll_emits_new_event", async () => {
   expect(result.current.newTrackingEvent?.ingestion_id).toBe(6);
 });
 
+test("saved_cursor_replays_events_that_arrived_while_pwa_was_closed", async () => {
+  const fetcher = vi.fn().mockResolvedValueOnce(page([event(6), event(7)], 7));
+  const { result } = renderHook(() =>
+    useTrackingPolling(true, fetcher, undefined, 5),
+  );
+
+  await flush();
+
+  expect(fetcher).toHaveBeenCalledWith(
+    { after: 5, limit: 100 },
+    expect.any(AbortSignal),
+  );
+  expect(result.current.newTrackingEvents.map((item) => item.ingestion_id)).toEqual([
+    6,
+    7,
+  ]);
+  expect(result.current.cursor).toBe(7);
+  expect(result.current.newTrackingEvent?.ingestion_id).toBe(7);
+});
+
 test("empty_baseline_uses_zero_cursor_so_first_future_event_is_not_lost", async () => {
   const fetcher = vi
     .fn()

@@ -2596,3 +2596,14 @@ html.has-open-drawer .mobile-content .operational-list {
   color: var(--alertam-text);
   font-weight: 700;
 }
+
+.tracked-vessels-list > li.is-unread {
+  border-color: var(--alertam-blue-700);
+  background: var(--alertam-blue-100);
+  box-shadow: inset 0.22rem 0 0 var(--alertam-blue-700);
+}
+
+.tracked-vessels-list > li.is-unread strong {
+  color: var(--alertam-blue-900);
+  font-weight: 800;
+}

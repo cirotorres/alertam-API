@@ -1463,6 +1463,7 @@ class SupabaseDeviceRepository:
                 "p_updated": preferences.updated,
                 "p_completed": preferences.completed,
                 "p_cancelled": preferences.cancelled,
+                "p_anchored": preferences.anchored,
             },
         )
 
@@ -1769,6 +1770,7 @@ class SupabaseDeviceRepository:
                 updated=bool(row["pref_updated"]),
                 completed=bool(row["pref_completed"]),
                 cancelled=bool(row["pref_cancelled"]),
+                anchored=bool(row["pref_anchored"]),
             ),
             push_enabled_at=push_enabled_at,
             last_seen_at=last_seen_at,

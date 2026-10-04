@@ -8,30 +8,51 @@ export type PushPreferenceSnapshot = {
   preferences: PushPreferences;
 };
 
-function isPushPreferences(value: unknown): value is PushPreferences {
+function parsePushPreferences(value: unknown): PushPreferences | null {
   if (typeof value !== "object" || value === null) {
-    return false;
+    return null;
   }
   const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.confirmed === "boolean" &&
-    typeof candidate.updated === "boolean" &&
-    typeof candidate.completed === "boolean" &&
-    typeof candidate.cancelled === "boolean"
-  );
+  if (
+    typeof candidate.confirmed !== "boolean" ||
+    typeof candidate.updated !== "boolean" ||
+    typeof candidate.completed !== "boolean" ||
+    typeof candidate.cancelled !== "boolean" ||
+    !(
+      candidate.anchored === undefined ||
+      typeof candidate.anchored === "boolean"
+    )
+  ) {
+    return null;
+  }
+  return {
+    confirmed: candidate.confirmed,
+    updated: candidate.updated,
+    completed: candidate.completed,
+    cancelled: candidate.cancelled,
+    anchored:
+      candidate.anchored === undefined ? true : candidate.anchored,
+  };
 }
 
-function isPushPreferenceSnapshot(
+function parsePushPreferenceSnapshot(
   value: unknown,
-): value is PushPreferenceSnapshot {
+): PushPreferenceSnapshot | null {
   if (typeof value !== "object" || value === null) {
-    return false;
+    return null;
   }
   const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.optedIn === "boolean" &&
-    isPushPreferences(candidate.preferences)
-  );
+  if (typeof candidate.optedIn !== "boolean") {
+    return null;
+  }
+  const preferences = parsePushPreferences(candidate.preferences);
+  if (preferences === null) {
+    return null;
+  }
+  return {
+    optedIn: candidate.optedIn,
+    preferences,
+  };
 }
 
 export function loadPushPreferenceSnapshot():
@@ -42,8 +63,8 @@ export function loadPushPreferenceSnapshot():
   }
 
   try {
-    const parsed: unknown = JSON.parse(raw);
-    if (isPushPreferenceSnapshot(parsed)) {
+    const parsed = parsePushPreferenceSnapshot(JSON.parse(raw));
+    if (parsed !== null) {
       return parsed;
     }
   } catch {
@@ -57,7 +78,8 @@ export function loadPushPreferenceSnapshot():
 export function storePushPreferenceSnapshot(
   snapshot: PushPreferenceSnapshot,
 ): void {
-  if (!isPushPreferenceSnapshot(snapshot)) {
+  const parsed = parsePushPreferenceSnapshot(snapshot);
+  if (parsed === null || parsed.preferences.anchored !== snapshot.preferences.anchored) {
     throw new TypeError("Invalid push preference snapshot.");
   }
   localStorage.setItem(

@@ -19,7 +19,12 @@ from app.core.logging import (
 from app.repositories.events import AlertaRepository, StoredManeuverEvent
 from app.repositories.tracking import StoredVesselTrackingEvent
 from app.repositories.factory import create_devices_repository
-from app.services.push_dispatch_service import PushDispatchService, PushGateway
+from app.services.anchorage_entry import AnchorageEntryEvent
+from app.services.push_dispatch_service import (
+    AnchoragePushDispatchService,
+    PushDispatchService,
+    PushGateway,
+)
 from app.services.tracking_push_dispatch_service import (
     TrackingPushDispatchService,
 )
@@ -39,6 +44,9 @@ def create_app(
     dispatch_event: Callable[[StoredManeuverEvent], None] | None = None,
     dispatch_tracking_event: Callable[
         [StoredVesselTrackingEvent], None
+    ] | None = None,
+    dispatch_anchorage_entry: Callable[
+        [AnchorageEntryEvent], None
     ] | None = None,
     web_push_gateway: PushGateway | None = None,
 ) -> FastAPI:
@@ -68,9 +76,11 @@ def create_app(
 
     resolved_dispatch_event = dispatch_event
     resolved_dispatch_tracking_event = dispatch_tracking_event
+    resolved_dispatch_anchorage_entry = dispatch_anchorage_entry
     if resolved_settings.web_push_enabled and (
         resolved_dispatch_event is None
         or resolved_dispatch_tracking_event is None
+        or resolved_dispatch_anchorage_entry is None
     ):
         resolved_gateway = web_push_gateway or WebPushGateway(
             vapid_private_key=resolved_settings.vapid_private_key,
@@ -98,6 +108,18 @@ def create_app(
             resolved_dispatch_tracking_event = (
                 tracking_push_dispatcher.dispatch_event
             )
+        if resolved_dispatch_anchorage_entry is None:
+            anchorage_push_dispatcher = AnchoragePushDispatchService(
+                devices_repository,
+                resolved_gateway,
+                foreground_fresh_seconds=(
+                    resolved_settings.push_foreground_fresh_seconds
+                ),
+                clock=clock,
+            )
+            resolved_dispatch_anchorage_entry = (
+                anchorage_push_dispatcher.dispatch_event
+            )
 
     application.include_router(
         create_v1_router(
@@ -110,6 +132,7 @@ def create_app(
             clock=clock,
             dispatch_event=resolved_dispatch_event,
             dispatch_tracking_event=resolved_dispatch_tracking_event,
+            dispatch_anchorage_entry=resolved_dispatch_anchorage_entry,
         )
     )
 

@@ -118,6 +118,7 @@ def test_put_uses_session_device_defaults_preferences_and_hides_subscription():
         "updated": True,
         "completed": True,
         "cancelled": True,
+        "anchored": True,
     }
     assert "endpoint" not in payload
     assert "p256dh" not in response.text

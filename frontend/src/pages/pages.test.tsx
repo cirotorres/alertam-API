@@ -96,6 +96,7 @@ const DEFAULT_PUSH_STATE: PushState = {
     updated: true,
     completed: true,
     cancelled: true,
+    anchored: true,
   },
   error: null,
   enablePush: vi.fn().mockResolvedValue(undefined),
@@ -726,7 +727,7 @@ test("history_event_is_actionable_and_opens_selected_event_detail", async () => 
 });
 
 
-test("config_controls_push_and_four_independent_preferences", async () => {
+test("config_controls_push_and_five_independent_preferences", async () => {
   const enablePush = vi.fn().mockResolvedValue(undefined);
   const inactiveState: PushState = {
     ...DEFAULT_PUSH_STATE,
@@ -778,6 +779,7 @@ test("config_controls_push_and_four_independent_preferences", async () => {
     "Atualizações",
     "Conclusões",
     "Cancelamentos",
+    "Entradas no fundeio",
   ]) {
     expect(
       screen.getByRole("checkbox", { name: label }),
