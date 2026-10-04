@@ -31,8 +31,17 @@ def _repo() -> MemoryDeviceRepository:
     return repo
 
 
-def _client(repo: MemoryDeviceRepository) -> TestClient:
-    return TestClient(create_app(repository=repo))
+def _client(
+    repo: MemoryDeviceRepository,
+    *,
+    dispatch_anchorage_entry=None,
+) -> TestClient:
+    return TestClient(
+        create_app(
+            repository=repo,
+            dispatch_anchorage_entry=dispatch_anchorage_entry,
+        )
+    )
 
 def test_post_snapshot_rejects_invalid_device_credentials_generically():
     client = _client(_repo())
@@ -199,3 +208,42 @@ def test_invalid_credentials_win_over_invalid_payload():
 
     assert response.status_code == 401
     assert response.json()["detail"]["code"] == "invalid_device_credentials"
+
+
+def test_post_snapshot_dispatches_anchorage_entry_only_after_baseline_transition():
+    dispatched = []
+    client = _client(
+        _repo(),
+        dispatch_anchorage_entry=dispatched.append,
+    )
+    headers = {"Authorization": f"Device {DEVICE_SECRET}"}
+
+    baseline = _payload()
+    baseline["vessels"][0]["status"] = "PREVISTO"
+    baseline["vessels"][0]["section"] = "PREVISTO"
+    assert client.post(
+        f"/api/v1/devices/{DEVICE_ID}/snapshot",
+        headers=headers,
+        json=baseline,
+    ).status_code == 200
+    assert dispatched == []
+
+    entered = _payload()
+    entered["sequence"] = 2
+    entered["vessels"][0]["status"] = "FUNDEADO"
+    entered["vessels"][0]["section"] = "FUNDEADO"
+    assert client.post(
+        f"/api/v1/devices/{DEVICE_ID}/snapshot",
+        headers=headers,
+        json=entered,
+    ).status_code == 200
+    assert len(dispatched) == 1
+    assert dispatched[0].vessel_name == "NAVIO A"
+
+    # Idempotent retry of the same accepted snapshot must not send twice.
+    assert client.post(
+        f"/api/v1/devices/{DEVICE_ID}/snapshot",
+        headers=headers,
+        json=entered,
+    ).status_code == 200
+    assert len(dispatched) == 1

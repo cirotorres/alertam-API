@@ -78,9 +78,12 @@ const timelineFetcher = vi.fn().mockResolvedValue({
   ],
 });
 
-function renderPage(route = "/acompanhados") {
+function renderPage(
+  route = "/acompanhados",
+  trackingState: TrackingState = state,
+) {
   return render(
-    <StaticTrackingProvider state={state}>
+    <StaticTrackingProvider state={trackingState}>
       <MemoryRouter initialEntries={[route]}>
         <TrackedVesselsPage timelineFetcher={timelineFetcher} />
       </MemoryRouter>
@@ -124,6 +127,28 @@ test("deep_link_opens_timeline_highlights_event_and_close_keeps_page", async () 
   expect(
     screen.queryByRole("dialog", { name: "Detalhes do acompanhamento" }),
   ).not.toBeInTheDocument();
+});
+
+test("unread_tracking_row_is_highlighted_and_opening_marks_only_that_vessel_read", async () => {
+  const markTrackingRead = vi.fn();
+  const unreadState = {
+    ...state,
+    isTrackingUnread: (trackedVesselId: string) => trackedVesselId === TRACK_ID,
+    markTrackingRead,
+  } as TrackingState;
+
+  renderPage("/acompanhados", unreadState);
+
+  const action = screen.getByRole("button", { name: /NAVIO A.*Ausente/i });
+  const row = action.closest("li");
+  expect(row).toHaveClass("is-unread");
+
+  fireEvent.click(action);
+
+  expect(markTrackingRead).toHaveBeenCalledWith(TRACK_ID);
+  await screen.findByRole("dialog", {
+    name: "Detalhes do acompanhamento",
+  });
 });
 
 test("row_action_opens_bottom_sheet_outside_scroll_surface", async () => {

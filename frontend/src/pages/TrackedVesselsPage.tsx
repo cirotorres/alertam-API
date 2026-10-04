@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import type { TrackedVessel } from "../api/trackingClient";
@@ -28,11 +29,18 @@ export function TrackedVesselsPage({
     tracking.trackings.find((item) => item.tracked_vessel_id === trackId) ?? null;
 
   const open = (trackedVesselId: string) => {
+    tracking.markTrackingRead?.(trackedVesselId);
     const next = new URLSearchParams(location.search);
     next.set("track", trackedVesselId);
     next.delete("event");
     navigate({ pathname: location.pathname, search: `?${next.toString()}` });
   };
+
+  useEffect(() => {
+    if (selected !== null) {
+      tracking.markTrackingRead?.(selected.tracked_vessel_id);
+    }
+  }, [selected, tracking.markTrackingRead]);
 
   const close = () => {
     const next = new URLSearchParams(location.search);
@@ -65,7 +73,14 @@ export function TrackedVesselsPage({
         ) : (
           <ol className="timeline tracked-vessels-list">
             {tracking.trackings.map((tracked) => (
-              <li key={tracked.tracked_vessel_id}>
+              <li
+                key={tracked.tracked_vessel_id}
+                className={
+                  tracking.isTrackingUnread?.(tracked.tracked_vessel_id)
+                    ? "is-unread"
+                    : undefined
+                }
+              >
                 <button
                   type="button"
                   className="timeline__action"

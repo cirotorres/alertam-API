@@ -24,6 +24,7 @@ def installation_row(active: bool = True):
         "pref_updated": True,
         "pref_completed": True,
         "pref_cancelled": True,
+        "pref_anchored": True,
         "push_enabled_at": "2026-09-27T16:00:00+00:00",
         "last_seen_at": "2026-09-27T16:00:00+00:00",
         "last_foreground_at": None,
@@ -90,7 +91,7 @@ def test_claim_and_status_use_push_delivery_rpcs():
     assert calls[1][1]["p_status"] == "RETRY_PENDING"
 
 
-def test_update_preferences_serializes_four_independent_flags():
+def test_update_preferences_serializes_five_independent_flags():
     observed = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -113,10 +114,12 @@ def test_update_preferences_serializes_four_independent_flags():
             updated=True,
             completed=True,
             cancelled=True,
+            anchored=False,
         ),
     )
 
     assert observed["body"]["p_confirmed"] is False
     assert observed["body"]["p_updated"] is True
+    assert observed["body"]["p_anchored"] is False
     assert result is not None
     assert result.preferences.confirmed is False

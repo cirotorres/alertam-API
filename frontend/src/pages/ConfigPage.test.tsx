@@ -62,6 +62,7 @@ vi.mock("../features/push/PushProvider", () => ({
       updated: true,
       completed: true,
       cancelled: true,
+      anchored: true,
     },
     error: null,
     enablePush: vi.fn(),

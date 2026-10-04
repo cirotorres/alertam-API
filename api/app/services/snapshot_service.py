@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+from collections.abc import Callable
+
 from app.core.errors import (
     InvalidDeviceCredentialsError,
     OutOfOrderSnapshotError,
@@ -14,13 +17,43 @@ from app.repositories.devices import (
     PersistenceUnavailableError,
     SnapshotCandidate,
 )
+from app.services.anchorage_entry import (
+    AnchorageEntryEvent,
+    detect_anchorage_entries,
+)
 from app.services.device_auth import AuthenticatedDevice, DeviceAuthService
+
+log = logging.getLogger(__name__)
 
 
 class SnapshotService:
-    def __init__(self, repository: DevicesRepository) -> None:
+    def __init__(
+        self,
+        repository: DevicesRepository,
+        *,
+        dispatch_anchorage_entry: Callable[[AnchorageEntryEvent], None] | None = None,
+    ) -> None:
         self._repository = repository
         self._auth = DeviceAuthService(repository)
+        self._dispatch_anchorage_entry = dispatch_anchorage_entry
+
+    def _dispatch_anchorage_entries(
+        self,
+        device_id: str,
+        previous,
+        snapshot: MobileSnapshotV1,
+    ) -> None:
+        if self._dispatch_anchorage_entry is None:
+            return
+        for entry in detect_anchorage_entries(device_id, previous, snapshot):
+            try:
+                self._dispatch_anchorage_entry(entry)
+            except Exception as exc:  # noqa: BLE001
+                log.error(
+                    "Falha no dispatch pós-persistência de entrada no fundeio "
+                    "error_type=%s",
+                    type(exc).__name__,
+                )
 
     def authenticate_device(
         self,
@@ -43,6 +76,7 @@ class SnapshotService:
         device: AuthenticatedDevice,
         snapshot: MobileSnapshotV1,
     ) -> SnapshotAcceptedResponse:
+        previous = self._repository.get_snapshot(device.device_id)
         candidate = SnapshotCandidate(
             device_id=device.device_id,
             snapshot=snapshot.model_dump(mode="json"),
@@ -63,6 +97,12 @@ class SnapshotService:
         }:
             if result.received_at is None:
                 raise PersistenceUnavailableApiError()
+            if result.status is AcceptSnapshotStatus.ACCEPTED:
+                self._dispatch_anchorage_entries(
+                    device.device_id,
+                    previous,
+                    snapshot,
+                )
             return SnapshotAcceptedResponse(received_at=result.received_at)
 
         if result.status is AcceptSnapshotStatus.OUT_OF_ORDER:

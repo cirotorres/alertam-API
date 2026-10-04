@@ -64,6 +64,7 @@ class PushPreferencesResponse(BaseModel):
     updated: bool
     completed: bool
     cancelled: bool
+    anchored: bool
 
 
 class PushPreferencesPatch(BaseModel):
@@ -73,6 +74,7 @@ class PushPreferencesPatch(BaseModel):
     updated: bool | None = None
     completed: bool | None = None
     cancelled: bool | None = None
+    anchored: bool | None = None
 
     @model_validator(mode="after")
     def require_at_least_one_preference(self) -> "PushPreferencesPatch":

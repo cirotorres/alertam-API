@@ -149,3 +149,113 @@ def test_repository_failure_maps_to_503_application_error():
         )
 
     assert exc.value.status_code == 503
+
+
+def _with_vessel_state(
+    snapshot: MobileSnapshotV1,
+    *,
+    sequence: int,
+    status: str,
+    section: str,
+) -> MobileSnapshotV1:
+    vessel = snapshot.vessels[0].model_copy(
+        update={"status": status, "section": section}
+    )
+    return snapshot.model_copy(
+        update={"sequence": sequence, "vessels": [vessel]}
+    )
+
+
+def test_first_snapshot_is_silent_anchorage_baseline():
+    repo = _repo()
+    dispatched = []
+    service = SnapshotService(
+        repo,
+        dispatch_anchorage_entry=dispatched.append,
+    )
+
+    service.accept_snapshot(
+        DEVICE_ID,
+        DEVICE_SECRET,
+        _with_vessel_state(
+            _snapshot(),
+            sequence=1,
+            status="FUNDEADO",
+            section="FUNDEADO",
+        ),
+    )
+
+    assert dispatched == []
+
+
+@pytest.mark.parametrize(
+    ("previous_status", "previous_section"),
+    [
+        ("PREVISTO", "PREVISTO"),
+        ("DESATRACANDO", "ATRACADO"),
+        ("ATRACADO", "ATRACADO"),
+    ],
+)
+def test_transition_from_any_other_section_to_fundeado_dispatches_once(
+    previous_status: str,
+    previous_section: str,
+):
+    repo = _repo()
+    dispatched = []
+    service = SnapshotService(
+        repo,
+        dispatch_anchorage_entry=dispatched.append,
+    )
+    baseline = _with_vessel_state(
+        _snapshot(),
+        sequence=1,
+        status=previous_status,
+        section=previous_section,
+    )
+    entered = _with_vessel_state(
+        _snapshot(),
+        sequence=2,
+        status="FUNDEADO",
+        section="FUNDEADO",
+    )
+    still_anchored = _with_vessel_state(
+        _snapshot(),
+        sequence=3,
+        status="FUNDEADO",
+        section="FUNDEADO",
+    )
+
+    service.accept_snapshot(DEVICE_ID, DEVICE_SECRET, baseline)
+    service.accept_snapshot(DEVICE_ID, DEVICE_SECRET, entered)
+    service.accept_snapshot(DEVICE_ID, DEVICE_SECRET, entered)
+    service.accept_snapshot(DEVICE_ID, DEVICE_SECRET, still_anchored)
+
+    assert len(dispatched) == 1
+    assert dispatched[0].device_id == DEVICE_ID
+    assert dispatched[0].vessel_name == "NAVIO A"
+    assert dispatched[0].vessel_imo == "1234567"
+    assert dispatched[0].previous_section == previous_section
+
+
+def test_new_vessel_appearing_fundeado_after_baseline_dispatches():
+    repo = _repo()
+    dispatched = []
+    service = SnapshotService(
+        repo,
+        dispatch_anchorage_entry=dispatched.append,
+    )
+    empty = _snapshot().model_copy(
+        update={"sequence": 1, "vessels": []}
+    )
+    new_fundeado = _with_vessel_state(
+        _snapshot(),
+        sequence=2,
+        status="FUNDEADO",
+        section="FUNDEADO",
+    )
+
+    service.accept_snapshot(DEVICE_ID, DEVICE_SECRET, empty)
+    service.accept_snapshot(DEVICE_ID, DEVICE_SECRET, new_fundeado)
+
+    assert len(dispatched) == 1
+    assert dispatched[0].previous_section is None

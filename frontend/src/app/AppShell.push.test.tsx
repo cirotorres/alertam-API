@@ -89,6 +89,7 @@ const basePushState: PushState = {
     updated: true,
     completed: true,
     cancelled: true,
+    anchored: true,
   },
   error: null,
   enablePush: vi.fn().mockResolvedValue(undefined),

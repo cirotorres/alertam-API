@@ -9,6 +9,7 @@ export type PushPreferences = {
   updated: boolean;
   completed: boolean;
   cancelled: boolean;
+  anchored: boolean;
 };
 
 export type PushPreferenceKey = keyof PushPreferences;
@@ -41,6 +42,7 @@ function parsePreferences(value: unknown): PushPreferences {
     "updated",
     "completed",
     "cancelled",
+    "anchored",
   ];
   const parsed = {} as PushPreferences;
   for (const key of keys) {

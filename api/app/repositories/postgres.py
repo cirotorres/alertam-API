@@ -1266,7 +1266,13 @@ class PostgresDeviceRepository:
     ) -> PushInstallation | None:
         row = self._call_push_row_rpc(
             """
-            select * from public.upsert_push_installation(
+            select
+                installation_id, device_id, endpoint, p256dh, auth,
+                pref_confirmed, pref_updated, pref_completed,
+                pref_cancelled, pref_anchored, push_enabled_at,
+                last_seen_at, last_foreground_at, active,
+                created_at, updated_at
+            from public.upsert_push_installation(
                 %s, %s, %s, %s, %s
             )
             """,
@@ -1286,8 +1292,9 @@ class PostgresDeviceRepository:
                     select
                         installation_id, device_id, endpoint, p256dh, auth,
                         pref_confirmed, pref_updated, pref_completed,
-                        pref_cancelled, push_enabled_at, last_seen_at,
-                        last_foreground_at, active, created_at, updated_at
+                        pref_cancelled, pref_anchored, push_enabled_at,
+                        last_seen_at, last_foreground_at, active,
+                        created_at, updated_at
                     from public.push_installations
                     where device_id = %s and installation_id = %s
                     """,
@@ -1305,8 +1312,14 @@ class PostgresDeviceRepository:
     ) -> PushInstallation | None:
         row = self._call_push_row_rpc(
             """
-            select * from public.update_push_preferences(
-                %s, %s, %s, %s, %s, %s
+            select
+                installation_id, device_id, endpoint, p256dh, auth,
+                pref_confirmed, pref_updated, pref_completed,
+                pref_cancelled, pref_anchored, push_enabled_at,
+                last_seen_at, last_foreground_at, active,
+                created_at, updated_at
+            from public.update_push_preferences(
+                %s, %s, %s, %s, %s, %s, %s
             )
             """,
             (
@@ -1316,6 +1329,7 @@ class PostgresDeviceRepository:
                 preferences.updated,
                 preferences.completed,
                 preferences.cancelled,
+                preferences.anchored,
             ),
         )
         return None if row is None else self._push_installation_from_row(row)
@@ -1326,7 +1340,15 @@ class PostgresDeviceRepository:
         installation_id: UUID,
     ) -> PushInstallation | None:
         row = self._call_push_row_rpc(
-            "select * from public.touch_push_foreground(%s, %s)",
+            """
+            select
+                installation_id, device_id, endpoint, p256dh, auth,
+                pref_confirmed, pref_updated, pref_completed,
+                pref_cancelled, pref_anchored, push_enabled_at,
+                last_seen_at, last_foreground_at, active,
+                created_at, updated_at
+            from public.touch_push_foreground(%s, %s)
+            """,
             (device_id, installation_id),
         )
         return None if row is None else self._push_installation_from_row(row)
@@ -1353,8 +1375,9 @@ class PostgresDeviceRepository:
                     select
                         installation_id, device_id, endpoint, p256dh, auth,
                         pref_confirmed, pref_updated, pref_completed,
-                        pref_cancelled, push_enabled_at, last_seen_at,
-                        last_foreground_at, active, created_at, updated_at
+                        pref_cancelled, pref_anchored, push_enabled_at,
+                        last_seen_at, last_foreground_at, active,
+                        created_at, updated_at
                     from public.push_installations
                     where device_id = %s and active = true
                     order by created_at, installation_id
@@ -1523,15 +1546,16 @@ class PostgresDeviceRepository:
                     updated=bool(row[6]),
                     completed=bool(row[7]),
                     cancelled=bool(row[8]),
+                    anchored=bool(row[9]),
                 ),
-                push_enabled_at=self._aware_datetime(row[9]),
-                last_seen_at=self._aware_datetime(row[10]),
+                push_enabled_at=self._aware_datetime(row[10]),
+                last_seen_at=self._aware_datetime(row[11]),
                 last_foreground_at=(
-                    None if row[11] is None else self._aware_datetime(row[11])
+                    None if row[12] is None else self._aware_datetime(row[12])
                 ),
-                active=bool(row[12]),
-                created_at=self._aware_datetime(row[13]),
-                updated_at=self._aware_datetime(row[14]),
+                active=bool(row[13]),
+                created_at=self._aware_datetime(row[14]),
+                updated_at=self._aware_datetime(row[15]),
             )
         except (TypeError, ValueError) as exc:
             raise PersistenceUnavailableError() from exc

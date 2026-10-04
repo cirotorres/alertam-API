@@ -124,6 +124,7 @@ def _to_response(
             updated=installation.preferences.updated,
             completed=installation.preferences.completed,
             cancelled=installation.preferences.cancelled,
+            anchored=installation.preferences.anchored,
         ),
         push_enabled_at=installation.push_enabled_at,
         last_seen_at=installation.last_seen_at,

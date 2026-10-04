@@ -48,6 +48,11 @@ function AppContent() {
             <TrackingProvider
               sessionReady={sessionReady}
               onAccessRevoked={handleAccessRevoked}
+              storageScope={
+                pairing.deviceId +
+                ":" +
+                (sessionInfo?.installationId ?? "pending")
+              }
             >
               <PushProvider
                 sessionReady={sessionReady}

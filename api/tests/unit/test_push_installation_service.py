@@ -109,3 +109,17 @@ def test_service_does_not_expose_other_device_installation():
 
     with pytest.raises(PushInstallationNotFoundError):
         service.get_installation("pecem-01", INSTALL_A)
+
+
+def test_new_push_installation_enables_anchorage_notifications_by_default():
+    _, _, service = prepared()
+
+    result = service.register_installation(
+        "pecem-01",
+        INSTALL_A,
+        endpoint="https://push.example/a",
+        p256dh="p",
+        auth="a",
+    )
+
+    assert result.preferences.anchored is True

@@ -20,6 +20,7 @@ from app.api.v1.vessel_photos import create_vessel_photo_router
 from app.api.v1.vessel_tracking_events import create_vessel_tracking_event_router
 from app.api.v1.tracked_vessels import create_tracked_vessels_router
 from app.repositories.events import AlertaRepository, StoredManeuverEvent
+from app.services.anchorage_entry import AnchorageEntryEvent
 from app.repositories.tracking import StoredVesselTrackingEvent
 from app.services.tracked_vessel_projection_service import (
     TrackedVesselProjectionService,
@@ -39,6 +40,9 @@ def create_v1_router(
     dispatch_event: Callable[[StoredManeuverEvent], None] | None = None,
     dispatch_tracking_event: Callable[
         [StoredVesselTrackingEvent], None
+    ] | None = None,
+    dispatch_anchorage_entry: Callable[
+        [AnchorageEntryEvent], None
     ] | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
@@ -105,6 +109,7 @@ def create_v1_router(
             repository,
             stale_after_seconds=stale_after_seconds,
             clock=clock,
+            dispatch_anchorage_entry=dispatch_anchorage_entry,
         )
     )
     router.include_router(

@@ -65,6 +65,7 @@ class PushInstallationService:
             "updated": current.preferences.updated,
             "completed": current.preferences.completed,
             "cancelled": current.preferences.cancelled,
+            "anchored": current.preferences.anchored,
         }
         values.update(changes)
         preferences = PushPreferences(**values)

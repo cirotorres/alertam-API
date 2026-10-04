@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
-from typing import Callable
 
 from fastapi import APIRouter, Cookie, Depends, Header
 
@@ -14,6 +14,7 @@ from app.security.credentials import (
     parse_bearer_authorization,
     parse_device_authorization,
 )
+from app.services.anchorage_entry import AnchorageEntryEvent
 from app.services.device_auth import AuthenticatedDevice
 from app.services.mobile_session_service import MobileSessionService
 from app.services.snapshot_read_service import SnapshotReadService
@@ -25,9 +26,13 @@ def create_snapshot_router(
     *,
     stale_after_seconds: int = 120,
     clock: Callable[[], datetime] | None = None,
+    dispatch_anchorage_entry: Callable[[AnchorageEntryEvent], None] | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/devices")
-    service = SnapshotService(repository)
+    service = SnapshotService(
+        repository,
+        dispatch_anchorage_entry=dispatch_anchorage_entry,
+    )
     read_service = SnapshotReadService(
         repository,
         stale_after_seconds=stale_after_seconds,

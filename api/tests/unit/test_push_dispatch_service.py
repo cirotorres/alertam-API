@@ -15,6 +15,8 @@ from app.repositories.events import (
 )
 from app.repositories.memory import MemoryDeviceRepository
 from app.repositories.tracking import VesselEvidence
+import app.services.push_dispatch_service as push_dispatch_module
+from app.services.anchorage_entry import AnchorageEntryEvent
 from app.services.push_dispatch_service import (
     PushDispatchService,
     build_push_message,
@@ -62,6 +64,7 @@ def event(
 def prepared(
     *,
     occurred_at: datetime = T0,
+    event_type: str = "CONFIRMED",
     gateway_error: Exception | None = None,
 ):
     current = [T0]
@@ -69,7 +72,7 @@ def prepared(
     repo.create_device(DeviceAuthRecord("pecem-01", "hash", "view"))
     accepted = repo.accept_maneuver_event_atomic(
         "pecem-01",
-        event(occurred_at=occurred_at),
+        event(event_type=event_type, occurred_at=occurred_at),
     )
     assert accepted.stored is not None
     gateway = RecordingGateway(gateway_error)
@@ -338,3 +341,141 @@ def test_general_category_delivery_does_not_depend_on_tracking_lookup():
     assert gateway.calls[0][1]["url"] == (
         f"/alertas?event={stored.event.event_id}"
     )
+
+
+def test_completed_preference_off_does_not_send_for_untracked_vessel():
+    repo, current, stored, gateway, service = prepared(event_type="COMPLETED")
+    subscribe(repo)
+    repo.update_push_preferences(
+        "pecem-01",
+        INSTALL,
+        PushPreferences(completed=False),
+    )
+    current[0] = T0 + timedelta(seconds=76)
+
+    service.dispatch_event(stored)
+
+    assert gateway.calls == []
+    delivery = repo.get_push_delivery(stored.event.event_id, INSTALL)
+    assert delivery is not None
+    assert delivery.status is PushDeliveryStatus.IGNORED_PREFERENCE
+
+
+def test_completed_preference_off_still_sends_for_actively_tracked_vessel():
+    repo, current, stored, gateway, service = prepared(event_type="COMPLETED")
+    subscribe(repo)
+    repo.update_push_preferences(
+        "pecem-01",
+        INSTALL,
+        PushPreferences(completed=False),
+    )
+    tracked = track(repo, current, started_at=T0)
+    current[0] = T0 + timedelta(seconds=76)
+
+    service.dispatch_event(stored)
+
+    assert len(gateway.calls) == 1
+    assert gateway.calls[0][1]["url"] == (
+        f"/acompanhados?track={tracked.tracked_vessel_id}"
+        f"&event={stored.event.event_id}"
+    )
+
+
+def test_completed_preference_on_sends_without_tracking():
+    repo, current, stored, gateway, service = prepared(event_type="COMPLETED")
+    subscribe(repo)
+    current[0] = T0 + timedelta(seconds=76)
+
+    service.dispatch_event(stored)
+
+    assert len(gateway.calls) == 1
+    assert gateway.calls[0][1]["url"] == (
+        f"/alertas?event={stored.event.event_id}"
+    )
+
+
+def anchorage_event(*, occurred_at: datetime = T0) -> AnchorageEntryEvent:
+    return AnchorageEntryEvent(
+        event_id=UUID("81000000-0000-4000-8000-000000000010"),
+        device_id="pecem-01",
+        vessel_identity="IMO:7654321",
+        vessel_imo="7654321",
+        vessel_name="NAVIO FUNDEADO",
+        previous_section="PREVISTO",
+        occurred_at=occurred_at,
+    )
+
+
+def anchorage_service(repo, gateway, current):
+    service_cls = getattr(
+        push_dispatch_module,
+        "AnchoragePushDispatchService",
+        None,
+    )
+    assert service_cls is not None
+    return service_cls(
+        repo,
+        gateway,
+        foreground_fresh_seconds=75,
+        clock=lambda: current[0],
+    )
+
+
+def test_anchorage_preference_enabled_sends_public_notification():
+    repo, current, _, gateway, _ = prepared()
+    subscribe(repo)
+    current[0] = T0 + timedelta(seconds=76)
+    service = anchorage_service(repo, gateway, current)
+
+    service.dispatch_event(anchorage_event())
+
+    assert len(gateway.calls) == 1
+    payload = gateway.calls[0][1]
+    assert set(payload) == {"event_id", "title", "body", "url"}
+    assert payload["event_id"] == str(anchorage_event().event_id)
+    assert payload["title"] == "Entrada no fundeio"
+    assert "NAVIO FUNDEADO" in payload["body"]
+    assert payload["url"] == "/"
+
+
+def test_anchorage_preference_disabled_sends_nothing():
+    repo, current, _, gateway, _ = prepared()
+    subscribe(repo)
+    repo.update_push_preferences(
+        "pecem-01",
+        INSTALL,
+        PushPreferences(anchored=False),
+    )
+    current[0] = T0 + timedelta(seconds=76)
+    service = anchorage_service(repo, gateway, current)
+
+    service.dispatch_event(anchorage_event())
+
+    assert gateway.calls == []
+
+
+def test_anchorage_event_is_suppressed_while_pwa_is_fresh_foreground():
+    repo, current, _, gateway, _ = prepared()
+    subscribe(repo)
+    repo.touch_push_foreground("pecem-01", INSTALL)
+    current[0] = T0 + timedelta(seconds=75)
+    service = anchorage_service(repo, gateway, current)
+
+    service.dispatch_event(anchorage_event())
+
+    assert gateway.calls == []
+
+
+def test_anchorage_permanent_push_failure_deactivates_only_installation():
+    repo, current, _, _, _ = prepared()
+    gateway = RecordingGateway(PermanentPushError())
+    subscribe(repo)
+    current[0] = T0 + timedelta(seconds=76)
+    service = anchorage_service(repo, gateway, current)
+
+    service.dispatch_event(anchorage_event())
+
+    assert len(gateway.calls) == 1
+    installation = repo.get_push_installation("pecem-01", INSTALL)
+    assert installation is not None
+    assert installation.active is False
