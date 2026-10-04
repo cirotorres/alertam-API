@@ -2270,3 +2270,79 @@ Exclusões deliberadas do commit:
 6. somente após produção confirmada iniciar forward-port da hotfix sobre a nova base A3.
 
 A hotfix `hotfix/pwa-acompanhamentos-fundeio` permanece intocada até a confirmação de produção A3.
+
+
+### A3 — merge, deploy e validação v1+v2 em produção — Executor — 2026-10-04
+
+**Resultado:** A3 confirmada em produção.
+
+#### Commits/materialização
+
+- `919dc16 feat: materializa consumidores MobileSnapshot v2 da A3`
+- `7de4ffb docs: registra fechamento técnico da A3`
+- merge em produção: `096be75 merge: integra A3 MobileSnapshot v2 em produção`
+
+Branches remotas:
+- `origin/feat/spec025-a3-mobile-snapshot-v2` recebeu a A3 materializada;
+- `origin/feat/api-bootstrap` recebeu o merge `096be75`.
+
+#### Gates completos pós-merge em worktree limpo
+
+Executados sobre `feat/api-bootstrap` já contendo A3:
+
+- API `make test` com `-W error`: PASS, exit 0;
+- frontend: `48` arquivos / `273` testes passed;
+- `npm run build`: PASS;
+- `git diff --check`: PASS;
+- árvore pós-merge limpa.
+
+#### Vercel
+
+Projeto:
+- `alertam-api`;
+- projeto ID `prj_Z5quPlGf9TiZG1npDvV1vqA2HhM1`.
+
+Deployment de produção criado pelo push:
+- deployment ID `dpl_XqBpgGR6jbaVcZcFuDQgLG2cxbMx`;
+- deployment URL `alertam-b3foxey2q-cirotorres-projects.vercel.app`;
+- target `production`;
+- estado final `READY`.
+
+O alias `https://alertam-api.vercel.app` foi conferido e aponta para esse mesmo deployment.
+
+Smoke básico:
+- `GET /api/v1/health` -> HTTP 200, `{"ok":true}`;
+- `/` -> HTTP 200, PWA `AlertaM Mobile`.
+
+#### Smoke autenticado v1+v2 sem mutação de produção
+
+Para não sobrescrever snapshot real, foi usada a identidade Desktop local sem imprimir/expor o segredo e o snapshot atual do Supabase apenas como referência de `boot_id`/`sequence`.
+
+Estado antes:
+- device `pecem-01`;
+- schema atual persistido: `1`;
+- sequence atual: `161`.
+
+Foram enviados payloads contratuais v1 e v2 com o mesmo `boot_id` e sequence inferior à atual.
+
+Resultados:
+- v1 -> HTTP `409`, código `out_of_order_snapshot`;
+- v2 -> HTTP `409`, código `out_of_order_snapshot`.
+
+Esses resultados provam que ambos passaram autenticação, parsing/validação contratual e chegaram ao controle de sequência do `SnapshotService`.
+
+Após os dois requests, nova leitura do Supabase confirmou mesmo `boot_id`, mesma `sequence` e mesmo snapshot persistido.
+
+    production_snapshot_unchanged=true
+    SMOKE_V1_V2=PASS
+
+#### Gate
+
+**A3 consumidores MobileSnapshot v1+v2: CONFIRMADOS EM PRODUÇÃO.**
+
+A partir deste checkpoint está autorizado iniciar o forward-port da hotfix, obedecendo:
+- preservar a branch hotfix original como checkpoint;
+- nova branch deve nascer de `feat/api-bootstrap` já contendo A3;
+- A3 é autoritativa em conflitos;
+- não aplicar migration 017;
+- não fazer push/merge/deploy da hotfix integrada antes de nova revisão independente.
