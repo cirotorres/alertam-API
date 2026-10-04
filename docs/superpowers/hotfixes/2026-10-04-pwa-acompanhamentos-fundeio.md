@@ -1059,3 +1059,87 @@ Próxima sequência autorizada:
 4. gate curto pós-merge;
 5. push de `feat/api-bootstrap`;
 6. acompanhar deploy automático e smoke.
+
+
+## 20. Rollout concluído em produção — Executor — 2026-10-04
+
+**Resultado:** rollout técnico concluído com sucesso.
+
+### 20.1 Merge e push
+
+Merge em `feat/api-bootstrap`:
+
+    9e2f654 merge: integra hotfix PWA acompanhamentos e fundeio
+
+Push confirmado:
+
+    origin/feat/api-bootstrap -> 9e2f654
+
+### 20.2 Deployment
+
+Deployment de produção criado pelo push:
+
+    id=dpl_2yLDMs6uLgsMWDo7buXZTrtfNfMg
+    url=alertam-i8lc641b6-cirotorres-projects.vercel.app
+    target=production
+    readyState=READY
+
+O alias `https://alertam-api.vercel.app` foi conferido e aponta para esse deployment.
+
+### 20.3 Smoke automatizado
+
+Health:
+
+    GET /api/v1/health -> {"ok":true}
+
+Marcadores A3 no bundle ativo:
+
+    Estação Pecém · observação = presente
+    Open-Meteo · fallback/modelo = presente
+    Open-Meteo Marine = presente
+
+Marcador da hotfix:
+
+    Entradas no fundeio = presente
+
+Smoke autenticado sem mutação do snapshot real:
+
+    v1_status=409
+    v1_code=out_of_order_snapshot
+    v2_status=409
+    v2_code=out_of_order_snapshot
+    current_schema=1
+    current_sequence=196
+    production_snapshot_unchanged=true
+    HOTFIX_PROD_SMOKE=PASS
+
+Os 409 `out_of_order_snapshot` são esperados: os payloads foram enviados propositalmente com sequence inferior para provar autenticação + parsing + contrato v1/v2 + chegada ao `SnapshotService` sem alterar produção.
+
+### 20.4 Migration
+
+Estado final:
+
+    Migrations locais:    17
+    Migrations aplicadas: 17
+    Pendentes:            0
+    Desconhecidas:        0
+
+Schema confirmado:
+- `pref_anchored boolean NOT NULL DEFAULT true`;
+- RPC antigo de quatro flags preservado;
+- RPC novo com `p_anchored boolean` presente;
+- 15 instalações existentes ficaram com `anchored=true` após a migration.
+
+### 20.5 Estado final
+
+- R1-F1: ENCERRADO;
+- R2: APROVADA;
+- migration 017: APLICADA;
+- branch integrada: PUSHED;
+- merge em `feat/api-bootstrap`: CONCLUÍDO;
+- deploy: READY;
+- A3 v1+v2: PRESERVADA EM PRODUÇÃO;
+- hotfix acompanhamentos/fundeio: PUBLICADA;
+- smoke automatizado: PASS.
+
+Resta somente validação manual de UX/notificação real em aparelho, caso o operador deseje conferir visualmente os novos comportamentos.
