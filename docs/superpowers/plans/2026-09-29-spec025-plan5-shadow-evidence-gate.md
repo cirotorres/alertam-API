@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
-**Goal:** Avaliar evidência acumulada do shadow com gate objetivo, gerar relatório sanitizado e executar a janela operacional sem promover HTTP automaticamente.
+**Goal:** Avaliar evidência acumulada do shadow com gate objetivo, gerar relatório sanitizado e decidir se o collector HTTP está tecnicamente apto a ser reutilizado pela SPEC 027 — AlertaM Cloud, sem promover HTTP local nem ativar Cloud automaticamente.
 
 **Architecture:** Um avaliador puro lê ShadowEvidence e decide se os requisitos 24h + 500 ciclos comparáveis + cobertura + 100 ciclos finais limpos foram atendidos. Um gerador de relatório transforma esse estado em resumo humano. A execução real da janela é um gate operacional separado e exige revisão humana.
 
@@ -13,7 +13,8 @@
 ## Global Constraints
 
 - Dependência obrigatória: Plan 4 concluído e shadow estável.
-- Gate técnico não realiza cutover.
+- Gate técnico não realiza cutover nem ativa Cloud.
+- Gate MET apenas permite revisão humana para desbloquear a trilha de implementação da SPEC 027.
 - 24 horas é duração mínima observada, não tempo desde instalação.
 - 500 é número mínimo de ciclos comparáveis.
 - Últimos 100 ciclos comparáveis consecutivos devem estar sem divergência semântica aberta.
@@ -349,9 +350,9 @@ Required wording/meaning:
 - HTTP shadow evidence is accepted/rejected/pending.
 - No cutover occurred under SPEC 025.
 
-- [ ] **Step 4: If gate MET, recommend next work item only**
+- [ ] **Step 4: If gate MET, unlock the next roadmap item only**
 
-Create/propose a new SPEC for cutover. Do not implement the cutover in this plan.
+Revisar a evidência com o usuário e, se aprovada, marcar a SPEC 027 como liberada para planejamento/execução. Não implementar Cloud nem cutover neste plano. Eventual cutover Selenium→HTTP do Desktop local continua sendo uma decisão separada.
 
 - [ ] **Step 5: Checkpoint/commit documentation only if explicitly authorized**
 
@@ -360,4 +361,4 @@ Suggested message:
 
 - [ ] **Step 6: STOP**
 
-SPEC 025 ends here. A future cutover requires separate brainstorm/spec/plan approval.
+SPEC 025 termina aqui. Com gate humano aprovado, a trilha principal segue para a SPEC 027. Qualquer cutover local continua exigindo brainstorm/spec/plan próprios.

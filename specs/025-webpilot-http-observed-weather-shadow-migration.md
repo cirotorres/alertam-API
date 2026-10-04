@@ -1,9 +1,9 @@
 # SPEC 025 — WebPilot HTTP, meteorologia observada e shadow de movimentações
 
-**Status:** Aprovada para planejamento; implementação não iniciada  
-**Data:** 2026-09-29  
-**Escopo:** AlertaM Desktop + API FastAPI/Supabase + PWA React/Vite  
-**Origem:** necessidade de meteorologia observada do Porto do Pecém e preparação segura da coleta WebPilot por HTTP
+**Status:** Estratégia reordenada e aprovada; implementação não iniciada
+**Data:** 2026-10-02
+**Escopo:** AlertaM Desktop + API FastAPI/Supabase + PWA React/Vite
+**Origem:** meteorologia observada do Porto do Pecém, coleta WebPilot HTTP e fundação validável para o futuro AlertaM Cloud
 
 ## 1. Contexto
 
@@ -37,6 +37,11 @@ arquitetura WebPilot mais robusta, separando:
 A migração das movimentações será gradual. O Selenium continua sendo a fonte oficial
 durante toda esta SPEC.
 
+Esta SPEC passa a representar formalmente as Etapas A e B do roadmap arquitetural:
+**Fundação HTTP/Weather** e **Shadow/Evidence Gate**. O coletor HTTP validado aqui será a base
+obrigatória da futura SPEC 027 — AlertaM Cloud, sem antecipar o Cloud nem a refatoração ampla do
+Desktop dentro desta SPEC.
+
 ## 2. Objetivos
 
 1. Criar uma infraestrutura HTTP autenticada reutilizável para consumidores WebPilot.
@@ -47,8 +52,9 @@ durante toda esta SPEC.
 6. Evoluir o MobileSnapshot para schema v2 com rollout compatível entre Desktop, API e PWA.
 7. Criar um caminho HTTP de movimentações em shadow, sem impacto operacional.
 8. Comparar Selenium × HTTP no domínio normalizado e persistir evidência sanitizada.
-9. Implementar um gate técnico objetivo para uma futura decisão humana de cutover.
+9. Implementar um gate técnico objetivo para decidir se o collector HTTP está apto a ser reutilizado pelo AlertaM Cloud e, separadamente, sustentar futuras decisões de cutover.
 10. Manter toda a nova coleta e recuperação fora da Tk main thread.
+11. Extrair apenas a estrutura necessária para um collector headless reutilizável, sem antecipar uma refatoração ampla do Desktop.
 
 ## 3. Não objetivos
 
@@ -67,9 +73,14 @@ Esta SPEC não deve:
 - criar um novo parser semântico de manobras em paralelo ao parser atual;
 - fazer grande refatoração visual sem relação com meteorologia/fontes;
 - enviar cookies, sessão ou credenciais WebPilot para API/PWA;
-- executar cutover automático quando o gate técnico for atendido.
+- executar cutover automático quando o gate técnico for atendido;
+- implementar o AlertaM Cloud;
+- transformar Cloud em autoridade de gestão mobile;
+- realizar refatoração ampla de bootstrap/controller/UI além do mínimo necessário à extração do collector.
 
-A promoção do HTTP para fonte oficial das movimentações pertence a uma SPEC posterior.
+A promoção do HTTP para fonte oficial das movimentações permanece uma decisão posterior. O uso do
+collector validado como serviço de continuidade Cloud pertence à SPEC 027 e só pode ser planejado
+para execução após o gate humano desta SPEC.
 
 ## 4. Princípios obrigatórios
 
@@ -108,16 +119,33 @@ operacional de manobras.
 
 O shadow HTTP é observador e comparador, nunca produtor operacional.
 
+### 4.4 Separação mínima agora; refatoração ampla depois do Cloud
+
+A extração de autenticação, transporte HTTP, parsing e serviços de coleta deve produzir componentes
+headless e reutilizáveis. Essa separação é obrigatória porque será exercitada no shadow e poderá ser
+reutilizada pela SPEC 027.
+
+Ela não autoriza uma reorganização ampla do núcleo legado. MainWindow, controller, bootstrap e
+outros acoplamentos só devem ser alterados na medida necessária para integrar com segurança os novos
+serviços. A modernização estrutural extensa pertence à Etapa D do roadmap, posterior ao Cloud.
+
 ## 5. Arquitetura alvo
 
 O desenho conceitual é:
 
-    AlertaM
+    AlertaM Desktop
        │
-       ├── AuthSessionCoordinator (realm WebPilot)
+       ├── WebPilotSessionProvider (contrato)
        │       │
-       │       └── BrowserSession / Selenium
-       │               └── login, validação e renovação
+       │       └── DesktopSeleniumSessionProvider
+       │               └── BrowserSession / Selenium
+       │                       └── login, validação e renovação
+       │
+       ├── WebPilotAuthCoordinator (um por realm)
+       │       └── SessionLease
+       │             ├── generation
+       │             ├── cookies
+       │             └── expires_at opcional/advisory
        │
        └── WebPilotHttpClient
                ├── Weather HTTP
@@ -148,7 +176,19 @@ obrigatória.
 
 ## 6. Coordenação da sessão WebPilot
 
-### 6.1 Responsável pelo login
+### 6.1 Provider de sessão e responsável concreto pelo login
+
+O coordenador de autenticação não conhece Selenium, Controller, Tk nem WebDriver. Ele depende de um
+contrato pequeno, conceitualmente `WebPilotSessionProvider`, capaz de solicitar aquisição/renovação
+de uma sessão.
+
+Na implementação Desktop desta SPEC, o provider concreto usa o fluxo Selenium já existente:
+
+    WebPilotSessionProvider
+              │
+              └── DesktopSeleniumSessionProvider
+                        │
+                        └── BrowserSession / Selenium
 
 `BrowserSession`/Selenium continua sendo o mecanismo concreto que sabe:
 
@@ -157,7 +197,14 @@ obrigatória.
 - renovar a sessão;
 - obter os cookies autenticados.
 
+A autenticação inicial do HTTP acompanha a autenticação normal do Desktop: quando Selenium confirma
+uma sessão válida, a sessão é exportada e publicada no coordenador. Não existe um segundo login HTTP
+paralelo apenas para os consumidores.
+
 Os consumidores HTTP não abrem navegador, não manipulam Tk e não executam login.
+
+A abstração do provider é obrigatória porque o futuro Cloud poderá obter sessões por outro mecanismo
+sem alterar `WebPilotAuthCoordinator` ou `WebPilotHttpClient`.
 
 ### 6.2 Estados conceituais
 
@@ -183,18 +230,31 @@ interna:
 A geração permite a um consumidor saber que a requisição que falhou usou uma sessão
 antiga e que uma recuperação já publicou cookies mais novos.
 
-A geração é interna ao Desktop; não pertence ao MobileSnapshot.
+A geração é interna ao processo/realm autenticado; não pertence ao MobileSnapshot.
+
+Cada `SessionLease` também deve preservar `expires_at` quando os cookies exportados fornecerem
+expiração explícita. Para esta SPEC:
+
+- `expires_at` é opcional;
+- quando houver múltiplos cookies utilizáveis com expiração explícita, usar uma estimativa
+  conservadora baseada na expiração mais próxima;
+- ausência de `expiry` produz `expires_at=None`;
+- a data é metadado de observabilidade/renovação, não prova de validade;
+- uma resposta semanticamente identificada como login invalida a sessão mesmo antes de
+  `expires_at`;
+- estar antes de `expires_at` nunca transforma uma resposta de login em sessão válida.
 
 ### 6.4 Recuperação única
 
 Quando um consumidor detectar `SESSION_EXPIRED`:
 
 1. sinaliza a expiração ao coordenador;
-2. se não houver recuperação em andamento, inicia uma única recuperação via Selenium;
-3. se outra recuperação já estiver em andamento, aguarda/acompanha o mesmo resultado;
-4. após sucesso, a nova sessão/cookies é publicada com nova geração;
-5. o consumidor pode repetir a operação uma vez;
-6. se a repetição também indicar sessão expirada, o ciclo termina como falha.
+2. se não houver recuperação em andamento, solicita uma única recuperação ao `WebPilotSessionProvider`;
+3. no Desktop atual, o provider delega ao fluxo Selenium existente, sem abrir autenticação paralela;
+4. se outra recuperação já estiver em andamento, aguarda/acompanha o mesmo resultado;
+5. após sucesso, a nova sessão/cookies é publicada com nova geração e novo `expires_at` quando disponível;
+6. o consumidor pode repetir a operação uma vez;
+7. se a repetição também indicar sessão expirada, o ciclo termina como falha.
 
 Clima e shadow detectando expiração simultaneamente não podem iniciar logins concorrentes.
 
@@ -213,6 +273,31 @@ como falha fatal.
 Recuperação, espera de sessão e requests HTTP não podem bloquear a Tk main thread.
 
 Nenhum consumidor pode depender de polling ocupado/busy wait na UI.
+
+### 6.7 Preparação para federação futura do realm WebPilot
+
+Nesta SPEC existe apenas um provider concreto local por processo Desktop. Não implementar broker
+multi-Desktop, transporte de sessão para Cloud nem armazenamento remoto de cookies.
+
+Mesmo assim, a fronteira deve preservar a separação necessária para a SPEC 027:
+
+    WebPilotAuthRealm
+          │
+          ├── SessionProvider A
+          ├── SessionProvider B
+          └── futuro provider Cloud nativo, se necessário
+                    ↓
+             WebPilotAuthCoordinator
+                    ↓
+               SessionLease
+
+O objetivo futuro é permitir que qualquer Desktop autorizado no mesmo realm WebPilot forneça uma
+sessão mais nova para continuidade Cloud. Isso não significa compartilhar device_id nem gestão
+Mobile entre Desktops; compartilha-se apenas a capacidade autenticada de consultar a mesma origem.
+
+A premissa operacional atual é que as contas WebPilot usadas pelos operadores possuem escopo
+equivalente no sistema. A SPEC 027 deverá validar essa premissa e impedir federação automática entre
+providers com permissões divergentes caso isso mude.
 
 ## 7. WebPilotHttpClient
 
@@ -1030,7 +1115,15 @@ Testar que:
 
 ## 26. Rollout e ordem de implementação
 
-### Fase 1 — Base WebPilot HTTP + autenticação coordenada
+A sequência passa a ser organizada pelo roadmap A→B→C→D. Dentro desta SPEC, a **trilha crítica para
+o Cloud** é:
+
+    Plan 1 → Plan 2 → Plan 4 → Plan 5 → gate humano → SPEC 027
+
+O Plan 3 permanece válido, mas é uma trilha lateral de contrato Mobile e não bloqueia o início do
+shadow quando Plans 1 e 2 já estiverem validados.
+
+### Etapa A1 — Base WebPilot HTTP + autenticação coordenada (Plan 1)
 
 - coordenador por origem WebPilot;
 - publicação segura da sessão/cookies;
@@ -1041,7 +1134,7 @@ Testar que:
 - retry único;
 - testes de concorrência e segurança.
 
-### Fase 2 — Meteorologia observada
+### Etapa A2 — Meteorologia observada (Plan 2)
 
 - modelo observado;
 - parser `#lblDados`;
@@ -1053,7 +1146,7 @@ Testar que:
 - tooltip/detalhamento;
 - testes completos da meteorologia.
 
-### Fase 3 — MobileSnapshot v2 + API/PWA
+### Trilha lateral — MobileSnapshot v2 + API/PWA (Plan 3)
 
 - contrato v2 no Desktop;
 - API aceitando v1 + v2;
@@ -1062,17 +1155,21 @@ Testar que:
 - deploy/validação API/PWA;
 - somente depois Desktop publica v2.
 
-### Fase 4 — Shadow HTTP de movimentações
+Pode ocorrer após a Etapa A ou em paralelo à preparação do shadow. Não é pré-requisito conceitual
+da SPEC 027, salvo se o plano Cloud posterior decidir consumir algum metadado específico do v2.
+
+### Etapa B1 — Shadow HTTP de movimentações (Plan 4)
 
 - extrator da grid;
 - reutilização de `parse_grid_rows()`;
+- collector headless reutilizando a Fundação A;
 - comparator;
 - matching conservador;
 - divergências tipadas;
 - persistência local sanitizada;
 - isolamento operacional.
 
-### Fase 5 — Operação e evidência
+### Etapa B2 — Operação e evidência (Plan 5)
 
 - habilitar shadow de forma controlada;
 - coletar 24h / 500+ ciclos comparáveis;
@@ -1080,9 +1177,11 @@ Testar que:
 - analisar divergências;
 - verificar últimos 100 ciclos;
 - produzir relatório;
-- registrar estado do gate.
+- registrar estado do gate;
+- decidir humanamente se o collector está apto a ser reutilizado no Cloud.
 
-A Fase 5 não inclui cutover.
+A Etapa B2 não inclui cutover nem ativa Cloud. Se o gate for aprovado, o próximo trabalho da trilha
+principal é a SPEC 027. A refatoração ampla do Desktop permanece posterior ao Cloud.
 
 ## 27. Riscos de regressão e proteções
 
@@ -1272,12 +1371,23 @@ grupos.
 
 ### 31.3 Trabalho futuro
 
-- SPEC de cutover HTTP das movimentações;
+Na trilha principal aprovada:
+
+1. SPEC 027 — AlertaM Cloud, somente após gate humano da evidência shadow;
+2. operação/observação da continuidade Cloud vinculada ao Desktop;
+3. SPEC futura de refatoração ampla do núcleo Desktop.
+
+Separadamente, continuam possíveis:
+
+- SPEC de eventual cutover HTTP das movimentações no Desktop local;
 - política de fallback operacional Selenium após eventual cutover;
 - período de convivência pós-cutover;
 - eventual redução do papel do Selenium;
 - WeatherLink como redundância/segunda estação;
 - outras fontes autenticadas usando coordenadores próprios.
+
+A aprovação do shadow não obriga cutover local. O Cloud pode reutilizar o collector validado como
+continuidade enquanto o Desktop local continua com Selenium como fonte preferencial.
 
 ## 32. Decisões explícitas
 
@@ -1297,3 +1407,13 @@ grupos.
 14. Equivalência é medida no domínio normalizado.
 15. Gate técnico não realiza cutover.
 16. Qualquer promoção de HTTP exige decisão humana e SPEC posterior.
+17. Plans 1 e 2 formam a Fundação A; Plans 4 e 5 formam a Prova B.
+18. Plan 3 é evolução lateral do MobileSnapshot e não bloqueia o shadow nem, por si só, o Cloud.
+19. Collector validado no shadow é a base obrigatória da SPEC 027; não criar implementação Cloud paralela.
+20. Cloud permanece vinculado à identidade de um Desktop e não assume gestão mobile.
+21. Refatoração ampla de bootstrap/controller/UI ocorre somente após a Etapa C Cloud estar operacional e observada.
+22. WebPilotAuthCoordinator não depende diretamente de Selenium; depende de WebPilotSessionProvider.
+23. No Desktop, a autenticação HTTP reutiliza a sessão já autenticada pelo Selenium, sem login paralelo.
+24. SessionLease preserva expires_at quando disponível, mas expiry é apenas validade nominal/advisory.
+25. Federação multi-Desktop por WebPilotAuthRealm é preparação para a SPEC 027 e não é implementada na SPEC 025.
+26. Autenticações de fontes futuras devem possuir realms/providers próprios; não criar auth global único do AlertaM.

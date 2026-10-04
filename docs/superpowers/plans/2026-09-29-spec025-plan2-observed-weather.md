@@ -10,6 +10,8 @@
 
 **Spec:** specs/025-webpilot-http-observed-weather-shadow-migration.md
 
+**Posição no roadmap (2026-10-02):** Etapa A2. Conclui a Fundação A antes do shadow; depois deste plano, a trilha crítica segue para Plan 4, enquanto Plan 3 pode evoluir em paralelo.
+
 ## Global Constraints
 
 - Dependência obrigatória: Plan 1 concluído e revisado.

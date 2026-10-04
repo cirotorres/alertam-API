@@ -7,8 +7,9 @@
 | 022 | [Detalhes de Alertas e linha do tempo da manobra](022-alert-details-maneuver-timeline.md) | Implementação local concluída e validada | Alertas clicáveis, gaveta detalhada, POB × conclusão observada, timeline por maneuver_id e detalhes equivalentes no Desktop |
 | 023 | [Ship Tracking](023-ship-tracking.md) | Planos 1–3 implementados; Tk/Xephyr validado; rollout externo pendente | Acompanhamento persistente por navio/instalação, VesselTrackingEvent, push seletivo, timeline unificada e tracking local no Desktop |
 | 024 | [Tempo operacional da manobra e refinamentos de UX](024-operational-maneuver-timing-ux-refinements.md) | SPEC aprovada; planos TDD preparados para revisão | Separa horário operacional de observação do AlertaM, persiste ATRAC real e corrige UX de tracking, sheets, scroll e footer |
-| 025 | [WebPilot HTTP, meteorologia observada e shadow de movimentações](025-webpilot-http-observed-weather-shadow-migration.md) | Aprovada para planejamento; implementação não iniciada | Separa autenticação/coleta WebPilot, adota meteorologia observada com fallback explícito, evolui MobileSnapshot v2 e prepara shadow HTTP com gate de equivalência sem cutover |
+| 025 | [WebPilot HTTP, meteorologia observada e shadow de movimentações](025-webpilot-http-observed-weather-shadow-migration.md) | Estratégia reordenada e aprovada; implementação não iniciada | Fundação HTTP/Weather + prova shadow/evidence gate; trilha crítica 1→2→4→5 prepara o collector que poderá ser reutilizado pelo Cloud |
 | 026 | [Gestão de aparelhos mobile, revogação e troca segura de pareamento](026-mobile-installation-management-safe-pairing-switch.md) | Implementação estendida concluída; migration 016 aplicada; deploy/smoke iOS pendentes | Lista/revoga instalações, troca segura dentro do PWA por QR ou código temporário de 6 dígitos e reconexão sem reinstalar |
+| 027 | [AlertaM Cloud: continuidade vinculada ao Desktop](027-alertam-cloud-continuity.md) | Arquitetura aprovada; bloqueada até gate humano da SPEC 025 | Cloud headless vinculado ao Desktop, continuidade de snapshot, arbitragem/failover e autenticação WebPilot federada por realm sem exigir senha permanente no Cloud v1 |
 
 ## Dependências cross-repo
 
@@ -23,5 +24,6 @@ A SPEC 021 trata o novo canal de ManeuverEvent, feed mobile e Web Push, consumin
 A SPEC 022 evolui esse canal com detalhe/timeline por manobra e requer mudanças coordenadas em Desktop, API e PWA.
 A SPEC 023 depende da 022 para reutilizar timeline/detalhes e adiciona Ship Tracking com `VesselTrackingEvent`, persistência por instalação e tracking local no Desktop.
 A SPEC 024 refina a 022/023 após validação real, sem substituir seus contratos: adiciona horário operacional opcional ao ManeuverEvent e corrige UX coordenada entre Desktop e PWA.
-A SPEC 025 cruza Desktop, API e PWA para separar autenticação/coleta WebPilot, introduzir meteorologia observada e validar a futura coleta HTTP de movimentações em shadow; ela não realiza o cutover operacional.
+A SPEC 025 cruza Desktop, API e PWA para separar autenticação/coleta WebPilot, introduzir meteorologia observada e provar o collector HTTP em shadow; ela não realiza cutover nem ativa Cloud.
 A SPEC 026 evolui o pareamento das specs 019/020 e a identidade por instalação das specs 021/023, adicionando gestão administrativa no Desktop, revogação individual e troca segura entre Desktops.
+A SPEC 027 depende do gate humano da 025 e define o Cloud como continuidade vinculada a um Desktop existente, preservando o mesmo device_id e a gestão mobile no Desktop.

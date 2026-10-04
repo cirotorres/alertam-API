@@ -12,7 +12,8 @@
 
 ## Global Constraints
 
-- Dependência obrigatória: Plan 1 concluído; Plan 3 pode estar em produção em paralelo, mas shadow não depende de MobileSnapshot v2.
+- Dependência técnica: Plan 1 concluído. Dependência de roadmap: Plan 2 também concluído/revisado antes de iniciar a Etapa B. Plan 3 pode estar em produção em paralelo, mas shadow não depende de MobileSnapshot v2.
+- O serviço shadow deve nascer headless/reutilizável o suficiente para servir de base ao futuro collector Cloud após o gate, sem importar UI/Tk nem efeitos operacionais.
 - ALERTAM_WEBPILOT_SHADOW_MODE default false.
 - Shadow nunca alimenta ManeuverTracker, eventos, push, áudio, histórico operacional, MobileSnapshot ou PWA.
 - Reutilizar parse_grid_rows; não criar parser semântico concorrente.

@@ -4,18 +4,26 @@
 
 **Goal:** Criar a base compartilhada de sessão autenticada WebPilot e o cliente HTTP reutilizável, sem ativar ainda meteorologia WebPilot nem shadow de movimentações.
 
-**Architecture:** BrowserSession/Selenium continua sendo o único dono do login e do WebDriver. Um WebPilotAuthCoordinator thread-safe publica snapshots imutáveis de cookies com geração monotônica, coordena uma única recuperação por vez e expõe a sessão ao WebPilotHttpClient. O cliente usa urllib, detecta login/timeout/HTTP error e repete no máximo uma vez depois de uma geração mais nova.
+**Architecture:** WebPilotAuthCoordinator não conhece Selenium nem Controller. Ele coordena um realm autenticado por meio do contrato WebPilotSessionProvider e publica SessionLease imutável com realm, geração, cookies e expires_at opcional. No Desktop, DesktopSeleniumSessionProvider apenas adapta o fluxo Selenium já existente: a autenticação inicial/renovação ocorre uma vez no navegador e a sessão resultante é publicada para os consumidores HTTP. O WebPilotHttpClient usa urllib, detecta login/timeout/HTTP error e repete no máximo uma vez depois de uma geração mais nova. A mesma fronteira poderá receber outro provider no Cloud sem alterar coordinator/client.
 
 **Tech Stack:** Python 3.12+, Selenium, threading.Condition/Event, urllib da stdlib, pytest.
 
 **Spec:** specs/025-webpilot-http-observed-weather-shadow-migration.md
 
+**Posição no roadmap (2026-10-02):** Etapa A1. Este plano inicia a fundação headless reutilizável; não autoriza refatoração ampla nem Cloud.
+
 ## Global Constraints
 
 - Selenium continua oficial para movimentações.
 - Nenhum consumidor implementa login.
-- Sessão coordenada por origem WebPilot.
-- Renovação reativa, sem timer fixo.
+- WebPilotAuthCoordinator não importa/conhece Selenium, Controller, Tk ou WebDriver.
+- Sessão coordenada por realm/origem WebPilot; nesta etapa existe um único realm Pecém.
+- Desktop usa um WebPilotSessionProvider concreto que delega ao fluxo Selenium existente.
+- A autenticação inicial Selenium publica a mesma sessão para HTTP; não existe login HTTP paralelo.
+- SessionLease preserva expires_at quando houver expiry explícito nos cookies.
+- expires_at é advisory/observabilidade; validação semântica do request continua autoritativa.
+- Não implementar Auth Broker multi-Desktop, upload de sessão ao Cloud nem armazenamento remoto de cookies na A1.
+- Renovação reativa, sem timer fixo nesta etapa.
 - Uma recuperação concorrente por vez.
 - No máximo um retry HTTP após nova geração.
 - Não registrar cookies, headers ou credenciais.
@@ -30,24 +38,31 @@
 - HTTP 200 contendo página de login deve ser SESSION_EXPIRED, não OK.
 - Falha/timeout da recuperação não pode deixar waiters bloqueados.
 - Cookies malformados ou vazios não podem aparecer em log nem quebrar o processo; a operação deve falhar de forma segura.
+- Cookie expiry conhecido deve sobreviver à exportação e virar expires_at UTC aware sem expor valores de cookie.
+- expires_at ainda futuro não pode mascarar resposta semanticamente identificada como login.
+- Testes do coordinator devem usar provider falso, provando que o núcleo não depende de Selenium.
 
 ---
 
-### Task 1: Criar o coordenador thread-safe de sessão WebPilot
+### Task 1: Criar contrato de provider e coordenador thread-safe de sessão WebPilot
 
 **Files:**
 - Create: /home/ciro/dev/prog/alertamaritimo/src/alertam/application/webpilot_auth.py
 - Create: /home/ciro/dev/prog/alertamaritimo/tests/unit/test_webpilot_auth.py
 
 **Interfaces:**
-- Produces: SessionLease(generation: int, cookies: tuple[Mapping[str, object], ...])
-- Produces: AuthState enum com AUTHENTICATED, RECOVERING, UNAVAILABLE
-- Produces: WebPilotAuthCoordinator.publish(cookies) -> SessionLease
-- Produces: WebPilotAuthCoordinator.current() -> SessionLease | None
-- Produces: WebPilotAuthCoordinator.report_expired(generation: int) -> bool
-- Produces: WebPilotAuthCoordinator.wait_for_newer(generation: int, timeout: float | None = None) -> SessionLease | None
-- Produces: WebPilotAuthCoordinator.mark_recovery_failed() -> None
-- Consumes: request_recovery: Callable[[], None] injetado no construtor.
+- Produce: WEBPILOT_AUTH_REALM = "webpilot-pecem" (nome estável/configurável apenas internamente nesta etapa).
+- Produce: WebPilotSessionProvider Protocol com request_recovery() -> bool.
+- Produce: DesktopSeleniumSessionProvider pequeno adapter de callback, sem importar Controller/Selenium.
+- Produce: SessionLease(realm: str, generation: int, cookies: tuple[Mapping[str, object], ...], expires_at: datetime | None).
+- Produce: AuthState enum com AUTHENTICATED, RECOVERING, UNAVAILABLE.
+- Produce: WebPilotAuthCoordinator(realm: str, provider: WebPilotSessionProvider).
+- Produce: WebPilotAuthCoordinator.publish(cookies) -> SessionLease.
+- Produce: WebPilotAuthCoordinator.current() -> SessionLease | None.
+- Produce: WebPilotAuthCoordinator.report_expired(generation: int) -> bool.
+- Produce: WebPilotAuthCoordinator.wait_for_newer(generation: int, timeout: float | None = None) -> SessionLease | None.
+- Produce: WebPilotAuthCoordinator.mark_recovery_failed() -> None.
+- expires_at é derivado de forma conservadora do menor expiry numérico utilizável dos cookies e convertido para datetime UTC aware; sem expiry utilizável => None.
 
 - [ ] **Step 1: Write failing tests for publish/current/generation**
 
@@ -55,11 +70,16 @@ Test names:
 - test_publish_creates_immutable_lease_and_increments_generation
 - test_current_returns_none_before_first_publish
 - test_published_cookies_are_defensively_copied
+- test_publish_preserves_realm_and_derives_earliest_cookie_expiry
+- test_publish_without_explicit_cookie_expiry_sets_expires_at_none
+- test_coordinator_depends_on_provider_protocol_not_selenium
 
 Assertions:
 - first publish => generation 1;
 - second publish => generation 2;
-- changing caller-owned dict after publish does not mutate lease.
+- changing caller-owned dict after publish does not mutate lease;
+- expires_at é UTC aware e usa o expiry explícito mais próximo;
+- nenhum import de Controller/Selenium é necessário para os testes do coordinator.
 
 - [ ] **Step 2: Run focused tests and verify RED**
 
@@ -71,7 +91,7 @@ Expected: FAIL because alertam.application.webpilot_auth does not exist.
 
 - [ ] **Step 3: Implement SessionLease/AuthState/WebPilotAuthCoordinator minimal publish/current behavior**
 
-Use a threading.Condition around state, generation and current lease. Do not expose mutable cookie dictionaries directly.
+Use a threading.Condition around state, generation and current lease. Do not expose mutable cookie dictionaries directly. O coordinator conhece somente o WebPilotSessionProvider. Não criar timer de renovação baseado em expires_at nesta etapa.
 
 - [ ] **Step 4: Write failing concurrency tests**
 
@@ -81,13 +101,13 @@ Test names:
 - test_wait_for_newer_returns_new_generation
 - test_mark_recovery_failed_releases_waiters_with_none
 
-Use two threads/barriers; assert request_recovery is called once.
+Use two threads/barriers e um fake provider; assert provider.request_recovery é chamado uma única vez.
 
 - [ ] **Step 5: Implement recovery coordination**
 
 report_expired(generation):
 - return False without recovery when current generation is already newer;
-- first current-generation caller switches state to RECOVERING and invokes request_recovery once;
+- first current-generation caller switches state to RECOVERING and invokes provider.request_recovery() once;
 - concurrent callers return False and share the same recovery;
 - publish() releases waiters and returns AUTHENTICATED;
 - mark_recovery_failed() releases waiters and sets UNAVAILABLE without deleting a previously published lease object from history.
@@ -117,20 +137,23 @@ Suggested message:
 - Create/Test: /home/ciro/dev/prog/alertamaritimo/tests/unit/test_webpilot_session_bootstrap.py
 
 **Interfaces:**
-- Produces: BrowserSession.export_cookies() -> tuple[dict[str, object], ...]
-- Produces: CommandType.EXPORT_WEBPILOT_SESSION
-- Produces: ResultType.WEBPILOT_SESSION_EXPORTED
-- Produces: cmd_export_webpilot_session() -> WorkerCommand
-- Produces: result_webpilot_session_exported(cookies) -> WorkerResult
-- Controller constructor gains optional on_webpilot_session: Callable[[tuple[dict[str, object], ...]], None] | None
-- Controller produces request_webpilot_recovery() -> bool
+- Produce: BrowserSession.export_cookies() -> tuple[dict[str, object], ...], preservando expiry quando fornecido pelo WebDriver.
+- Produce: CommandType.EXPORT_WEBPILOT_SESSION.
+- Produce: ResultType.WEBPILOT_SESSION_EXPORTED.
+- Produce: cmd_export_webpilot_session() -> WorkerCommand.
+- Produce: result_webpilot_session_exported(cookies) -> WorkerResult.
+- Controller constructor gains optional on_webpilot_session: Callable[[tuple[dict[str, object], ...]], None] | None.
+- Controller produces request_webpilot_recovery() -> bool.
+- DesktopSeleniumSessionProvider recebe apenas o callable request_webpilot_recovery e implementa WebPilotSessionProvider sem importar Controller.
 
 - [ ] **Step 1: Write failing BrowserSession export tests**
 
 Add a fake driver returning cookies and assert export_cookies:
 - requires a driver;
 - returns copies, not the driver's list object;
-- never writes the cookies to log.
+- preserves numeric expiry metadata exactly in memory;
+- handles cookies without expiry;
+- never writes cookie values to log.
 
 - [ ] **Step 2: Implement BrowserSession.export_cookies**
 
@@ -159,11 +182,11 @@ Scenarios:
 
 - [ ] **Step 6: Implement Controller hooks**
 
-Keep current login UX unchanged. A valid hidden session should cause export. A manual login that returns to a valid hidden session should also export before/when monitoring resumes.
+Keep current login UX unchanged. A valid hidden session should cause export. A manual login that returns to a valid hidden session should also export before/when monitoring resumes. Esta publicação é a sincronização inicial/renovação da sessão HTTP; não iniciar um segundo login para HTTP.
 
 - [ ] **Step 7: Wire Application to WebPilotAuthCoordinator without activating consumers**
 
-Application creates WebPilotAuthCoordinator with request_recovery=self.controller.request_webpilot_recovery after Controller exists, and publishes cookies from on_webpilot_session callback. If constructor order requires it, use a small callback closure rather than letting the coordinator know Controller internals.
+Application cria DesktopSeleniumSessionProvider com request_recovery=self.controller.request_webpilot_recovery, depois cria WebPilotAuthCoordinator(realm=WEBPILOT_AUTH_REALM, provider=provider) e publica cookies pelo callback on_webpilot_session. O coordinator não recebe Controller nem callback cru de Controller. Se a ordem de construção exigir, o adapter pode ser criado após Controller existir.
 
 - [ ] **Step 8: Run focused regression tests**
 
@@ -211,11 +234,13 @@ Build Cookie header only from non-empty name/value pairs in SessionLease. Do not
 - [ ] **Step 3: Write failing retry tests**
 
 Scenarios:
-- generation 1 returns SESSION_EXPIRED, report_expired triggers recovery, generation 2 published, second transport call returns OK;
+- generation 1 returns SESSION_EXPIRED, report_expired triggers provider recovery, generation 2 published, second transport call returns OK;
 - only two transport calls maximum;
 - second SESSION_EXPIRED returns SESSION_EXPIRED without a new nested retry;
 - no current lease returns SESSION_EXPIRED safely;
-- old-generation failure after generation 2 does not call recovery callback again.
+- old-generation failure after generation 2 does not call provider recovery again;
+- lease with future expires_at still returns SESSION_EXPIRED when final URL/body semantically indicates login;
+- expires_at is not used as a timer or as proof that the server session remains valid.
 
 - [ ] **Step 4: Implement one-retry flow**
 

@@ -172,20 +172,22 @@ Direção a discutir em sessão futura:
 Não implementar ainda; precisa de brainstorm porque envolve UX de build, armazenamento seguro e risco de gerar/entregar EXE com a identidade errada.
 ## 11. Ideia central: AlertaM Cloud Collector
 
+> **Atualização autoritativa — 2026-10-02:** esta seção foi parcialmente superada pelo roadmap `docs/superpowers/strategy/2026-10-02-alertam-cloud-evolution-roadmap.md` e pela SPEC 027. O Cloud não terá identidade lógica independente: ele será vinculado a um Desktop existente e fornecerá continuidade para o mesmo `device_id`, sem assumir gestão mobile.
+
 A ideia não é colocar a GUI Tk inteira na nuvem. O desenho conceitual é extrair um worker headless que faça a função operacional do Desktop:
 - autenticar no WebPilot;
 - coletar dados;
 - interpretar manobras/clima;
-- gerar eventos/snapshot;
+- gerar snapshot/estado; eventos/push só entram depois de contrato cross-source de idempotência;
 - publicar na API;
 - continuar ativo 24h sem depender de um computador local ligado.
 
-A PWA continuaria consumindo a API existente. O Desktop local poderia continuar existindo como interface/alternativa.
+A PWA continua consumindo a API existente. O Desktop local permanece proprietário lógico, interface administrativa e fonte preferencial quando saudável; o Cloud atua somente como continuidade vinculada ao mesmo `device_id`.
 
 A autenticação WebPilot no cloud deve permanecer privada ao collector:
-- usuário/senha em Secret Manager/variáveis seguras do provedor;
-- nunca em Supabase público, PWA, QR Code, snapshot ou logs;
-- browser headless/Selenium/Playwright pode ser usado somente para obter/renovar a sessão;
+- **superado em 2026-10-02 para Cloud v1:** não exigir usuário/senha WebPilot permanentes no servidor; usar SessionLease federada por WebPilotAuthRealm, publicada por Desktops autorizados;
+- material de sessão nunca em Supabase público, PWA, QR Code, snapshot ou logs e sempre protegido em trânsito/repouso;
+- provider Cloud nativo com browser headless/Playwright fica como evolução futura; Cloud v1 recebe SessionLease de Desktops autorizados;
 - depois da autenticação, o tráfego normal deve preferir HTTP com cookies;
 - expiração deve ser detectada semanticamente, inclusive HTTP 200 que na verdade voltou à tela de login;
 - uma única recuperação de autenticação por vez;
@@ -197,24 +199,22 @@ Isso casa diretamente com a SPEC 025 já planejada. A SPEC 025 introduz justamen
 ## 12. Riscos/decisões do Cloud que ainda precisam de brainstorm
 
 - testar se a mesma conta WebPilot aceita sessões simultâneas. Se um login invalida o outro, Cloud e Desktop podem entrar em ping-pong de renovação;
-- se sessões não coexistirem, avaliar: conta exclusiva para cloud, cloud como fonte oficial e Desktop consumidor da API, ou somente uma fonte ativa por vez;
+- se sessões não coexistirem, priorizar conta exclusiva para Cloud ou coordenação explícita de uma única sessão/fonte WebPilot; qualquer inversão de autoridade Desktop→Cloud exige revisão deliberada da SPEC 027, nunca decisão implícita;
 - CAPTCHA/2FA/código por e-mail podem exigir estado `requires_operator_action`;
 - não usar Vercel Functions como processo persistente para o collector; pensar em worker/container/VPS;
-- inicialmente dar ao cloud uma identidade própria, sem fingir ser um Desktop físico;
+- **superado em 2026-10-02:** não dar identidade lógica concorrente ao Cloud; ele deve usar vínculo próprio de continuidade associado ao `device_id` do Desktop, com credencial Cloud separada e revogável;
 - evitar dois coletores gerando eventos/push duplicados até existir regra explícita de fonte oficial/failover.
 
-Evolução arquitetural possível depois: introduzir uma entidade superior “Estação / Porto do Pecém”, e fazer a PWA se conectar à estação em vez de a um computador específico. Por trás dessa estação poderiam existir Cloud e Desktops como fontes, com política explícita de prioridade/failover. Isso é ideia, não decisão fechada.
+A hipótese anterior de criar imediatamente uma entidade superior “Estação / Porto do Pecém” também fica superada para o primeiro Cloud. O Mobile continua pareado ao mesmo `device_id` lógico do Desktop; Desktop e Cloud são fontes técnicas desse mesmo AlertaM, com prioridade/failover explícitos na API. Uma entidade superior poderá ser reavaliada futuramente somente se surgir necessidade real.
 ## 13. Ordem sugerida para a próxima sessão
 
 1. Fazer status fresco dos dois repositórios e ler este handoff.
 2. Validar no Windows o novo primeiro uso de `provision-mobile`, de preferência com cenário limpo de Vercel/.env.prod.
 3. Se o usuário aprovar, revisar e commitar separadamente as correções Desktop e API; **não fazer push sem autorização explícita**.
-4. Só depois decidir qual brainstorm vem primeiro:
-   - perfis de provisionamento para vários EXEs;
-   - gestão/revogação de aparelhos conectados + Trocar Desktop;
-   - AlertaM Cloud Collector.
-5. Não transformar automaticamente essas ideias em uma única SPEC grande. Elas podem acabar exigindo SPECs separadas.
-6. Manter a SPEC 025 como base técnica para qualquer Cloud Collector.
+4. A gestão/revogação mobile e troca segura já evoluíram na SPEC 026.
+5. Para Cloud, seguir a ordem autoritativa: SPEC 025 Plans 1→2→4→5, gate humano, SPEC 027, e só depois refatoração ampla do Desktop.
+6. Manter Plan 3/MobileSnapshot v2 como trilha lateral após Plan 2; ele não bloqueia shadow/Cloud.
+7. Manter a SPEC 025 como base técnica obrigatória do collector usado pela SPEC 027.
 
 ## 14. Segurança e cuidados
 
@@ -229,4 +229,4 @@ Evolução arquitetural possível depois: introduzir uma entidade superior “Es
 
 As correções de onboarding Windows estão implementadas e cobertas por testes automatizados no Ubuntu, mas o fluxo PowerShell/Vercel novo ainda precisa da validação manual real no Windows.
 
-As ideias de gestão mobile, troca de Desktop, perfis de build e AlertaM Cloud estão documentadas apenas como direção para brainstorm. Nenhuma delas foi implementada e nenhuma nova SPEC foi aberta nesta sessão.
+Este handoff preserva o histórico da discussão, mas seu estado final foi superado em pontos relevantes: gestão/troca mobile foi consolidada na SPEC 026 e a arquitetura Cloud foi formalizada na SPEC 027. Para retomada atual, usar o roadmap de 2026-10-02 e as SPECS 025/027 como fontes autoritativas.

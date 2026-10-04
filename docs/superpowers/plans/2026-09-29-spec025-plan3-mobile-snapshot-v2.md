@@ -10,6 +10,8 @@
 
 **Spec:** specs/025-webpilot-http-observed-weather-shadow-migration.md
 
+**Posição no roadmap (2026-10-02):** este plano é uma trilha lateral de evolução do contrato Mobile. Ele depende do Plan 2, mas não bloqueia Plan 4/5 nem a futura SPEC 027. Seu rollout interno continua obrigatório e não pode ser invertido.
+
 ## Global Constraints
 
 - Dependência obrigatória: Plan 2 concluído e revisado.
