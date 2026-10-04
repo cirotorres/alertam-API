@@ -28,6 +28,10 @@ import {
   type TrackingEventFetcher,
   type TrackingPollingStatus,
 } from "./useTrackingPolling";
+import {
+  loadTrackingUnreadState,
+  storeTrackingUnreadState,
+} from "./trackingUnreadStorage";
 
 export type TrackingStatus =
   | "idle"
@@ -48,6 +52,8 @@ export type TrackingState = {
   stopTracking: (trackedVesselId: string) => Promise<boolean>;
   refresh: () => Promise<boolean>;
   clearMutationError: () => void;
+  isTrackingUnread?: (trackedVesselId: string) => boolean;
+  markTrackingRead?: (trackedVesselId: string) => void;
 };
 
 type ListFetcher = (signal?: AbortSignal) => Promise<TrackedVessel[]>;
@@ -67,6 +73,7 @@ type TrackingProviderProps = {
   stopFetcher?: StopFetcher;
   eventFetcher?: TrackingEventFetcher;
   onAccessRevoked?: () => void;
+  storageScope?: string;
   children: ReactNode;
 };
 
@@ -91,17 +98,29 @@ export function TrackingProvider({
   stopFetcher = stopTrackingRequest,
   eventFetcher = getTrackingEvents,
   onAccessRevoked,
+  storageScope,
   children,
 }: TrackingProviderProps) {
   const [trackings, setTrackings] = useState<TrackedVessel[]>([]);
   const [listStatus, setListStatus] = useState<TrackingStatus>("idle");
   const [mutationPending, setMutationPending] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const storedUnread = useMemo(
+    () =>
+      storageScope
+        ? loadTrackingUnreadState(storageScope)
+        : { cursor: null, unreadTrackedVesselIds: [] },
+    [storageScope],
+  );
+  const [unreadTrackingIds, setUnreadTrackingIds] = useState<Set<string>>(
+    () => new Set(storedUnread.unreadTrackedVesselIds),
+  );
 
   const polling = useTrackingPolling(
     sessionReady,
     eventFetcher,
     onAccessRevoked,
+    storedUnread.cursor,
   );
 
   const handleError = useCallback(
@@ -142,6 +161,27 @@ export function TrackingProvider({
     }
     void refresh();
   }, [polling.newTrackingEvent, refresh, sessionReady]);
+  useEffect(() => {
+    setUnreadTrackingIds(new Set(storedUnread.unreadTrackedVesselIds));
+  }, [storedUnread]);
+
+  useEffect(() => {
+    if (!storageScope || polling.cursor === null) {
+      return;
+    }
+    setUnreadTrackingIds((current) => {
+      const next = new Set(current);
+      for (const item of polling.newTrackingEvents) {
+        next.add(item.tracked_vessel_id);
+      }
+      storeTrackingUnreadState(storageScope, {
+        cursor: polling.cursor,
+        unreadTrackedVesselIds: [...next],
+      });
+      return next;
+    });
+  }, [polling.cursor, polling.newTrackingEvents, storageScope]);
+
 
   useEffect(() => {
     setMutationError(null);
@@ -234,6 +274,26 @@ export function TrackingProvider({
     [handleError, stopFetcher],
   );
 
+  const markTrackingRead = useCallback(
+    (trackedVesselId: string) => {
+      setUnreadTrackingIds((current) => {
+        if (!current.has(trackedVesselId)) {
+          return current;
+        }
+        const next = new Set(current);
+        next.delete(trackedVesselId);
+        if (storageScope) {
+          storeTrackingUnreadState(storageScope, {
+            cursor: polling.cursor ?? storedUnread.cursor,
+            unreadTrackedVesselIds: [...next],
+          });
+        }
+        return next;
+      });
+    },
+    [polling.cursor, storageScope, storedUnread.cursor],
+  );
+
   const value = useMemo<TrackingState>(
     () => ({
       trackings,
@@ -247,12 +307,16 @@ export function TrackingProvider({
       stopTracking,
       refresh,
       clearMutationError: () => setMutationError(null),
+      isTrackingUnread: (trackedVesselId) =>
+        unreadTrackingIds.has(trackedVesselId),
+      markTrackingRead,
     }),
     [
       findTracking,
       listStatus,
       mutationError,
       mutationPending,
+      markTrackingRead,
       polling.newTrackingEvent,
       polling.status,
       refresh,
@@ -260,6 +324,7 @@ export function TrackingProvider({
       startTracking,
       stopTracking,
       trackings,
+      unreadTrackingIds,
     ],
   );
 

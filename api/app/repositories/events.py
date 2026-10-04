@@ -76,6 +76,7 @@ class PushPreferences:
     updated: bool = True
     completed: bool = True
     cancelled: bool = True
+    anchored: bool = True
 
 
 @dataclass(frozen=True)
