@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import AwareDatetime, BaseModel
 
-from app.models.mobile_snapshot import MobileSnapshotV1
+from app.models.mobile_snapshot import MobileSnapshot
 
 
 class SnapshotMetaResponse(BaseModel):
@@ -13,5 +13,5 @@ class SnapshotMetaResponse(BaseModel):
 
 
 class SnapshotReadResponse(BaseModel):
-    snapshot: MobileSnapshotV1
+    snapshot: MobileSnapshot
     meta: SnapshotMetaResponse

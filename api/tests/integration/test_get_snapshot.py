@@ -14,6 +14,7 @@ from app.security.credentials import hash_secret
 
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "mobile_snapshot_v1.json"
+V2_FIXTURE = Path(__file__).parents[1] / "fixtures" / "mobile_snapshot_v2_webpilot.json"
 DEVICE_ID = "pecem-01"
 VIEW_SECRET = "V" * 43
 RECEIVED_AT = datetime(2026, 9, 25, 16, 0, tzinfo=timezone.utc)
@@ -177,3 +178,28 @@ def test_mobile_session_cookie_cannot_read_another_device_path():
 
     assert response.status_code == 401
     assert response.json()["detail"]["code"] == "invalid_view_credentials"
+
+
+def test_get_snapshot_returns_v2_exact_structure_when_v2_is_stored():
+    repo = _repo(with_snapshot=False)
+    payload = json.loads(V2_FIXTURE.read_text(encoding="utf-8"))
+    repo.put_snapshot(
+        StoredSnapshot(
+            device_id=DEVICE_ID,
+            snapshot=payload,
+            snapshot_schema_version=2,
+            boot_id=UUID(payload["boot_id"]),
+            sequence=payload["sequence"],
+            generated_at=datetime.fromisoformat(payload["generated_at"]),
+            received_at=RECEIVED_AT,
+        )
+    )
+    client = _client(repo, RECEIVED_AT + timedelta(seconds=10))
+
+    response = client.get(
+        f"/api/v1/devices/{DEVICE_ID}/snapshot",
+        headers={"Authorization": f"Bearer {VIEW_SECRET}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["snapshot"] == payload

@@ -1,4 +1,4 @@
-import type { MobileSnapshotV1, VesselV1 } from "../../api/contract";
+import type { MobileSnapshot, VesselV1 } from "../../api/contract";
 import { vesselByBerth } from "../vessels/projections";
 
 export const BERTH_POSITIONS: Record<number, { xPct: number; yPct: number }> = {
@@ -27,7 +27,7 @@ const SPRITES: Partial<Record<VesselV1["status"], string>> = {
   DESATRACANDO: "/assets/navio_red.png",
 };
 
-export function selectMapVessels(snapshot: MobileSnapshotV1): MapVessel[] {
+export function selectMapVessels(snapshot: MobileSnapshot): MapVessel[] {
   const result: MapVessel[] = [];
 
   for (const berth of Object.keys(BERTH_POSITIONS).map(Number)) {

@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "boot_id": "550e8400-e29b-41d4-a716-446655440000",
+  "sequence": 2,
+  "generated_at": "2026-09-28T20:31:00-03:00",
+  "collector": {
+    "status": "monitoring",
+    "last_collection_at": "2026-09-28T20:31:00-03:00"
+  },
+  "port": {
+    "name": "Porto do Pecém (CIPP) - CE"
+  },
+  "vessels": [],
+  "atmosphere": {
+    "primary": {
+      "status": "fresh",
+      "source": "webpilot",
+      "mode": "observed",
+      "consulted_at": "2026-09-28T20:31:00-03:00",
+      "observed_at": "2026-09-28T20:30:26-03:00",
+      "wind_direction_deg": 65,
+      "wind_direction_cardinal": "ENE",
+      "wind_speed_current_kn": 16.95,
+      "wind_speed_mean_kn": 18.25,
+      "wind_speed_max_kn": 21.61,
+      "air_temperature_c": 27,
+      "apparent_temperature_c": 29.1,
+      "humidity_pct": 78,
+      "pressure_hpa": 1008.64,
+      "pressure_6h_hpa": 1006.21,
+      "precipitation_mm": 0.7
+    },
+    "complementary": {
+      "status": "fresh",
+      "source": "open_meteo",
+      "consulted_at": "2026-09-28T20:31:00-03:00",
+      "observed_at": "2026-09-28T20:30:00-03:00",
+      "weather_code": 2,
+      "visibility_m": 12000
+    }
+  },
+  "marine": {
+    "status": "fresh",
+    "source": "open_meteo",
+    "consulted_at": "2026-09-28T20:31:00-03:00",
+    "observed_at": "2026-09-28T20:30:00-03:00",
+    "wave_height_m": 1.1,
+    "wave_direction_deg": 75,
+    "wave_period_s": 5.3,
+    "swell_height_m": 0.6,
+    "swell_direction_deg": 80,
+    "swell_period_s": 7.2,
+    "sea_temperature_c": 27.7,
+    "current_kn": 0.5,
+    "current_direction_deg": 292
+  },
+  "recent_maneuvers": {
+    "active": [],
+    "completed": []
+  }
+}

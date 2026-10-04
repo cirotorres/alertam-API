@@ -115,7 +115,7 @@ const RecentManeuversSchema = z
     });
   });
 
-const MobileSnapshotSchema = z
+const MobileSnapshotV1Schema = z
   .object({
     schema_version: z.literal(1),
     boot_id: z.string().uuid(),
@@ -129,6 +129,142 @@ const MobileSnapshotSchema = z
     recent_maneuvers: RecentManeuversSchema,
   })
   .strict();
+
+const UnavailableV2Schema = z
+  .object({
+    status: z.literal("unavailable"),
+  })
+  .strict();
+
+const WebPilotAtmospherePrimaryV2Schema = z
+  .object({
+    status: z.enum(["fresh", "stale"]),
+    source: z.literal("webpilot"),
+    mode: z.literal("observed"),
+    consulted_at: awareDateTime,
+    observed_at: awareDateTime,
+    wind_direction_deg: nullableNumber,
+    wind_direction_cardinal: z.string().nullable(),
+    wind_speed_current_kn: nullableNumber,
+    wind_speed_mean_kn: nullableNumber,
+    wind_speed_max_kn: nullableNumber,
+    air_temperature_c: nullableNumber,
+    apparent_temperature_c: nullableNumber,
+    humidity_pct: nullableNumber,
+    pressure_hpa: nullableNumber,
+    pressure_6h_hpa: nullableNumber,
+    precipitation_mm: nullableNumber,
+  })
+  .strict();
+
+const OpenMeteoAtmospherePrimaryV2Schema = z
+  .object({
+    status: z.enum(["fresh", "stale"]),
+    source: z.literal("open_meteo"),
+    mode: z.literal("fallback"),
+    consulted_at: awareDateTime.nullable(),
+    observed_at: awareDateTime.nullable(),
+    air_temperature_c: nullableNumber,
+    humidity_pct: nullableNumber,
+    weather_code: z.number().int().nullable(),
+    wind_speed_kn: nullableNumber,
+    wind_direction_deg: nullableNumber,
+    wind_gust_kn: nullableNumber,
+    visibility_m: nullableNumber,
+    precipitation_mm: nullableNumber,
+  })
+  .strict();
+
+const AtmospherePrimaryV2Schema = z.union([
+  WebPilotAtmospherePrimaryV2Schema,
+  OpenMeteoAtmospherePrimaryV2Schema,
+  UnavailableV2Schema,
+]);
+
+const OpenMeteoComplementaryV2Schema = z
+  .object({
+    status: z.enum(["fresh", "stale"]),
+    source: z.literal("open_meteo"),
+    consulted_at: awareDateTime.nullable(),
+    observed_at: awareDateTime.nullable(),
+    weather_code: z.number().int().nullable(),
+    visibility_m: nullableNumber,
+  })
+  .strict();
+
+const AtmosphereComplementaryV2Schema = z.union([
+  OpenMeteoComplementaryV2Schema,
+  UnavailableV2Schema,
+]);
+
+const AtmosphereV2Schema = z
+  .object({
+    primary: AtmospherePrimaryV2Schema,
+    complementary: AtmosphereComplementaryV2Schema,
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const primary = value.primary;
+    if ("source" in primary && primary.source === "open_meteo") {
+      if (value.complementary.status !== "unavailable") {
+        ctx.addIssue({
+          code: "custom",
+          path: ["complementary"],
+          message: "Open-Meteo primário exige complementary unavailable.",
+        });
+      }
+    }
+    if (primary.status === "unavailable" && value.complementary.status !== "unavailable") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["complementary"],
+        message: "Atmosfera indisponível exige complementary unavailable.",
+      });
+    }
+  });
+
+const OpenMeteoMarineV2Schema = z
+  .object({
+    status: z.enum(["fresh", "stale"]),
+    source: z.literal("open_meteo"),
+    consulted_at: awareDateTime.nullable(),
+    observed_at: awareDateTime.nullable(),
+    wave_height_m: nullableNumber,
+    wave_direction_deg: nullableNumber,
+    wave_period_s: nullableNumber,
+    swell_height_m: nullableNumber,
+    swell_direction_deg: nullableNumber,
+    swell_period_s: nullableNumber,
+    sea_temperature_c: nullableNumber,
+    current_kn: nullableNumber,
+    current_direction_deg: nullableNumber,
+  })
+  .strict();
+
+const MarineV2Schema = z.union([
+  OpenMeteoMarineV2Schema,
+  UnavailableV2Schema,
+]);
+
+const MobileSnapshotV2Schema = z
+  .object({
+    schema_version: z.literal(2),
+    boot_id: z.string().uuid(),
+    sequence: z.number().int().positive(),
+    generated_at: awareDateTime,
+    collector: CollectorSchema,
+    port: PortSchema,
+    vessels: z.array(VesselSchema),
+    atmosphere: AtmosphereV2Schema,
+    marine: MarineV2Schema,
+    recent_maneuvers: RecentManeuversSchema,
+  })
+  .strict();
+
+const MobileSnapshotSchema = z.discriminatedUnion("schema_version", [
+  MobileSnapshotV1Schema,
+  MobileSnapshotV2Schema,
+]);
 
 const SnapshotMetaSchema = z
   .object({
@@ -158,7 +294,9 @@ const VesselPhotoResponseSchema = z
 
 export type VesselV1 = z.infer<typeof VesselSchema>;
 export type ManeuverV1 = z.infer<typeof ManeuverSchema>;
-export type MobileSnapshotV1 = z.infer<typeof MobileSnapshotSchema>;
+export type MobileSnapshotV1 = z.infer<typeof MobileSnapshotV1Schema>;
+export type MobileSnapshotV2 = z.infer<typeof MobileSnapshotV2Schema>;
+export type MobileSnapshot = z.infer<typeof MobileSnapshotSchema>;
 export type SnapshotReadResponse = z.infer<typeof SnapshotReadResponseSchema>;
 export type VesselPhotoResponse = z.infer<typeof VesselPhotoResponseSchema>;
 
@@ -170,7 +308,8 @@ export function parseSnapshotReadResponse(input: unknown): SnapshotReadResponse 
     typeof input.snapshot === "object" &&
     input.snapshot !== null &&
     "schema_version" in input.snapshot &&
-    input.snapshot.schema_version !== 1
+    input.snapshot.schema_version !== 1 &&
+    input.snapshot.schema_version !== 2
   ) {
     throw new Error("Versão de snapshot não suportada.");
   }

@@ -6,7 +6,7 @@ from app.core.errors import (
     PersistenceUnavailableApiError,
     SequenceReuseMismatchError,
 )
-from app.models.mobile_snapshot import MobileSnapshotV1
+from app.models.mobile_snapshot import MobileSnapshot
 from app.models.responses import SnapshotAcceptedResponse
 from app.repositories.devices import (
     AcceptSnapshotStatus,
@@ -33,7 +33,7 @@ class SnapshotService:
         self,
         device_id: str,
         device_secret: str,
-        snapshot: MobileSnapshotV1,
+        snapshot: MobileSnapshot,
     ) -> SnapshotAcceptedResponse:
         device = self.authenticate_device(device_id, device_secret)
         return self.accept_authenticated_snapshot(device, snapshot)
@@ -41,7 +41,7 @@ class SnapshotService:
     def accept_authenticated_snapshot(
         self,
         device: AuthenticatedDevice,
-        snapshot: MobileSnapshotV1,
+        snapshot: MobileSnapshot,
     ) -> SnapshotAcceptedResponse:
         candidate = SnapshotCandidate(
             device_id=device.device_id,

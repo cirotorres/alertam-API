@@ -1,4 +1,6 @@
 import fixture from "../test/fixtures/mobile_snapshot_v1.json";
+import v2WebPilot from "../test/fixtures/mobile_snapshot_v2_webpilot.json";
+import v2Fallback from "../test/fixtures/mobile_snapshot_v2_fallback.json";
 
 import {
   ManeuverEventSchema,
@@ -30,12 +32,61 @@ test("parses_real_mobile_snapshot_v1", () => {
 test("rejects_unknown_schema_version", () => {
   const incompatible = {
     ...fixture,
-    schema_version: 2,
+    schema_version: 3,
   };
 
   expect(() => parseSnapshotReadResponse(responseWith(incompatible))).toThrow(
     "Versão de snapshot não suportada.",
   );
+});
+
+
+test("parses_mobile_snapshot_v2_webpilot", () => {
+  const parsed = parseSnapshotReadResponse(responseWith(v2WebPilot));
+
+  expect(parsed.snapshot.schema_version).toBe(2);
+  if (parsed.snapshot.schema_version !== 2) throw new Error("expected v2");
+  expect(parsed.snapshot.atmosphere.primary.status).toBe("fresh");
+  expect("source" in parsed.snapshot.atmosphere.primary && parsed.snapshot.atmosphere.primary.source).toBe("webpilot");
+  expect(parsed.snapshot.marine.status).toBe("fresh");
+});
+
+test("parses_mobile_snapshot_v2_open_meteo_fallback", () => {
+  const parsed = parseSnapshotReadResponse(responseWith(v2Fallback));
+
+  expect(parsed.snapshot.schema_version).toBe(2);
+  if (parsed.snapshot.schema_version !== 2) throw new Error("expected v2");
+  expect(parsed.snapshot.atmosphere.primary.status).toBe("stale");
+  expect("source" in parsed.snapshot.atmosphere.primary && parsed.snapshot.atmosphere.primary.source).toBe("open_meteo");
+  expect(parsed.snapshot.atmosphere.complementary.status).toBe("unavailable");
+});
+
+test("rejects_v2_unavailable_with_extra_fields", () => {
+  const invalid = structuredClone(v2Fallback);
+  Object.assign(invalid.marine, { wave_height_m: null });
+
+  expect(() => parseSnapshotReadResponse(responseWith(invalid))).toThrow();
+});
+
+test("rejects_v2_invalid_source_mode_combination", () => {
+  const invalid = structuredClone(v2WebPilot);
+  invalid.atmosphere.primary.mode = "fallback" as "observed";
+
+  expect(() => parseSnapshotReadResponse(responseWith(invalid))).toThrow();
+});
+
+test("rejects_v2_fresh_block_missing_required_structural_field", () => {
+  const invalid = structuredClone(v2WebPilot) as Record<string, any>;
+  delete invalid.atmosphere.primary.consulted_at;
+
+  expect(() => parseSnapshotReadResponse(responseWith(invalid))).toThrow();
+});
+
+test("rejects_v2_open_meteo_primary_with_complementary_data", () => {
+  const invalid = structuredClone(v2Fallback);
+  invalid.atmosphere.complementary = structuredClone(v2WebPilot.atmosphere.complementary) as typeof invalid.atmosphere.complementary;
+
+  expect(() => parseSnapshotReadResponse(responseWith(invalid))).toThrow();
 });
 
 

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 
 import type {
   ManeuverV1,
-  MobileSnapshotV1,
+  MobileSnapshot,
   VesselV1,
 } from "../api/contract";
 import type { BottomTab } from "../components/BottomNav";
@@ -129,7 +129,7 @@ function renderVesselName(
 function renderItem(
   tab: BottomTab,
   item: ManeuverV1 | VesselV1,
-  snapshot: MobileSnapshotV1 | null,
+  snapshot: MobileSnapshot | null,
   onSelect: (vessel: VesselV1) => void,
   isTracked?: TrackingState["isTracked"],
 ) {

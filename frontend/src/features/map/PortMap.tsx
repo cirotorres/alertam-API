@@ -1,8 +1,8 @@
-import type { MobileSnapshotV1, VesselV1 } from "../../api/contract";
+import type { MobileSnapshot, VesselV1 } from "../../api/contract";
 import { selectMapVessels } from "./berthMap";
 
 type PortMapProps = {
-  snapshot: MobileSnapshotV1;
+  snapshot: MobileSnapshot;
   onSelectVessel: (vessel: VesselV1) => void;
 };
 

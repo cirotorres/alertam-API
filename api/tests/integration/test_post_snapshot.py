@@ -12,12 +12,17 @@ from app.security.credentials import hash_secret
 
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "mobile_snapshot_v1.json"
+V2_FIXTURE = Path(__file__).parents[1] / "fixtures" / "mobile_snapshot_v2_webpilot.json"
 DEVICE_ID = "pecem-01"
 DEVICE_SECRET = "device-secret"
 
 
 def _payload() -> dict:
     return json.loads(FIXTURE.read_text(encoding="utf-8"))
+
+
+def _payload_v2() -> dict:
+    return json.loads(V2_FIXTURE.read_text(encoding="utf-8"))
 
 
 def _repo() -> MemoryDeviceRepository:
@@ -132,7 +137,7 @@ def test_post_snapshot_maps_sequence_reuse_mismatch_to_409():
 def test_post_snapshot_unknown_schema_has_specific_422_code():
     client = _client(_repo())
     payload = _payload()
-    payload["schema_version"] = 2
+    payload["schema_version"] = 3
 
     response = client.post(
         f"/api/v1/devices/{DEVICE_ID}/snapshot",
@@ -189,7 +194,7 @@ def test_missing_schema_is_not_classified_as_unsupported_version():
 def test_invalid_credentials_win_over_invalid_payload():
     client = _client(_repo())
     payload = _payload()
-    payload["schema_version"] = 2
+    payload["schema_version"] = 3
 
     response = client.post(
         f"/api/v1/devices/{DEVICE_ID}/snapshot",
@@ -199,3 +204,16 @@ def test_invalid_credentials_win_over_invalid_payload():
 
     assert response.status_code == 401
     assert response.json()["detail"]["code"] == "invalid_device_credentials"
+
+
+def test_post_snapshot_accepts_v2_payload():
+    client = _client(_repo())
+
+    response = client.post(
+        f"/api/v1/devices/{DEVICE_ID}/snapshot",
+        headers={"Authorization": f"Device {DEVICE_SECRET}"},
+        json=_payload_v2(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True

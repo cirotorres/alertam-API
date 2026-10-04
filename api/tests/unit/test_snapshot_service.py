@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import get_type_hints
 
 import pytest
 
@@ -11,7 +12,7 @@ from app.core.errors import (
     PersistenceUnavailableApiError,
     SequenceReuseMismatchError,
 )
-from app.models.mobile_snapshot import MobileSnapshotV1
+from app.models.mobile_snapshot import MobileSnapshot, MobileSnapshotV1, MobileSnapshotV2
 from app.repositories.devices import (
     DeviceAuthRecord,
     PersistenceUnavailableError,
@@ -22,6 +23,7 @@ from app.services.snapshot_service import SnapshotService
 
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "mobile_snapshot_v1.json"
+V2_FIXTURE = Path(__file__).parents[1] / "fixtures" / "mobile_snapshot_v2_webpilot.json"
 DEVICE_ID = "pecem-01"
 DEVICE_SECRET = "device-secret"
 
@@ -29,6 +31,12 @@ DEVICE_SECRET = "device-secret"
 def _snapshot() -> MobileSnapshotV1:
     return MobileSnapshotV1.model_validate(
         json.loads(FIXTURE.read_text(encoding="utf-8"))
+    )
+
+
+def _snapshot_v2() -> MobileSnapshotV2:
+    return MobileSnapshotV2.model_validate(
+        json.loads(V2_FIXTURE.read_text(encoding="utf-8"))
     )
 
 def _repo() -> MemoryDeviceRepository:
@@ -149,3 +157,35 @@ def test_repository_failure_maps_to_503_application_error():
         )
 
     assert exc.value.status_code == 503
+
+
+def test_valid_v2_snapshot_is_accepted_and_persisted_with_schema_2():
+    repo = _repo()
+    service = SnapshotService(repo)
+
+    accepted = service.accept_snapshot(
+        DEVICE_ID,
+        DEVICE_SECRET,
+        _snapshot_v2(),
+    )
+
+    assert accepted.ok is True
+    stored = repo.get_snapshot(DEVICE_ID)
+    assert stored is not None
+    assert stored.snapshot_schema_version == 2
+    assert stored.snapshot["schema_version"] == 2
+    assert "atmosphere" in stored.snapshot
+
+
+def test_snapshot_service_type_hints_expose_mobile_snapshot_union():
+    accept_hints = get_type_hints(
+        SnapshotService.accept_snapshot,
+        include_extras=True,
+    )
+    authenticated_hints = get_type_hints(
+        SnapshotService.accept_authenticated_snapshot,
+        include_extras=True,
+    )
+
+    assert accept_hints["snapshot"] == MobileSnapshot
+    assert authenticated_hints["snapshot"] == MobileSnapshot

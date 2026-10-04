@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 import fixture from "../test/fixtures/mobile_snapshot_v1.json";
+import v2WebPilotFixture from "../test/fixtures/mobile_snapshot_v2_webpilot.json";
+import v2FallbackFixture from "../test/fixtures/mobile_snapshot_v2_fallback.json";
 import {
   parseSnapshotReadResponse,
   type ManeuverEventDetailResponse,
@@ -155,6 +157,35 @@ function renderRoute(
     unmount: view.unmount,
   };
 }
+
+function renderWeatherResponse(data: typeof response) {
+  return render(
+    <StaticSnapshotProvider
+      state={{
+        status: "online",
+        data,
+        refresh: () => undefined,
+      }}
+    >
+      <StaticEventProvider
+        state={{
+          events: [],
+          status: "online",
+          newEvent: null,
+          hasMore: false,
+          loadOlder: async () => false,
+        }}
+      >
+        <StaticPushProvider state={DEFAULT_PUSH_STATE}>
+          <MemoryRouter initialEntries={["/tempo"]}>
+            <AppRoutes pairing={pairing} />
+          </MemoryRouter>
+        </StaticPushProvider>
+      </StaticEventProvider>
+    </StaticSnapshotProvider>,
+  );
+}
+
 
 function staticTrackingState(
   isTracked: TrackingState["isTracked"],
@@ -503,6 +534,61 @@ test("weather_page_renders_atmospheric_and_marine_snapshot_data", async () => {
   expect(screen.getByRole("button", { name: "Tempo" })).toHaveAttribute("aria-current", "page");
 });
 
+
+
+
+test("weather_page_v2_webpilot_separates_observation_complementary_and_marine", async () => {
+  const data = parseSnapshotReadResponse({
+    snapshot: v2WebPilotFixture,
+    meta: { received_at: "2026-09-28T20:31:05-03:00", age_seconds: 5, collector_online: true, stale_after_seconds: 120 },
+  });
+  renderWeatherResponse(data);
+
+  expect(await screen.findByRole("heading", { name: "Tempo e mar" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Estação Pecém · observação" })).toBeInTheDocument();
+  expect(screen.getByText("WebPilot")).toBeInTheDocument();
+  expect(screen.getByText("Vento atual")).toBeInTheDocument();
+  expect(screen.getByText("Vento médio")).toBeInTheDocument();
+  expect(screen.getByText("Vento máximo")).toBeInTheDocument();
+  const directionMetric = screen.getByText("Direção do vento").closest(".weather-metric");
+  expect(directionMetric).not.toBeNull();
+  expect(within(directionMetric as HTMLElement).getByText("65° ENE")).toBeInTheDocument();
+  expect(screen.queryByText("65° NE")).not.toBeInTheDocument();
+  expect(screen.getByText(/Complementar \/ previsão/)).toBeInTheDocument();
+  expect(screen.getAllByText("Open-Meteo").length).toBeGreaterThanOrEqual(1);
+  expect(screen.getByRole("heading", { name: "Condições marítimas" })).toBeInTheDocument();
+  expect(screen.getByText("Open-Meteo Marine")).toBeInTheDocument();
+});
+
+test("weather_page_v2_fallback_uses_gust_semantics_and_marks_stale", async () => {
+  const data = parseSnapshotReadResponse({
+    snapshot: v2FallbackFixture,
+    meta: { received_at: "2026-09-28T20:31:05-03:00", age_seconds: 5, collector_online: true, stale_after_seconds: 120 },
+  });
+  renderWeatherResponse(data);
+
+  expect(await screen.findByText(/Open-Meteo · fallback\/modelo/)).toBeInTheDocument();
+  expect(screen.getByText(/Desatualizado/)).toBeInTheDocument();
+  expect(screen.getByText("Rajada")).toBeInTheDocument();
+  expect(screen.queryByText("Vento máximo")).not.toBeInTheDocument();
+  expect(screen.getAllByText("Dados indisponíveis").length).toBeGreaterThanOrEqual(1);
+});
+
+test("weather_page_v2_unavailable_renders_explicitly_without_zero_values", async () => {
+  const unavailable = structuredClone(v2FallbackFixture);
+  unavailable.atmosphere.primary = { status: "unavailable" } as typeof unavailable.atmosphere.primary;
+  unavailable.atmosphere.complementary = { status: "unavailable" };
+  unavailable.marine = { status: "unavailable" } as typeof unavailable.marine;
+  const data = parseSnapshotReadResponse({
+    snapshot: unavailable,
+    meta: { received_at: "2026-09-28T20:31:05-03:00", age_seconds: 5, collector_online: true, stale_after_seconds: 120 },
+  });
+  renderWeatherResponse(data);
+
+  expect(await screen.findByRole("heading", { name: "Tempo e mar" })).toBeInTheDocument();
+  expect(screen.getAllByText("Dados indisponíveis").length).toBeGreaterThanOrEqual(2);
+  expect(screen.queryByText(/^0(?:[,.]0)? (?:kn|°C|m)$/)).not.toBeInTheDocument();
+});
 
 test("weather_page_tolerates_empty_weather_blocks", async () => {
   const emptyResponse = parseSnapshotReadResponse({
