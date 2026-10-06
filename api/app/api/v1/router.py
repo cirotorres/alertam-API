@@ -6,6 +6,7 @@ from typing import Callable
 from fastapi import APIRouter
 
 from app.api.v1.access import create_access_router
+from app.api.v1.device_status import create_device_status_router
 from app.api.v1.health import create_health_router
 from app.api.v1.maneuver_events import create_maneuver_event_router
 from app.api.v1.mobile_event_details import create_mobile_event_details_router
@@ -48,6 +49,7 @@ def create_v1_router(
     router = APIRouter(prefix="/api/v1")
     projection = TrackedVesselProjectionService(repository)
     router.include_router(create_health_router())
+    router.include_router(create_device_status_router(repository))
     router.include_router(
         create_maneuver_event_router(
             repository,

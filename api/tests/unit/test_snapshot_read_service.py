@@ -186,3 +186,25 @@ def test_read_persistence_failure_maps_to_503():
         service.get_snapshot(DEVICE_ID, VIEW_SECRET)
 
     assert exc.value.status_code == 503
+
+
+def test_disabled_device_keeps_view_secret_read_and_reports_disabled_meta():
+    repo = _repo()
+    current = repo.get_device_auth(DEVICE_ID)
+    repo._devices[DEVICE_ID] = DeviceAuthRecord(
+        device_id=current.device_id,
+        device_secret_hash=current.device_secret_hash,
+        view_secret_hash=current.view_secret_hash,
+        description="Notebook do pai",
+        enabled=False,
+    )
+    service = SnapshotReadService(
+        repo,
+        stale_after_seconds=120,
+        clock=lambda: RECEIVED_AT,
+    )
+
+    result = service.get_snapshot(DEVICE_ID, VIEW_SECRET)
+
+    assert result.meta.device_enabled is False
+    assert result.snapshot.sequence == 1

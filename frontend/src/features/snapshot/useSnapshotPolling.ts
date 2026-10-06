@@ -14,6 +14,7 @@ export type SnapshotStatus =
   | "loading"
   | "online"
   | "stale"
+  | "disabled"
   | "waiting"
   | "offline"
   | "revoked"
@@ -85,7 +86,13 @@ export function useSnapshotPolling(
           return;
         }
         setData(next);
-        setStatus(next.meta.collector_online ? "online" : "stale");
+        setStatus(
+          next.meta.device_enabled === false
+            ? "disabled"
+            : next.meta.collector_online
+              ? "online"
+              : "stale",
+        );
       } catch (error) {
         if (
           disposed ||

@@ -46,6 +46,8 @@ class DeviceAuthRecord:
     device_id: str
     device_secret_hash: str
     view_secret_hash: str | None = None
+    description: str | None = None
+    enabled: bool = True
 
 
 @dataclass(frozen=True)

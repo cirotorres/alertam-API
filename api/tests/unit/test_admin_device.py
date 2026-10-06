@@ -219,6 +219,7 @@ def test_register_prepared_identity_creates_only_hash_for_missing_device():
 
     register_prepared_identity(
         identity,
+        description="Notebook do pai",
         client=client,
         supabase_url="https://project.supabase.co",
         server_key="sb_secret_admin",
@@ -229,6 +230,8 @@ def test_register_prepared_identity_creates_only_hash_for_missing_device():
     assert payload == {
         "device_id": "pecem-a1b2c3d4",
         "device_secret_hash": hash_secret("plain-secret"),
+        "description": "Notebook do pai",
+        "enabled": True,
     }
     assert "plain-secret" not in repr(payload)
 
@@ -253,6 +256,7 @@ def test_register_prepared_identity_is_create_only_even_when_hash_matches():
     with pytest.raises(DeviceAlreadyExistsError):
         register_prepared_identity(
             identity,
+            description="Notebook existente",
             client=client,
             supabase_url="https://project.supabase.co",
             server_key="sb_secret_admin",
@@ -289,6 +293,7 @@ def test_register_admin_401_does_not_leak_device_or_admin_secret():
     with pytest.raises(ValueError, match="401") as exc_info:
         register_prepared_identity(
             identity,
+            description="Notebook teste",
             client=client,
             supabase_url="https://project.supabase.co",
             server_key=admin_key,
@@ -370,6 +375,8 @@ def test_cli_register_prints_device_id_but_never_secret(tmp_path: Path, capsys):
             str(identity_env),
             "--admin-env",
             str(admin_env),
+            "--description",
+            "Notebook do pai",
         ],
         client_factory=lambda **_: client,
     )
@@ -733,3 +740,54 @@ def test_cli_compensate_database_error_never_prints_database_url_or_password(
     assert "db-password-never-log" not in combined
     assert "postgresql://" not in combined
     assert "compensação" in combined.lower()
+
+
+def test_register_new_device_persists_trimmed_description_and_enabled_true():
+    from app.security.credentials import hash_secret
+    from scripts.admin_device import PreparedDeviceIdentity, register_prepared_identity
+
+    identity = PreparedDeviceIdentity(
+        api_base_url="https://alertam-api.vercel.app",
+        device_id="pecem-meta1234",
+        device_secret="plain-secret",
+    )
+    client = RegisterSupabaseClient()
+
+    register_prepared_identity(
+        identity,
+        description="  Notebook do pai  ",
+        client=client,
+        supabase_url="https://project.supabase.co",
+        server_key="sb_secret_admin",
+    )
+
+    assert [call[0] for call in client.calls] == ["GET", "POST"]
+    assert client.calls[1][2]["json"] == {
+        "device_id": "pecem-meta1234",
+        "device_secret_hash": hash_secret("plain-secret"),
+        "description": "Notebook do pai",
+        "enabled": True,
+    }
+
+
+@pytest.mark.parametrize("value", ["", "   ", "x" * 201])
+def test_register_new_device_rejects_invalid_description_before_network(value):
+    from scripts.admin_device import PreparedDeviceIdentity, register_prepared_identity
+
+    client = RegisterSupabaseClient()
+    identity = PreparedDeviceIdentity(
+        api_base_url="https://alertam-api.vercel.app",
+        device_id="pecem-meta1234",
+        device_secret="plain-secret",
+    )
+
+    with pytest.raises(ValueError, match="description"):
+        register_prepared_identity(
+            identity,
+            description=value,
+            client=client,
+            supabase_url="https://project.supabase.co",
+            server_key="sb_secret_admin",
+        )
+
+    assert client.calls == []

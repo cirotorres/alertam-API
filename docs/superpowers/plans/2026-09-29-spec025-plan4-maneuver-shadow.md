@@ -15,6 +15,7 @@
 - Dependência técnica: Plan 1 concluído. Dependência de roadmap: Plan 2 também concluído/revisado antes de iniciar a Etapa B. Plan 3 pode estar em produção em paralelo, mas shadow não depende de MobileSnapshot v2.
 - O serviço shadow deve nascer headless/reutilizável o suficiente para servir de base ao futuro collector Cloud após o gate, sem importar UI/Tk nem efeitos operacionais.
 - ALERTAM_WEBPILOT_SHADOW_MODE default false.
+- **Obrigação SPEC 030:** antes de qualquer request/coleta HTTP Shadow, reutilizar o mesmo `DeviceOperationalGate` do Desktop oficial. `enabled=false` ou autorização indisponível fora do grace bloqueiam o request Shadow; re-enable volta a liberar sem restart. Não criar política paralela de autorização no Shadow.
 - Shadow nunca alimenta ManeuverTracker, eventos, push, áudio, histórico operacional, MobileSnapshot ou PWA.
 - Reutilizar parse_grid_rows; não criar parser semântico concorrente.
 - Matching: IMO válido exato primeiro, nome normalizado exato depois; sem fuzzy.

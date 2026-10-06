@@ -21,7 +21,6 @@ from scripts.provision_device import (
     _write_text_atomic,
     load_admin_credentials,
     render_mobile_env,
-    sync_device_secret,
 )
 
 
@@ -107,21 +106,53 @@ def prepare_new_identity(
 
 
 
+def normalize_device_description(value: str) -> str:
+    description = str(value).strip()
+    if not description or len(description) > 200:
+        raise ValueError("description deve conter entre 1 e 200 caracteres")
+    return description
+
+
 def register_prepared_identity(
     identity: PreparedDeviceIdentity,
     *,
+    description: str,
     client,
     supabase_url: str,
     server_key: str,
 ) -> None:
-    sync_device_secret(
-        client,
-        supabase_url,
-        server_key,
-        identity.device_id,
-        hash_secret(identity.device_secret),
-        allow_update=False,
+    normalized_description = normalize_device_description(description)
+    base_url = supabase_url.rstrip("/")
+    headers = _admin_headers(server_key)
+    response = client.get(
+        f"{base_url}/rest/v1/devices",
+        headers=headers,
+        params={
+            "select": "device_id",
+            "device_id": f"eq.{identity.device_id}",
+            "limit": "1",
+        },
     )
+    _raise_for_supabase_admin(response)
+    rows = response.json()
+    if not isinstance(rows, list):
+        raise ValueError("resposta inválida ao consultar dispositivo")
+    if rows:
+        raise DeviceAlreadyExistsError(identity.device_id)
+
+    response = client.post(
+        f"{base_url}/rest/v1/devices",
+        headers=headers,
+        json={
+            "device_id": identity.device_id,
+            "device_secret_hash": hash_secret(identity.device_secret),
+            "description": normalized_description,
+            "enabled": True,
+        },
+    )
+    if getattr(response, "status_code", None) == 409:
+        raise DeviceAlreadyExistsError(identity.device_id)
+    _raise_for_supabase_admin(response)
 
 
 
@@ -147,6 +178,7 @@ def main(
     register_parser = subparsers.add_parser("register")
     register_parser.add_argument("--identity-env", type=Path, required=True)
     register_parser.add_argument("--admin-env", type=Path, required=True)
+    register_parser.add_argument("--description", required=True)
 
     compensate_parser = subparsers.add_parser("compensate")
     compensate_parser.add_argument("--identity-env", type=Path, required=True)
@@ -192,6 +224,7 @@ def main(
             identity = load_prepared_identity(args.identity_env.resolve())
             register_prepared_identity(
                 identity,
+                description=args.description,
                 client=client,
                 supabase_url=supabase_url,
                 server_key=server_key,

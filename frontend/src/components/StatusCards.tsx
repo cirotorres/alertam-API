@@ -10,6 +10,7 @@ const LABELS: Record<SnapshotStatus, { title: string; detail: string; tone: stri
   loading: { title: "Carregando dados", detail: "Consultando o AlertaM.", tone: "neutral" },
   online: { title: "Sistema ativo", detail: "Monitorando movimentações marítimas.", tone: "positive" },
   stale: { title: "Dados desatualizados", detail: "O coletor não envia uma leitura recente.", tone: "warning" },
+  disabled: { title: "AlertaM desativado pelo administrador", detail: "A última leitura permanece visível. Aguardando reativação.", tone: "warning" },
   waiting: { title: "Aguardando primeira leitura", detail: "O pareamento está válido, mas ainda não há snapshot.", tone: "neutral" },
   offline: { title: "Sem conexão com o servidor", detail: "Exibindo a última leitura disponível quando possível.", tone: "warning" },
   revoked: { title: "Acesso expirado ou revogado", detail: "Escaneie um novo QR Code no AlertaM Desktop.", tone: "danger" },

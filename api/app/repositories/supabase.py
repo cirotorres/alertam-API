@@ -77,7 +77,8 @@ class SupabaseDeviceRepository:
                 headers=self._headers(),
                 params={
                     "select": (
-                        "device_id,device_secret_hash,view_secret_hash"
+                        "device_id,device_secret_hash,view_secret_hash,"
+                        "description,enabled"
                     ),
                     "device_id": f"eq.{device_id}",
                     "limit": "1",
@@ -100,6 +101,12 @@ class SupabaseDeviceRepository:
                     if row.get("view_secret_hash") is None
                     else str(row["view_secret_hash"])
                 ),
+                description=(
+                    None
+                    if row.get("description") is None
+                    else str(row["description"])
+                ),
+                enabled=bool(row.get("enabled", True)),
             )
         except (
             httpx.HTTPError,

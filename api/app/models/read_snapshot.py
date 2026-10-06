@@ -10,6 +10,7 @@ class SnapshotMetaResponse(BaseModel):
     age_seconds: int
     collector_online: bool
     stale_after_seconds: int
+    device_enabled: bool = True
 
 
 class SnapshotReadResponse(BaseModel):

@@ -496,12 +496,13 @@ test("config_keeps_operational_footer_without_false_active_tab", async () => {
 test.each([
   ["online", "Sistema ativo"],
   ["stale", "Dados desatualizados"],
+  ["disabled", "AlertaM desativado pelo administrador"],
   ["offline", "Sem conexão com o servidor"],
   ["waiting", "Aguardando primeira leitura"],
   ["revoked", "Acesso expirado ou revogado"],
   ["unsupported", "Atualização necessária"],
 ] as const)("status_%s_has_text_not_only_color", (status, label) => {
-  render(<StatusCards status={status} data={status === "online" || status === "stale" || status === "offline" ? response : null} />);
+  render(<StatusCards status={status} data={status === "online" || status === "stale" || status === "disabled" || status === "offline" ? response : null} />);
   expect(screen.getByRole("status")).toHaveTextContent(label);
 });
 

@@ -272,6 +272,7 @@ const SnapshotMetaSchema = z
     age_seconds: z.number().int().nonnegative(),
     collector_online: z.boolean(),
     stale_after_seconds: z.number().int().nonnegative(),
+    device_enabled: z.boolean().default(true),
   })
   .strict();
 

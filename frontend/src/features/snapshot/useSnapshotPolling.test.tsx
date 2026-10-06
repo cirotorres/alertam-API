@@ -234,3 +234,64 @@ test("aborted_old_request_cannot_unlock_new_request", async () => {
     await Promise.resolve();
   });
 });
+
+
+test("disabled_device_keeps_snapshot_visible_and_continues_polling", async () => {
+  const DISABLED = parseSnapshotReadResponse({
+    snapshot: fixture,
+    meta: {
+      ...ONLINE.meta,
+      device_enabled: false,
+    },
+  });
+  const fetcher = vi.fn().mockResolvedValue(DISABLED);
+
+  const { result } = renderHook(() => useSnapshotPolling(pairing, fetcher));
+  await flush();
+
+  expect(result.current.status).toBe("disabled");
+  expect(result.current.data).toBe(DISABLED);
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(30_000);
+  });
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+
+test("missing_device_enabled_from_older_api_defaults_to_enabled", () => {
+  const parsed = parseSnapshotReadResponse({
+    snapshot: fixture,
+    meta: {
+      received_at: "2026-09-25T13:40:15-03:00",
+      age_seconds: 3,
+      collector_online: true,
+      stale_after_seconds: 120,
+    },
+  });
+
+  expect(parsed.meta.device_enabled).toBe(true);
+});
+
+
+test("disabled_to_enabled_transition_recovers_automatically_on_next_poll", async () => {
+  const DISABLED = parseSnapshotReadResponse({
+    snapshot: fixture,
+    meta: { ...ONLINE.meta, device_enabled: false },
+  });
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(DISABLED)
+    .mockResolvedValueOnce(ONLINE);
+
+  const { result } = renderHook(() => useSnapshotPolling(pairing, fetcher));
+  await flush();
+  expect(result.current.status).toBe("disabled");
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(30_000);
+  });
+
+  expect(result.current.status).toBe("online");
+  expect(result.current.data).toBe(ONLINE);
+});

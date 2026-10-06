@@ -111,6 +111,7 @@ def test_get_snapshot_returns_snapshot_and_meta():
         "age_seconds": 24,
         "collector_online": True,
         "stale_after_seconds": 120,
+        "device_enabled": True,
     }
 
 def test_get_snapshot_120_seconds_is_offline_but_data_remains():

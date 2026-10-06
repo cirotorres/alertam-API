@@ -19,6 +19,8 @@ def test_repository_auth_record_contains_hashes_not_plaintext_secrets():
         "device_id",
         "device_secret_hash",
         "view_secret_hash",
+        "description",
+        "enabled",
     }
 
 

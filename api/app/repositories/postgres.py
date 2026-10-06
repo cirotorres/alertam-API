@@ -64,14 +64,18 @@ class PostgresDeviceRepository:
                     insert into public.devices (
                         device_id,
                         device_secret_hash,
-                        view_secret_hash
+                        view_secret_hash,
+                        description,
+                        enabled
                     )
-                    values (%s, %s, %s)
+                    values (%s, %s, %s, %s, %s)
                     """,
                     (
                         record.device_id,
                         record.device_secret_hash,
                         record.view_secret_hash,
+                        record.description,
+                        record.enabled,
                     ),
                 )
         except UniqueViolation as exc:
@@ -93,7 +97,9 @@ class PostgresDeviceRepository:
                     select
                         device_id,
                         device_secret_hash,
-                        view_secret_hash
+                        view_secret_hash,
+                        description,
+                        enabled
                     from public.devices
                     where device_id = %s
                     """,
@@ -108,6 +114,8 @@ class PostgresDeviceRepository:
             device_id=str(row[0]),
             device_secret_hash=str(row[1]),
             view_secret_hash=None if row[2] is None else str(row[2]),
+            description=None if row[3] is None else str(row[3]),
+            enabled=bool(row[4]),
         )
 
     def ensure_mobile_installation(

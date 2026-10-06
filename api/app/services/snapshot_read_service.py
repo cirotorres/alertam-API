@@ -58,10 +58,13 @@ class SnapshotReadService:
         device_id: str,
     ) -> SnapshotReadResponse:
         try:
+            auth = self._repository.get_device_auth(device_id)
             stored = self._repository.get_snapshot(device_id)
         except PersistenceUnavailableError as exc:
             raise PersistenceUnavailableApiError() from exc
 
+        if auth is None:
+            raise InvalidViewCredentialsError()
         if stored is None:
             raise SnapshotNotAvailableError()
 
@@ -77,5 +80,6 @@ class SnapshotReadService:
                 age_seconds=age_seconds,
                 collector_online=collector_online,
                 stale_after_seconds=self._stale_after_seconds,
+                device_enabled=auth.enabled,
             ),
         )
