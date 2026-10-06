@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Status | Implementado localmente; revisão independente pendente |
+| Status | Implementado e integrado em `feat/api-bootstrap`; validações Windows/release tratadas separadamente no fluxo pré-Plan 4 |
 | Criado em | 2026-10-04 |
 | Atualizado em | 2026-10-04 |
 | Evidência de conclusão | `docs/superpowers/handoffs/2026-10-04-spec029-tabua-mare-handoff.md` |
@@ -271,4 +271,4 @@ Objetivo operacional desta ordem:
 Fluxo detalhado:
 `docs/superpowers/plans/2026-10-04-pre-plan4-spec029-updater-pilot.md`.
 
-O Plan 4 permanece tecnicamente liberado, porém temporariamente adiado até o piloto do updater ser concluído.
+Esse gate temporário de 2026-10-04 foi posteriormente superado pelo alinhamento pós-SPEC 030 de 2026-10-06. O Plan 4 continua posterior à SPEC 029, mas sua abertura agora depende do hotfix pré-Plan 4 do `DeviceOperationalGate`, da janela de UI escolhida pelo usuário e de nova revisão do `develop` corrente.

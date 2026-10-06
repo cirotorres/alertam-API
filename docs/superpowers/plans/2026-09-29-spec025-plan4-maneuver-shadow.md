@@ -13,6 +13,8 @@
 ## Global Constraints
 
 - Dependência técnica: Plan 1 concluído. Dependência de roadmap: Plan 2 também concluído/revisado antes de iniciar a Etapa B. Plan 3 pode estar em produção em paralelo, mas shadow não depende de MobileSnapshot v2.
+- **Pré-condição pós-SPEC 030:** o hotfix pré-Plan 4 do `DeviceOperationalGate` deve estar revisado e integrado ao Desktop `develop`, garantindo que consumidores WebPilot HTTP atuais não façam GET quando o gate negar.
+- A branch de execução recomendada é `feat/spec025-plan4-maneuver-shadow`, criada somente depois dos hotfixes e dos ajustes de UI pré-Plan 4 que o usuário decidir concluir, sempre a partir do SHA corrente de `develop`.
 - O serviço shadow deve nascer headless/reutilizável o suficiente para servir de base ao futuro collector Cloud após o gate, sem importar UI/Tk nem efeitos operacionais.
 - ALERTAM_WEBPILOT_SHADOW_MODE default false.
 - **Obrigação SPEC 030:** antes de qualquer request/coleta HTTP Shadow, reutilizar o mesmo `DeviceOperationalGate` do Desktop oficial. `enabled=false` ou autorização indisponível fora do grace bloqueiam o request Shadow; re-enable volta a liberar sem restart. Não criar política paralela de autorização no Shadow.
@@ -33,6 +35,9 @@
 - Mudança de ordem das linhas da grid não pode gerar divergência.
 - Snapshot Selenium vazio legitimamente e HTTP vazio legitimamente deve ser comparável sem confundir ausência da grid.
 - Shadow mais lento que o intervalo oficial não pode bloquear nem criar backlog ilimitado.
+- Item já enfileirado não pode fazer GET se o device for desativado antes de o worker processá-lo.
+- `disabled`/`authorization_unavailable` não podem ser mascarados como HTTP_ERROR do collector.
+- Shadow não cria segundo `DeviceStatusHttpClient` nem segundo `DeviceOperationalGate`; reutiliza a instância já pertencente ao runtime Desktop.
 
 ---
 
@@ -188,6 +193,9 @@ Suggested message:
   - equivalent_cycles
   - consecutive_clean_comparable
   - technical_failures
+  - operational_skips
+  - last_operational_skip_at
+  - last_operational_skip_state
   - divergence_counts: dict[str, int]
   - coverage: dict[str, bool]
   - critical_divergences: list of sanitized unique signatures, each with id/status/occurrences/first_seen/last_seen/explanation
@@ -196,6 +204,7 @@ Suggested message:
   - recent_divergences: list limited to last 10
 - Produce: ShadowMetricsStore.load() -> ShadowEvidence
 - Produce: ShadowMetricsStore.record(comparison_or_failure, official_snapshot, coverage_events=()) -> ShadowEvidence
+- Produce: ShadowMetricsStore.record_operational_skip(state: str, at: datetime | None = None) -> ShadowEvidence
 - Produce: ShadowMetricsStore.mark_explained(divergence_id: str, note: str) -> ShadowEvidence
 - Produce: ShadowMetricsStore.reset() -> ShadowEvidence only for explicit support/test use; no automatic reset at startup.
 - Critical divergence ids are deterministic hashes of the sanitized canonical signature (type + vessel key + field + compared values); keep at most 100 unique signatures. If the cap is exceeded, increment critical_overflow_count and the later gate must remain blocked until a new clean evidence window is intentionally started.
@@ -210,6 +219,7 @@ Assert:
 - critical unique signatures capped at 100 and overflow counted;
 - mark_explained changes only the matching sanitized critical record and preserves occurrence counters;
 - counters and explained/open state accumulate across restart;
+- operational skip increments only its own observability fields, does not increment comparable/equivalent/technical_failures and does not initialize the evidence window before the first real shadow attempt;
 - no full HTML/cookies/headers in serialized structure.
 
 - [ ] **Step 2: Implement store**
@@ -251,15 +261,18 @@ Suggested message:
 **Interfaces:**
 - Settings gains webpilot_shadow_mode from ALERTAM_WEBPILOT_SHADOW_MODE default False.
 - Produce: WEBPILOT_MANEUVERS_URL reuse WEBPILOT_URL.
-- Produce: ManeuverShadowService.__init__(client, store, on_internal_error=None, queue_size=2)
+- Produce: ManeuverShadowService.__init__(client, store, operational_gate, on_internal_error=None, queue_size=2)
+- `operational_gate` é a mesma instância já pertencente ao runtime Desktop; testes podem usar fake determinístico.
 - Produce: start(), stop(), submit(official_snapshot: Snapshot) -> bool
 - Internal worker flow:
-  1. client.get(WEBPILOT_URL)
-  2. classify transport result;
-  3. extract_grid_rows
-  4. parse_grid_rows(rows, agora=official_snapshot.coletado_em)
-  5. compare_snapshots
-  6. store.record
+  1. ao retirar um item da fila, consultar `operational_gate.check()` imediatamente antes de qualquer GET;
+  2. se negado, `store.record_operational_skip(...)` e encerrar o item sem HTTP/recovery/parser/comparison;
+  3. se permitido, `client.get(WEBPILOT_URL)`;
+  4. classify transport result;
+  5. extract_grid_rows;
+  6. parse_grid_rows(rows, agora=official_snapshot.coletado_em);
+  7. compare_snapshots;
+  8. store.record.
 
 - [ ] **Step 1: Write failing happy-path service test**
 
@@ -272,6 +285,11 @@ Cover:
 - TIMEOUT/HTTP_ERROR => technical failure;
 - missing grid => HTML_INVALID;
 - parser exception => PARSER_ERROR;
+- gate disabled => zero `client.get`, um operational skip, zero technical failure;
+- authorization_unavailable fora do grace => zero `client.get`, operational skip;
+- grace/active => fluxo HTTP permitido;
+- item enfileirado quando active, mas processado depois de disabled => zero GET;
+- false -> true => próximo item permitido sem restart do serviço;
 - no failure enters ManeuverTracker or any callback with operational snapshot.
 
 - [ ] **Step 3: Implement worker**
@@ -311,21 +329,25 @@ Suggested message:
 
 **Interfaces:**
 - Application owns self.maneuver_shadow: ManeuverShadowService | None.
+- Application já deve possuir `self.device_operational_gate` vindo do hotfix pré-Plan 4; reutilizar exatamente essa instância.
 - Application._on_collection submits the exact official Snapshot after/beside normal mobile/tracking handling, without consuming shadow output.
 - Shadow service only created/started when settings.webpilot_shadow_mode is True.
+- Runtime administrável sem gate válido não deve construir um caminho Shadow allow-all; fail-closed. Testes podem injetar fake gate explicitamente.
 
 - [ ] **Step 1: Write failing bootstrap isolation tests**
 
 Assert:
 - default False => no shadow service/start/request;
-- True => service starts;
+- True => service starts somente com a autorização operacional compartilhada disponível;
+- bootstrap entrega ao Shadow a mesma instância usada pelo runtime oficial, sem construir segundo status client/gate;
 - _on_collection calls shadow.submit but still calls existing mobile/tracking paths exactly once;
 - shadow.submit failure/False does not alter confirmed/events or scheduler;
+- disabled depois do submit e antes do worker GET continua bloqueando o request;
 - shutdown stops service.
 
 - [ ] **Step 2: Implement bootstrap wiring**
 
-Use Plan 1 WebPilotHttpClient. Do not add UI controls or status badges for shadow.
+Use Plan 1 WebPilotHttpClient e a instância compartilhada do `DeviceOperationalGate` criada pelo bootstrap pós-hotfix. Não adicionar UI controls/status badges para shadow e não duplicar a política `enabled` dentro do serviço.
 
 - [ ] **Step 3: Document support-only enablement**
 
@@ -363,7 +385,9 @@ With explicit user approval to enable shadow:
 - start Desktop;
 - verify official UI/manobras behave unchanged;
 - verify metrics file changes;
-- disable shadow and verify no further shadow requests.
+- em teste administrativo autorizado, `enabled=false` deve cessar GET shadow e incrementar somente operational skip;
+- re-enable deve retomar sem restart;
+- disable shadow mode and verify no further shadow requests.
 
 - [ ] **Step 7: STOP**
 
@@ -373,3 +397,17 @@ No cutover. Plan 5 only evaluates accumulated evidence.
 
 Suggested message:
     feat: integra shadow HTTP sem efeito operacional
+
+---
+
+## Gate de abertura do Plan 4 — revisão 2026-10-06
+
+Não entregar este plano a um Executor antes de confirmar:
+- Desktop `develop` contém a SPEC 030 e o hotfix pré-Plan 4 do `DeviceOperationalGate`;
+- `WebPilotWeatherService` já respeita o gate e não existe GET WebPilot HTTP conhecido fora da autorização compartilhada;
+- hotfix de foto foi concluído ou explicitamente adiado pelo usuário;
+- ajustes de UI pré-Plan 4 desejados pelo usuário foram concluídos;
+- suíte do Desktop está verde e o SHA base foi registrado;
+- branch `feat/spec025-plan4-maneuver-shadow` foi criada a partir desse SHA, não de branch antiga da SPEC 025.
+
+Este gate é de sequenciamento. Ele não altera o escopo: Selenium continua oficial, Shadow continua somente observador, Plan 5 continua posterior e Cloud continua bloqueado até gate humano.

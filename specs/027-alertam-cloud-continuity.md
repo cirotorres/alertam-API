@@ -47,6 +47,7 @@ O Cloud deve:
 - publicar continuidade somente para o device_id autorizado;
 - assumir quando o Desktop for considerado offline/stale;
 - devolver a preferência ao Desktop após retorno estável;
+- respeitar o estado administrativo do `device_id`: `enabled=false` impede coleta/publicação de continuidade e nunca é tratado como simples Desktop offline;
 - registrar observabilidade sanitizada.
 
 ## 5. Reutilização obrigatória do collector
@@ -107,6 +108,8 @@ Invariantes:
 5. Nunca há duas fontes efetivas simultâneas.
 6. Flapping não pode produzir alternância rápida.
 7. Pareamento mobile é independente da origem efetiva.
+8. `enabled=false` tem precedência sobre failover: Cloud não assume para contornar uma desativação administrativa do device.
+9. Indisponibilidade temporária ao validar autorização deve seguir política fail-closed/grace explicitamente definida; não converter erro de autorização em `enabled=true`.
 
 Os valores exatos de timeout, número de amostras saudáveis e lease pertencem ao plano de
 implementação da SPEC.
@@ -259,7 +262,8 @@ Implementação desta SPEC permanece bloqueada até:
 
 - SPEC 025 Plan 1 concluído;
 - SPEC 025 Plan 2 concluído;
-- shadow Plan 4 concluído;
+- hotfix pré-Plan 4 do `DeviceOperationalGate` integrado e exercitado pelos consumidores WebPilot HTTP do Desktop;
+- shadow Plan 4 concluído usando a mesma política administrativa sem bypass;
 - Evidence Gate Plan 5 executado;
 - requisitos mínimos de evidência atendidos;
 - divergências críticas resolvidas;
@@ -327,6 +331,7 @@ Esta SPEC não deve:
 - fazer refatoração ampla do Desktop;
 - remover Selenium local automaticamente;
 - promover HTTP local a fonte oficial do Desktop automaticamente;
+- usar Cloud como bypass de `enabled=false` ou de autorização administrativa fail-closed;
 - reescrever collector já validado;
 - habilitar eventos/push duplicáveis sem idempotência cross-source;
 - exigir usuário/senha WebPilot permanente no Cloud v1;

@@ -21,6 +21,9 @@
 - Divergências críticas abertas devem ser zero.
 - Cenário raro não observado, como shift, é registrado; não bloqueia indefinidamente por ausência.
 - Falhas técnicas não contam como ciclos equivalentes.
+- Skips do `DeviceOperationalGate` são observabilidade administrativa: não contam como comparáveis/equivalentes nem como falha técnica do collector.
+- A janela só começa no primeiro shadow real autorizado; skips anteriores não iniciam `started_at`.
+- Skips ocorridos durante a janela aparecem no relatório e permanecem sujeitos à revisão humana mesmo se os thresholds técnicos forem atingidos.
 - Relatório não contém cookies/headers/HTML bruto.
 - Não commit/push sem autorização explícita.
 
@@ -50,6 +53,7 @@
   - consecutive_clean_comparable: int
   - open_critical_divergences: int
   - coverage_complete: bool
+  - operational_skips: int
   - unmet_requirements: tuple[str, ...]
   - notes: tuple[str, ...]
 - Produce: evaluate_shadow_gate(evidence: ShadowEvidence, now: datetime) -> GateCheck
@@ -71,7 +75,8 @@ Cover independently:
 - 24h + 500 + 99 clean => NOT_READY;
 - all thresholds + one open critical => BLOCKED;
 - all thresholds + zero open critical => MET;
-- any critical_overflow_count > 0 => BLOCKED even if all retained signatures are explained.
+- any critical_overflow_count > 0 => BLOCKED even if all retained signatures are explained;
+- operational_skips > 0 => não altera sozinho o status técnico, mas adiciona nota explícita para revisão humana e nunca aumenta comparable/equivalent.
 
 - [ ] **Step 2: Write failing time/restart tests**
 
@@ -128,6 +133,7 @@ Report includes:
 - start/end/duration;
 - total/comparable/equivalent cycles;
 - technical failures;
+- operational skips por estado do `DeviceOperationalGate`, separados de falhas técnicas;
 - divergence counts;
 - critical open/explained;
 - coverage observed;
@@ -143,6 +149,7 @@ Assert exact presence of:
 - "Cutover: aguardando aprovação humana" for MET;
 - unmet requirements for NOT_READY/BLOCKED;
 - "shift não observado" note when optional coverage absent;
+- operational skips aparecem de forma explícita e não como HTTP/session failure;
 - no cookie/header/html fields even if fake evidence object tries to carry unknown metadata.
 
 - [ ] **Step 2: Implement renderer**
@@ -282,6 +289,8 @@ Confirm:
 - official Selenium monitoring continues;
 - alerts/history/PWA remain sourced from official path;
 - metrics comparable/equivalent counters begin changing;
+- desativação administrativa controlada, se testada com autorização, gera zero GET shadow e apenas operational skip;
+- re-enable retoma sem restart e sem criar segundo gate/status client;
 - no UI freeze;
 - no credential/raw HTML appears in metrics.
 
@@ -293,7 +302,7 @@ Target:
 - >= 24 hours;
 - >= 500 comparable cycles.
 
-Do not declare success from wall-clock alone.
+Do not declare success from wall-clock alone. Se houver operational skips durante a janela, registrá-los no relatório; eles não contam como observação comparável e a suficiência da janela continua dependente da revisão humana.
 
 - [ ] **Step 5: Inspect divergences during the window**
 

@@ -779,6 +779,29 @@ O shadow:
 - não atrasa alertas/eventos;
 - falha isoladamente.
 
+### 19.2.1 Autorização operacional pós-SPEC 030
+
+A SPEC 030 introduziu `DeviceOperationalGate` como fronteira administrativa obrigatória.
+
+Antes de cada request HTTP shadow real:
+- reutilizar a **mesma instância** de `DeviceOperationalGate` já pertencente ao runtime Desktop;
+- nunca criar um segundo status client/gate dentro do Shadow;
+- `enabled=false` bloqueia o request;
+- `authorization_unavailable` fora do grace bloqueia o request;
+- grace válida preserva a política existente;
+- re-enable volta a permitir coleta sem restart;
+- o check deve ocorrer no worker imediatamente antes do GET, não apenas no momento de `submit()`, para cobrir item que ficou enfileirado e foi desativado antes da execução.
+
+Ciclo bloqueado administrativamente:
+- não chama `WebPilotHttpClient.get`;
+- não dispara recovery de sessão;
+- não produz Snapshot shadow;
+- não é ciclo comparável;
+- não é classificado como falha técnica do collector HTTP;
+- pode ser contabilizado separadamente como skip operacional sanitizado para observabilidade.
+
+Pré-condição do Plan 4: o hotfix pré-Plan 4 que faz os consumidores WebPilot HTTP atuais respeitarem o gate deve estar integrado ao `develop`.
+
 ### 19.3 Extração da grid
 
 O HTTP recebe o HTML da página de movimentações e deve extrair especificamente:
@@ -891,6 +914,8 @@ Enquanto shadow estiver habilitado, manter persistência local sanitizada conten
 - quantidade de ciclos comparáveis;
 - quantidade de ciclos equivalentes;
 - contagem por tipo de divergência;
+- quantidade de skips operacionais causados pelo `DeviceOperationalGate`, separada de falhas técnicas;
+- último estado/horário de skip operacional, sem credenciais;
 - última comparação;
 - últimas 10 divergências sanitizadas.
 

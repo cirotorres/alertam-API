@@ -3,7 +3,7 @@
 **Status:** Estratégia aprovada e autoritativa
 **Data:** 2026-10-02
 **Escopo:** AlertaM Desktop + API/Supabase + AlertaM Mobile/PWA + futuro AlertaM Cloud
-**Documentos vinculados:** SPEC 025, SPEC 027
+**Documentos vinculados:** SPEC 025, SPEC 027, SPEC 029 e obrigação administrativa da SPEC 030
 
 ## 1. Decisão central
 
@@ -120,6 +120,22 @@ Antes de liberar a Etapa C:
 
 GateStatus=MET sozinho não inicia Cloud nem cutover.
 
+### 4.2 Gate administrativo transversal — SPEC 030
+
+A SPEC 030 acrescenta uma fronteira de autorização que vale para toda coleta que opere em nome de um `device_id`.
+
+Antes do Plan 4:
+- o Desktop deve possuir uma única instância reutilizável de `DeviceOperationalGate`;
+- consumidores WebPilot HTTP atuais precisam respeitá-la;
+- o Shadow reutiliza essa mesma instância, sem segundo status client/gate;
+- `enabled=false` e `authorization_unavailable` fora do grace impedem novo GET WebPilot;
+- item shadow enfileirado deve revalidar imediatamente antes do GET;
+- bloqueio administrativo é skip operacional, não divergência nem falha técnica do collector.
+
+O hotfix pré-Plan 4 que fecha o bypass atual da meteorologia WebPilot é requisito de entrada da Etapa B.
+
+Na Etapa C, o Cloud também deverá consultar a autorização administrativa do `device_id` antes de coletar/publicar continuidade. Cloud não pode transformar Desktop desativado em fallback para contornar `enabled=false`.
+
 ## 5. Trilha lateral — MobileSnapshot v2
 
 O antigo Plan 3 da SPEC 025 continua válido como evolução de contrato e UX meteorológica, mas não
@@ -133,6 +149,24 @@ Ele pode ser executado:
 
 Regra: o Plan 3 não deve atrasar artificialmente o início do shadow se Plans 1 e 2 já estiverem
 validados e o shadow não depender do schema v2.
+
+### 5.1 Refinamento lateral concluído — SPEC 029 Tábua de maré DHN
+
+A SPEC 029 foi implementada e integrada antes do Plan 4 por decisão operacional, sem criar dependência técnica com o Shadow.
+
+Ela adicionou:
+- dataset anual DHN 2026 do Terminal Portuário do Pecém;
+- Hoje + Amanhã no Desktop e na página Tempo do PWA;
+- `🌊 Maré` e `ⓘ` na linha discreta do Desktop;
+- remoção do ID permanente abaixo de Modo compacto.
+
+Restrições preservadas:
+- nenhum endpoint novo de maré;
+- nenhum transporte Supabase para maré;
+- nenhum MobileSnapshot novo;
+- nenhum acoplamento com WebPilot/Open-Meteo.
+
+O sequenciamento atual é regido pelo gate pré-Plan 4 de 2026-10-06: hotfix do `DeviceOperationalGate`, eventuais hotfixes/UI e só então a branch Shadow.
 
 ## 6. Etapa C — AlertaM Cloud
 
@@ -285,6 +319,7 @@ preocupação de infraestrutura, não de pareamento.
 
 - Fundação/Weather/Shadow/Gate: specs/025-webpilot-http-observed-weather-shadow-migration.md
 - Continuidade Cloud: specs/027-alertam-cloud-continuity.md
+- Tábua DHN/UX lateral: specs/029-tabua-mare-dhn-desktop-pwa.md
 - Planos atuais da SPEC 025: docs/superpowers/plans/2026-09-29-spec025-*.md
 
 Este roadmap prevalece sobre brainstorms/handoffs anteriores quando houver conflito de ordem,

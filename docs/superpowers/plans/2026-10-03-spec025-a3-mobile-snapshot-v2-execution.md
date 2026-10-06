@@ -2346,3 +2346,19 @@ A partir deste checkpoint está autorizado iniciar o forward-port da hotfix, obe
 - A3 é autoritativa em conflitos;
 - não aplicar migration 017;
 - não fazer push/merge/deploy da hotfix integrada antes de nova revisão independente.
+
+
+### A3 — fechamento manual PWA/iOS consolidado — 2026-10-04
+
+Evidência humana preservada do checkpoint local anterior:
+- PWA/iOS real: OK;
+- MobileSnapshot v2 chegando ao consumidor real: OK;
+- fonte meteorológica WebPilot observada apresentada corretamente na área Tempo;
+- valores/representação visual confirmados pelo usuário.
+
+Ruling histórico:
+- Task 7 manual do A3 foi encerrada;
+- Plan 3 — MobileSnapshot v2 — foi encerrado;
+- Selenium permaneceu fonte oficial e HTTP permaneceu sem cutover.
+
+A antiga indicação de “Plan 4 liberado” foi superada pelo alinhamento pós-SPEC 030 de 2026-10-06. A abertura atual do Plan 4 depende primeiro do hotfix pré-Plan 4 do `DeviceOperationalGate`, da janela de UI escolhida pelo usuário e da revisão do `develop` corrente.

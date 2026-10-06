@@ -72,7 +72,11 @@ Plan 3 consome Plan 2 e produz:
 - união v1/v2 na PWA;
 - renderização mobile das fontes e estados.
 
-Plan 4 depende tecnicamente de Plan 1 e do parser atual de navios; pelo roadmap, só começa depois de Plan 2 estar concluído/revisado. Produz:
+Plan 4 depende tecnicamente de Plan 1 e do parser atual de navios; pelo roadmap, só começa depois de Plan 2 estar concluído/revisado. Após a SPEC 030, existe também um **gate de entrada pré-Plan 4**: o Desktop deve ter o hotfix de autorização operacional integrado, com uma única instância de `DeviceOperationalGate` reutilizada pelos consumidores WebPilot atuais e sem GET WebPilot HTTP quando `enabled=false` ou quando a autorização estiver indisponível fora do grace.
+
+A branch de implementação do Plan 4 deve ser criada a partir do `develop` corrente **depois** desse hotfix e dos ajustes de UI que o usuário decidir concluir antes do Shadow. Não reutilizar branch antiga baseada em SHA anterior à SPEC 030.
+
+Plan 4 produz:
 - GridHtmlExtractor;
 - ManeuverShadowComparator;
 - ManeuverShadowService;
