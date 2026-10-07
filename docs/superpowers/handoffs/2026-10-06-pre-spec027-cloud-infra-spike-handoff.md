@@ -86,3 +86,187 @@ Após Task 4, atualize este handoff ou crie handoff de execução com:
 Pare para revisão independente antes de qualquer trabalho C1/C2/C3 da SPEC 027.
 
 **Não tocar:** WebPilot real no Cloud, SessionLease real, CloudBinding operacional, Supabase migrations, publicação Cloud, failover/failback, Mobile ou cutover.
+
+
+---
+
+## Execução — 2026-10-07 — Tasks 1–4 (Task 4 parada no gate manual Northflank)
+
+### Base e branch
+
+- Base executada por instrução explícita do operador: `af5e81f4bb7c10ac7f0c07712f84f107c4a41aa4`.
+- O SHA acima é descendente do Planning SHA originalmente registrado neste handoff (`40842796ef6d63ff38e0df6b5524f2b8bd82d62d`) e acrescenta apenas documentação do próprio spike.
+- Branch de implementação: `feat/pre-spec027-cloud-infra-spike`.
+- Worktree: `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/pre-spec027-cloud-infra-spike`.
+- Branch publicada em `origin/feat/pre-spec027-cloud-infra-spike` para ficar disponível ao Northflank.
+
+### Commits de implementação
+
+1. `146f09bdf01d544056af3ca8055c40163720d138` — `feat(cloud): add infrastructure-only headless shell`
+2. `0eccfa1de1b79a22fa87b7e780880bab76cfeb9d` — `build(cloud): add non-root production container`
+3. `9558f298c41dd382b8ce6f0a6a6689feedc7842c` — `test(cloud): add local build and smoke workflow`
+
+### Task 1 — shell headless mínimo — CONCLUÍDA
+
+Implementado somente o shell de infraestrutura em `cloud/`:
+
+- Python 3.12;
+- bind `0.0.0.0`;
+- `PORT`, default `8080`;
+- `GET /healthz` → 200;
+- `GET /readyz` → 200;
+- demais rotas → 404;
+- sem dependência de API, Supabase, Desktop ou WebPilot;
+- logs sanitizados, sem dump de ambiente;
+- teste negativo explícito contra WebPilot, SessionLease, CloudBinding, Supabase, `source=cloud` e `DEVICE_SECRET`.
+
+TDD:
+
+- RED inicial: 4 falhas, pois o pacote/runtime ainda não existia;
+- GREEN: contrato HTTP, bind/porta, logging e ausência de dependências operacionais verdes.
+
+### Task 2 — Docker/container — CONCLUÍDA
+
+Arquivos principais:
+
+- `cloud/Dockerfile`;
+- `cloud/.dockerignore`;
+- testes de contrato do container.
+
+Contrato comprovado:
+
+- base `python:3.12-slim`;
+- `PYTHONUNBUFFERED=1`;
+- usuário não-root `10001:10001`;
+- `EXPOSE 8080`;
+- `HEALTHCHECK` em `/healthz`;
+- sem volume obrigatório;
+- sem secret baked;
+- sem escrita obrigatória no filesystem.
+
+TDD:
+
+- RED: 2 falhas pela ausência de `Dockerfile` e `.dockerignore`;
+- GREEN: testes de contrato verdes.
+
+Smoke Docker real:
+
+- build: verde;
+- `/healthz`: 200;
+- `/readyz`: 200;
+- UID runtime: `10001`;
+- mounts: `[]`;
+- segredo sentinela: ausente dos logs;
+- restart após stop/start: saudável;
+- `docker diff`: vazio.
+
+### Task 3 — Make/testes locais — CONCLUÍDA
+
+Adicionados:
+
+- `make cloud-test`;
+- `make cloud-build`;
+- `make cloud-smoke`;
+- `cloud/scripts/smoke.sh`.
+
+Os alvos foram testados para não tocar em banco, migrations, Vercel, Supabase ou Desktop.
+
+TDD:
+
+- RED: ausência dos alvos Make e do script de smoke;
+- GREEN inicial: 8 testes Cloud;
+- o smoke repetível revelou duas condições reais:
+  1. a porta dinâmica publicada pelo Docker muda após `docker start`;
+  2. o serviço precisava tratar SIGTERM explicitamente para saída limpa como PID 1 do container.
+- RED adicional:
+  - `test_sigterm_exits_cleanly`: retorno `-15`, esperado `0`;
+  - smoke continha apenas uma resolução de host port antes do restart.
+- GREEN:
+  - SIGTERM tratado explicitamente;
+  - host port reconsultada após restart;
+  - suíte Cloud final: **9/9 verde**;
+  - smoke final: verde.
+
+### Regressões
+
+Verificação final executada em sequência:
+
+```bash
+make cloud-test
+make cloud-smoke
+make test
+cd frontend && npm test -- --run
+git diff --check af5e81f4bb7c10ac7f0c07712f84f107c4a41aa4..HEAD
+```
+
+Resultado:
+
+- Cloud: **9/9 passed**;
+- API: suíte concluída em 100% com os skips já esperados localmente;
+- PWA: **50 test files / 290 tests passed**;
+- `git diff --check`: limpo;
+- smoke Docker: verde.
+
+Observações fora do escopo, não alteradas neste spike:
+
+- Vitest mantém warning existente de atualização React fora de `act(...)` em `AppShell.test.tsx`;
+- `npm ci` reportou vulnerabilidades em dependências existentes; nenhuma atualização foi feita por estar fora do escopo.
+
+### Task 4 — Northflank sandbox — STOP MANUAL PREVISTO
+
+A branch necessária já está publicada no GitHub.
+
+No computador de execução:
+
+- CLI Northflank não está instalada/configurada como contexto autenticado;
+- não existe token Northflank disponível no ambiente;
+- a documentação atual do Northflank exige autenticação/vínculo de conta para criar o Combined Service.
+
+Portanto não foram improvisadas credenciais nem solicitados secrets operacionais.
+
+Estado: **Task 4 parada somente no ponto de interação manual da UI do Northflank**, conforme autorizado pelo plano.
+
+Configuração a aplicar manualmente no projeto já criado **AlertaM Cloud**:
+
+1. criar um **Combined Service**;
+2. repositório: `cirotorres/alertam-API`;
+3. branch: `feat/pre-spec027-cloud-infra-spike`;
+4. build type: **Dockerfile**;
+5. Dockerfile: `/cloud/Dockerfile`;
+6. build context: `/cloud`;
+7. uma instância ativa, sem scale-to-zero/pausa;
+8. porta: `8080`, protocolo HTTP, acesso público;
+9. variável não sensível opcional/explicita: `PORT=8080`;
+10. nenhum volume/database;
+11. nenhum secret WebPilot, Supabase, Desktop, SessionLease ou CloudBinding;
+12. adicionar **liveness probe HTTP** na porta 8080, path `/healthz`;
+13. adicionar **readiness probe HTTP** na porta 8080, path `/readyz`;
+14. criar o serviço e aguardar build/deploy saudável;
+15. validar a URL pública em `/healthz` e `/readyz`;
+16. executar um restart controlado pela UI e validar novamente os dois endpoints.
+
+### Guardrails preservados
+
+Nenhum destes itens foi implementado:
+
+- WebPilot real no Cloud;
+- SessionLease/cookies;
+- CloudBinding operacional;
+- migrations Supabase;
+- publicação `source=cloud`;
+- arbitragem/failover/failback;
+- eventos/push Cloud;
+- cutover;
+- qualquer alteração do Desktop ou Mobile.
+
+### Pendência / próximo gate
+
+Após a criação manual do serviço Northflank, registrar:
+
+- URL pública;
+- build/deploy saudável;
+- logs de startup;
+- liveness/readiness verdes;
+- restart controlado verde.
+
+Depois disso, **STOP para revisão independente**. Não iniciar C1/C2/C3 da SPEC 027.
