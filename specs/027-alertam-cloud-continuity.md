@@ -1,6 +1,6 @@
 # SPEC 027 — AlertaM Cloud: continuidade vinculada ao Desktop
 
-**Status:** Arquitetura aprovada; implementação bloqueada até o gate humano da SPEC 025
+**Status:** Arquitetura aprovada; implementação operacional bloqueada até o gate humano da SPEC 025; preparação isolada de infraestrutura pré-gate permitida
 **Data:** 2026-10-02
 **Escopo:** AlertaM Cloud + API/Supabase + integração Desktop + compatibilidade Mobile
 **Pré-requisito obrigatório:** SPEC 025 Etapas A/B concluídas e gate shadow aprovado por decisão humana
@@ -256,9 +256,38 @@ O plano de implementação deverá comparar opções compatíveis com:
 - logs/metrics;
 - custo controlado.
 
+## 14.1 Preparação de infraestrutura pré-gate permitida
+
+Enquanto a janela real/evidence gate da SPEC 025 estiver em execução, é permitido adiantar **somente infraestrutura não operacional** do futuro Cloud para reduzir lead time após a aprovação humana.
+
+Essa preparação pode:
+
+- criar um subprojeto isolado `cloud/` no monorepo `alertamaritimoAPI`;
+- produzir imagem/container headless mínimo;
+- expor apenas health/readiness de infraestrutura;
+- validar build, deploy, restart, logs e permanência 24/7 em plataforma de teste;
+- validar injeção de configuração/secrets usando apenas valores de teste sem credenciais WebPilot;
+- documentar deploy e runbook da plataforma escolhida;
+- usar Northflank como alvo inicial de sandbox/validação, sem torná-lo decisão irrevogável de produção.
+
+Antes do gate humano da SPEC 025, essa preparação **não pode**:
+
+- executar o collector WebPilot real;
+- receber, armazenar ou transportar `SessionLease`, cookies ou credenciais WebPilot reais;
+- criar binding operacional com `device_id`;
+- publicar snapshot como `source=cloud`;
+- escrever estado operacional na API/Supabase em nome do Cloud;
+- implementar ou testar failover/failback real;
+- assumir autoridade de source;
+- copiar/reimplementar o collector Desktop apenas para antecipar C2.
+
+A existência de um container/deploy saudável nessa fase comprova somente a **infraestrutura de execução**, nunca a aptidão do collector ou a liberação da Etapa C.
+
+Decisão de repositório para o spike: **não criar um terceiro repositório agora**. O shell de infraestrutura nasce em `alertamaritimoAPI/cloud/`. A estratégia definitiva de compartilhamento/reuso do núcleo validado da SPEC 025 pertence ao planejamento de C2 após o gate e não autoriza cópia de código entre repos.
+
 ## 15. Dependências e gate de entrada
 
-Implementação desta SPEC permanece bloqueada até:
+Implementação operacional desta SPEC permanece bloqueada até:
 
 - SPEC 025 Plan 1 concluído;
 - SPEC 025 Plan 2 concluído;

@@ -136,6 +136,31 @@ O hotfix pré-Plan 4 que fecha o bypass atual da meteorologia WebPilot é requis
 
 Na Etapa C, o Cloud também deverá consultar a autorização administrativa do `device_id` antes de coletar/publicar continuidade. Cloud não pode transformar Desktop desativado em fallback para contornar `enabled=false`.
 
+## 4.3 Preparação paralela de infraestrutura Cloud — sem antecipar a Etapa C
+
+Durante a janela operacional/evidence gate da Etapa B, é permitido executar um spike estritamente de infraestrutura para reduzir tempo de preparação da Etapa C.
+
+Permitido antes do gate humano:
+
+- shell headless isolado em `alertamaritimoAPI/cloud/`;
+- Docker/build/deploy;
+- health/readiness;
+- restart automático;
+- logs/observabilidade de infraestrutura;
+- configuração/secrets apenas com valores de teste;
+- prova de processo always-on em sandbox, inicialmente Northflank.
+
+Continuam proibidos antes do gate humano:
+
+- WebPilot real no Cloud;
+- SessionLease/cookies reais;
+- CloudBinding operacional;
+- publicação `source=cloud`;
+- arbitragem/failover/failback;
+- qualquer efeito no Mobile ou na autoridade do Desktop.
+
+Esse spike não altera a ordem A→B→C. Ele apenas prepara o substrato onde C poderá ser implementada se e quando a Etapa B for aprovada.
+
 ## 5. Trilha lateral — MobileSnapshot v2
 
 O antigo Plan 3 da SPEC 025 continua válido como evolução de contrato e UX meteorológica, mas não
