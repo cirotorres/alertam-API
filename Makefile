@@ -10,7 +10,8 @@ MIGRATIONS_DIR := api/supabase/migrations
         dev-db-shell dev-api-shell api-run sync test test-unit test-contract \
         test-integration test-all docker-build migrate migrate-dev migrate-seed \
         migrate-list migration-new prod-migrate prod-migrate-check prod-migrate-status prod-env prod-check \
-        prod prod-up prod-down prod-logs prod-ps prod-config prod-rebuild
+        prod prod-up prod-down prod-logs prod-ps prod-config prod-rebuild \
+        cloud-test cloud-build cloud-smoke
 
 help:
 	@printf '%s\n' \
@@ -56,7 +57,12 @@ help:
 	  '  make prod-rebuild   Rebuilda e sobe o stack prod' \
 	  '' \
 	  'IMAGENS' \
-	  '  make docker-build   Builda a imagem production da API'
+	  '  make docker-build   Builda a imagem production da API' \
+	  '' \
+	  'CLOUD INFRA SPIKE' \
+	  '  make cloud-test     Executa os testes isolados do shell Cloud' \
+	  '  make cloud-build    Builda a imagem local do shell Cloud' \
+	  '  make cloud-smoke    Valida health/readiness, non-root e restart local'
 
 run: dev
 
@@ -183,6 +189,15 @@ test-all:
 
 docker-build:
 	docker build --target prod -t alertam-api:local ./api
+
+cloud-test:
+	cd cloud && python3.12 -W error -m unittest discover -s tests -v
+
+cloud-build:
+	docker build -t alertam-cloud-infra-spike:local ./cloud
+
+cloud-smoke: cloud-build
+	./cloud/scripts/smoke.sh
 
 prod-env:
 	@if [ -e "$(PROD_ENV)" ]; then \

@@ -3,6 +3,7 @@ from __future__ import annotations
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
+import signal
 from collections.abc import Mapping
 from typing import Any
 
@@ -61,6 +62,12 @@ class InfrastructureHandler(BaseHTTPRequestHandler):
 
 def run() -> None:
     port = resolve_port(os.environ)
+
+    def exit_cleanly_on_sigterm(_signum: int, _frame: object) -> None:
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, exit_cleanly_on_sigterm)
+
     with ThreadingHTTPServer((BIND_HOST, port), InfrastructureHandler) as server:
         print(
             json.dumps(

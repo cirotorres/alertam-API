@@ -107,6 +107,12 @@ class CloudServiceContractTests(unittest.TestCase):
         self.assertNotIn(sentinel, stdout)
         self.assertIn(SERVICE_NAME, stdout)
 
+    def test_sigterm_exits_cleanly(self) -> None:
+        process, _ = self._start_service()
+        process.terminate()
+        stdout, _ = process.communicate(timeout=3)
+        self.assertEqual(process.returncode, 0, stdout)
+
     def test_cloud_runtime_has_no_operational_dependencies(self) -> None:
         runtime_dir = CLOUD_DIR / "alertam_cloud"
         self.assertTrue(runtime_dir.is_dir(), "cloud runtime package must exist")
