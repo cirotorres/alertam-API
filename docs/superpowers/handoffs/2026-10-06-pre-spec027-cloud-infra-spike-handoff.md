@@ -270,3 +270,138 @@ Após a criação manual do serviço Northflank, registrar:
 - restart controlado verde.
 
 Depois disso, **STOP para revisão independente**. Não iniciar C1/C2/C3 da SPEC 027.
+
+---
+
+## R1 independente — 2026-10-07
+
+### Parecer
+
+**Tasks 1–3 aprovadas tecnicamente. Task 4 permanece corretamente parada no gate manual do Northflank.**
+
+A revisão independente não encontrou antecipação de comportamento operacional da SPEC 027.
+
+### Evidências reproduzidas independentemente
+
+- branch: `feat/pre-spec027-cloud-infra-spike`;
+- base exata: `af5e81f4bb7c10ac7f0c07712f84f107c4a41aa4`;
+- HEAD revisado: `9508af3cd10710260b9c2685a882c71805315b5e`;
+- working tree limpa e sincronizada com `origin/feat/pre-spec027-cloud-infra-spike`;
+- `git diff --check af5e81f..HEAD`: PASS;
+- `make cloud-test`: **9/9 passed**;
+- `make cloud-smoke`: PASS;
+- API: suíte completa local PASS com skips esperados;
+- PWA: **50 files / 290 tests passed**;
+- Docker runtime user: `10001:10001`;
+- mounts obrigatórios: nenhum;
+- `/healthz`: 200;
+- `/readyz`: 200;
+- restart local: saudável;
+- filesystem diff no smoke: vazio;
+- sentinela de ambiente: não apareceu nos logs.
+
+### Isolamento do spike — APROVADO
+
+A busca independente nos artefatos de runtime/container não encontrou referências a WebPilot, SessionLease, CloudBinding, Supabase, `source=cloud`, `DEVICE_SECRET`, service-role ou cookies.
+
+O serviço expõe somente health/readiness e 404 para rotas não reconhecidas. Não publica snapshots, não consulta banco, não possui vínculo de device_id e não implementa arbitragem/failover.
+
+### Northflank
+
+As instruções do Executor foram conferidas contra a documentação atual do Northflank. Para um monorepo, o serviço pode usar:
+
+- Combined Service;
+- repository `cirotorres/alertam-API`;
+- branch `feat/pre-spec027-cloud-infra-spike`;
+- Dockerfile `/cloud/Dockerfile`;
+- build context `/cloud`;
+- porta HTTP pública 8080;
+- liveness `/healthz`;
+- readiness `/readyz`.
+
+Esses paths com `/` inicial são aceitos pelo Northflank como caminhos relativos à raiz do repositório no formulário/API.
+
+### Gate manual restante
+
+O único passo pendente do spike é criar/deployar manualmente o Combined Service no projeto Northflank `AlertaM Cloud`, validar build, health/readiness e um restart controlado.
+
+Não inserir secrets operacionais. `PORT=8080` é suficiente se a plataforma não inferir a porta automaticamente.
+
+### Status R1
+
+- Task 1: **APROVADA**;
+- Task 2: **APROVADA**;
+- Task 3: **APROVADA**;
+- Task 4: **PENDENTE SOMENTE INTERAÇÃO MANUAL NORTHFLANK**;
+- C1/C2/C3 SPEC 027: **CONTINUAM BLOQUEADOS**;
+- WebPilot/SessionLease/CloudBinding/source=cloud/failover: **NÃO AUTORIZADOS**.
+
+Após o deploy manual saudável, registrar URL pública, estado do build/deploy, probes e restart e retornar para fechamento independente do spike.
+
+---
+
+## Fechamento do spike — 2026-10-07
+
+### Northflank sandbox — VALIDADO
+
+O operador concluiu manualmente a Task 4 no projeto Northflank `AlertaM Cloud`.
+
+Serviço:
+
+    alertam-cloud
+
+Branch implantada:
+
+    feat/pre-spec027-cloud-infra-spike
+
+Commit implantado:
+
+    9508af3cd10710260b9c2685a882c71805315b5e
+
+URL pública:
+
+    https://p01--alertam-cloud--x8mfxqmhb4gj.code.run
+
+Validações confirmadas após deploy:
+
+    GET /healthz
+    {"service":"alertam-cloud-infra-spike","status":"ok"}
+
+    GET /readyz
+    {"service":"alertam-cloud-infra-spike","ready":true}
+
+O operador executou restart controlado pela UI do Northflank e confirmou retorno saudável.
+
+A revisão independente repetiu os dois requests públicos após o restart e recebeu novamente HTTP 200 com os payloads esperados.
+
+### Resultado final
+
+- build/deploy Northflank: **PASS**;
+- serviço público: **PASS**;
+- health: **PASS**;
+- readiness: **PASS**;
+- restart controlado: **PASS**;
+- container non-root: **PASS**;
+- smoke local: **PASS**;
+- isolamento operacional: **PASS**;
+- secrets operacionais usados: **nenhum**.
+
+### Parecer final
+
+**Pré-SPEC 027 Cloud Infrastructure Spike APROVADO e ENCERRADO TECNICAMENTE.**
+
+O shell Cloud pode permanecer ativo no Northflank apenas como observação de infraestrutura/uptime.
+
+Este fechamento NÃO autoriza:
+
+- WebPilot real no Cloud;
+- SessionLease/cookies;
+- CloudBinding operacional;
+- migrations Supabase;
+- publicação source=cloud;
+- arbitragem/failover/failback;
+- eventos/push Cloud;
+- cutover;
+- início de C1/C2/C3 antes do gate humano da SPEC 025.
+
+A próxima liberação funcional da SPEC 027 continua dependente da conclusão da janela real do Plan 5 e da aprovação humana explícita do collector HTTP.
