@@ -1,6 +1,6 @@
 # SPEC 025 — WebPilot HTTP, meteorologia observada e shadow de movimentações
 
-**Status:** Estratégia reordenada e aprovada; implementação não iniciada
+**Status:** Plans 1–4 implementados; Plan 5 gate técnico MET em 2026-10-08 (25h53min, 1501 comparáveis, 1499 equivalentes, 109 limpos, zero falhas); 4 registros críticos explicados como provável diferença temporal, sem causa comprovada. Usuário autorizou avançar a trilha SPEC 027; fechamento documental/integração do Plan 5 em andamento. Selenium permanece oficial; nenhum cutover.
 **Data:** 2026-10-02
 **Escopo:** AlertaM Desktop + API FastAPI/Supabase + PWA React/Vite
 **Origem:** meteorologia observada do Porto do Pecém, coleta WebPilot HTTP e fundação validável para o futuro AlertaM Cloud

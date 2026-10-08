@@ -1,6 +1,6 @@
 # SPEC 027 — AlertaM Cloud: continuidade vinculada ao Desktop
 
-**Status:** Arquitetura aprovada; implementação operacional bloqueada até o gate humano da SPEC 025; preparação isolada de infraestrutura pré-gate permitida
+**Status:** Arquitetura aprovada; SPEC 025 Plan 5 gate técnico MET (2026-10-08), duas ocorrências isoladas classificadas sob hipótese temporal explícita e aceite contextual do usuário para avançar desenvolvimento. Infra sandbox Northflank revisada. Próximo passo: planejar C1 e executar com TDD e revisão independentes; sem autorização para ativar collector Cloud real em produção, receber cookies reais, publicar snapshots, fazer failover ou cutover.
 **Data:** 2026-10-02
 **Escopo:** AlertaM Cloud + API/Supabase + integração Desktop + compatibilidade Mobile
 **Pré-requisito obrigatório:** SPEC 025 Etapas A/B concluídas e gate shadow aprovado por decisão humana
