@@ -1,7 +1,7 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** C1-C APROVADO EM R3 — commit exato do diff revisado autorizado; C1-D liberado somente após esse commit e working tree limpo
+**Status:** C1-D APROVADO EM R4 — C1 tecnicamente encerrado; commit exato do C1-D autorizado; C2-P liberado somente após esse commit e working tree limpo
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
 **Base reconciliada:** API/PWA `feat/api-bootstrap@23a78bebdf46062eef937966101246567cd963de`; Desktop `develop@9e5b5e1a33cb7d61db200866aea683a6334de922`. **Feature:** `feat/spec027-cloud`, criada a partir de `23a78be` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`. **C1-A functional HEAD após correções R1:** `17afb4e19e21ce93e8eb1b8b0c8bfe47ebcf3364`; o commit documental deste registro será seu sucessor local.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
@@ -58,9 +58,9 @@
 | 0 | P0 — Reconciliação e plano | Verificar estado cross-repo; preparar proposta de integração sem alterar produção; planejar C1 com tasks TDD e contratos | R0/R0.1/R0.2 aprovam base e plano antes de programar | **APROVADO EM R0.2** |
 | 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1/R1.1 revisam identidade, constraints, isolamento e contrato | **APROVADO EM R1.1** |
 | 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2/R2.1 revisam autorização, secrets e idempotência | **APROVADO EM R2.1 — commit a4e1af85872308a907afb85d53f8cebac3dae6b5** |
-| 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | **APROVADO EM R3 — AGUARDA COMMIT** |
-| 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | **LIBERADO após commit C1-C aprovado + working tree limpo** |
-| 5 | C2-P — Plano Auth Broker | Desenhar reuso do coletor validado, contrato SessionLease, epoch, segurança, standby | R5 (plano); **não** copiar parser/coletor | BLOQUEADO |
+| 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | **APROVADO EM R3 — commit 25485bba0143fd0c1659a88df89743db629951c2** |
+| 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | **APROVADO EM R4 — AGUARDA COMMIT** |
+| 5 | C2-P — Plano Auth Broker | Desenhar reuso do coletor validado, contrato SessionLease, epoch, segurança, standby | R5 (plano); **não** copiar parser/coletor | **LIBERADO após commit C1-D + working tree limpo** |
 | 6 | C2 — Execução em checkpoints próprios | Broker federado, anti-replay e core HTTP em standby headless sem source efetivo | Revisões por subtask e gate sandbox | BLOQUEADO |
 | 7 | C3-P / C3 — Autoridade e snapshots | Plano aprovado; lease/fencing, hysteresis, failover/failback, anti-split-brain; primeira versão só snapshots | Revisões por subtask, gate operacional explícito | BLOQUEADO |
 | 8 | C4 — Observabilidade | Status, logs sanitizados, smoke prolongado, degradação e reconciliação | Revisão operacional humana | BLOQUEADO |
@@ -966,3 +966,149 @@ Resultado observado:
 - Push, deploy, migration produção, WebPilot real no Cloud, SessionLease real, `source=cloud`, failover/failback, cutover e C2 continuam proibidos.
 
 **Próximo passo autorizado:** Executor deve (1) fazer um único commit local do diff C1-C exatamente aprovado; (2) confirmar `git status` limpo e registrar SHA; (3) executar somente C1-D; (4) manter todo o C1-D sem commit/stage; (5) rodar contract tests, `make cloud-test`, `make cloud-smoke` se Docker disponível, `make test`, frontend tests, `make test-all`, `make migrate-list`, security audit e `git diff --check`; (6) atualizar este documento e parar para **R4 independente**. Não iniciar C2-P/C2.
+
+### C1-D — Executor; integração local e encerramento C1 (2026-10-08)
+
+**Status:** **PRONTO PARA R4 INDEPENDENTE**. Steps D1→D5 concluídos. C2-P/C2 não iniciados. Working tree permanece sem commit/stage.
+
+**Base aprovada de entrada**
+- C1-C aprovado em R3 foi commitado exatamente como revisado em **`25485bba0143fd0c1659a88df89743db629951c2`** — `test(cloud): enforce binding authority and isolation`.
+- `git status` imediatamente após o commit: **limpo**.
+- esse SHA é a base aprovada do C1-D e continua sendo o HEAD; todo o C1-D permanece somente no working tree.
+
+**Cadeia funcional C1**
+- base reconciliada API/PWA: `23a78bebdf46062eef937966101246567cd963de`;
+- C1-A domínio: `36b3c9b` — `feat(cloud): define binding and realm domain contracts`;
+- C1-A hardening R1: `17afb4e` — `fix(cloud): harden c1-a binding invariants`;
+- C1-A aprovação R1.1 registrada em `570ba35`;
+- C1-B: **`a4e1af85872308a907afb85d53f8cebac3dae6b5`** — `feat(cloud): add binding persistence and desktop admin API`;
+- C1-C: **`25485bba0143fd0c1659a88df89743db629951c2`** — `test(cloud): enforce binding authority and isolation`;
+- C1-D: **sem commit**, aguardando R4 independente.
+
+**D1 — contract RED→GREEN para Desktop**
+- criado `api/tests/contract/test_cloud_binding_desktop_contract.py`;
+- o contrato prova:
+  - endpoints apenas em `/api/v1/devices/{device_id}/cloud-binding` e `.../rotate`;
+  - nenhuma rota `/api/v1/mobile/*` de CloudBinding;
+  - `credential` marcada como `writeOnly: true` no OpenAPI;
+  - response estável com exatamente `cloud_binding_id/device_id/realm_id/credential_version/status/device_enabled/realm_authorized/usable`;
+  - nenhuma response contém `credential` ou `credential_hash`;
+  - códigos HTTP runtime previsíveis para 401/403/404/409/422/503.
+- RED real: **1 falha / 3 passes**; o runtime já devolvia os códigos corretos, mas o OpenAPI documentava apenas 200/422.
+- GREEN mínimo: adicionada apenas documentação `responses={...}` às quatro operações Desktop em `api/app/api/v1/cloud_bindings.py`; nenhum comportamento runtime ou contrato Mobile/PWA foi alterado.
+- contract tests finais: **4 passed / 0 skipped / 0 failed**.
+
+**D2 — isolamento do Cloud shell**
+- `make cloud-test`: **9/9 passed**;
+- `make cloud-smoke`: PASS;
+- smoke confirmou:
+  - `/healthz=200`;
+  - `/readyz=200`;
+  - UID **10001**;
+  - mounts vazios;
+  - restart saudável;
+  - filesystem diff vazio;
+  - logs sanitizados.
+- testes do shell continuam provando runtime sem dependências operacionais e contrato HTTP apenas health/readiness.
+- nenhuma importação/rota C1 foi adicionada ao `cloud/`.
+
+**D3 — regressões**
+- `make test`: **534 passed / 41 skipped / 0 failed**;
+  - skips são integrações PostgreSQL quando executadas sem `TEST_POSTGRES_DSN` no processo local;
+  - o gate SQL obrigatório foi executado separadamente no container real abaixo.
+- frontend:
+  - primeira tentativa não iniciou os testes porque `vitest` não existia no `node_modules` da worktree;
+  - executado `npm ci` usando o `frontend/package-lock.json` existente, sem alterar arquivos versionados;
+  - `npm test -- --run`: **50 test files / 290 tests passed**.
+- `make test-all` em PostgreSQL 16 efêmero real: **575 passed / 0 skipped / 0 failed**.
+- `make migrate-list`: lista migrations **001→019**, incluindo `019_cloud_binding_realm.sql`.
+- migration 019 foi exercitada somente pelo ambiente PostgreSQL local/efêmero de testes.
+- **migration 019 NÃO foi aplicada em produção**; nenhum `prod-migrate` foi executado.
+- `git diff --check 23a78be..HEAD`: PASS para todo o C1 já commitado.
+- `git diff --check`: PASS para o working tree C1-D.
+
+**Desktop / Shadow**
+- nenhuma implementação Desktop runtime foi criada;
+- nenhum branch Desktop SPEC027 foi criado neste checkpoint;
+- checkout observado do Desktop permanece `feat/spec025-plan5-shadow-evidence-gate@9e5b5e1a33cb7d61db200866aea683a6334de922`;
+- Shadow permaneceu ativo nos processos observados PID 14865/14873;
+- Shadow não foi parado, reiniciado, sinalizado ou modificado;
+- Selenium permanece a fonte oficial/operacional; C1 não faz cutover de coleta.
+
+**D4 — security audit do diff C1 completo**
+- auditados termos `cookie|sessionlease|source=cloud|device_secret|credential_hash|authorization` no diff desde `23a78be`;
+- ocorrências funcionais são apenas as esperadas:
+  - parsing do header `Authorization: Device ...`;
+  - `credential_hash` hash-only em repository/SQL;
+  - asserts de redaction.
+- únicos valores secret-like adicionados são **sintéticos de teste**, como `desktop-secret[-a/-b]`, `view-secret` e `sb_secret_backend`; nenhum valor real foi identificado em fixture/handoff.
+- nenhum cookie WebPilot, SessionLease, `source=cloud`, WebPilot token ou material de sessão foi introduzido.
+- contract test confirma nenhuma rota CloudBinding Mobile/PWA.
+- migration 019:
+  - RLS permanece habilitado;
+  - nenhuma `CREATE POLICY` pública;
+  - EXECUTE das RPCs revogado de PUBLIC/anon/authenticated;
+  - EXECUTE concedido somente a `service_role`.
+- credential continua write-only; metadata/serialization/logs permanecem sem plaintext/hash.
+- Cloud shell continua sem WebPilot, SessionLease, CloudBinding operacional, snapshot ou source arbitration.
+
+**D5 — encerramento C1**
+- C1 entrega apenas realm persistente, membership administrativa, CloudBinding persistente, credential própria hash-only, endpoints Desktop-only, verificador central fail-closed, isolamento/adversarial e contratos locais.
+- C1 **não entrega** Auth Broker, SessionLease, cookies WebPilot, collector Cloud, snapshots Cloud, `source=cloud`, failover/failback, eventos/push ou cutover.
+- C2-P/C2 permanecem **BLOQUEADOS**; nenhuma etapa foi iniciada.
+- push, deploy, migration de produção e merge da feature não foram executados.
+- working tree C1-D contém somente:
+  - documentação OpenAPI dos erros das rotas CloudBinding Desktop;
+  - contract test Desktop;
+  - este registro de encerramento.
+
+**Estado para revisão**
+- HEAD/base C1-D: **`25485bba0143fd0c1659a88df89743db629951c2`**;
+- nenhum commit C1-D;
+- nenhum arquivo staged;
+- migration 019 não aplicada em produção;
+- C2-P/C2 não iniciados.
+
+**PARECER SOLICITADO:** **R4 independente** sobre o working tree C1-D e encerramento completo do C1. R4 não autoriza automaticamente commit/merge/push/deploy/migration produção/C2.
+
+### R4 independente — encerramento do C1 (2026-10-08)
+
+**Resultado:** APROVADO. C1-D atende ao plano; C1 está tecnicamente encerrado na `feat/spec027-cloud`, sujeito apenas ao commit local exato deste checkpoint. Isso não autoriza merge/push/deploy/migration produção nem C2.
+
+**Evidência independente**
+- HEAD/base durante a revisão: `25485bba0143fd0c1659a88df89743db629951c2`; working tree C1-D sem commit/stage.
+- Escopo C1-D confirmado: apenas documentação OpenAPI em `cloud_bindings.py`, contract test Desktop novo e este handoff.
+- Contract + integração/autoridade direcionados: **20/20 passed**.
+- `make cloud-test`: **9/9 passed**.
+- `make cloud-smoke`: PASS — health/readiness, UID 10001, mounts vazios, restart saudável, filesystem diff vazio e logs sanitizados.
+- `make migrate-list`: migrations **001→019**, incluindo `019_cloud_binding_realm.sql`.
+- frontend independente: **50 files / 290 tests passed**; houve warning React `act(...)` em teste existente, não relacionado ao C1-D e sem falha.
+- `make test`: exit code 0; skips locais são os testes PostgreSQL sem `TEST_POSTGRES_DSN`, conforme desenho.
+- `make test-all` independente em PostgreSQL 16 real: **575 passed / 0 skipped / 0 failed**.
+- `git diff --check 23a78be..HEAD`, working tree e contract test untracked: PASS.
+- nenhum arquivo staged; branch segue local sem upstream configurado.
+- Shadow permaneceu ativo nos PIDs observados 14865/14873.
+
+**Contrato Desktop / PWA**
+- credential continua write-only no OpenAPI.
+- response CloudBinding permanece limitada a metadata sem plaintext/hash.
+- rotas CloudBinding continuam somente em `/api/v1/devices/{device_id}`; nenhuma rota Mobile/PWA foi criada.
+- erros Desktop 401/403/404/409/422/503 estão documentados; cobertura runtime existente confirma 409/503 e redaction.
+
+**Cloud shell / segurança**
+- shell Cloud continua restrito a health/readiness; nenhuma dependência operacional ou rota C1 foi introduzida em `cloud/`.
+- auditoria do C1 completo não encontrou SessionLease, cookie WebPilot, `source=cloud`, failover/failback ou material real de sessão em código funcional.
+- ocorrências de `credential_hash` permanecem hash-only/repository/SQL/testes de redaction; valores `desktop-secret`, `view-secret` e `sb_secret_backend` são sintéticos de teste.
+- migration 019 segue com RLS e RPCs backend-only aprovados nos gates anteriores e **não foi aplicada em produção**.
+
+**Parecer R4**
+- C1-D: **APROVADO**.
+- C1: **TECNICAMENTE ENCERRADO**.
+- Commit C1-D: **AUTORIZADO agora**, contendo exatamente o diff revisado e este parecer.
+- Mensagem sugerida: `test(cloud): finalize c1 desktop contract and closure`.
+- Após o commit: confirmar working tree limpo e registrar o SHA final do C1.
+- C2-P: **LIBERADO somente após** esse commit; C2 implementação continua bloqueada até R5 aprovar o plano.
+- Para reduzir burocracia sem perder segurança, C2-P deve propor **poucos checkpoints maiores e orientados a risco** (preferencialmente 2–3 checkpoints de execução para C2), mantendo revisão independente antes de cada commit.
+- Não fazer merge da feature, push, deploy, migration produção, WebPilot real no Cloud, SessionLease real, `source=cloud`, failover/failback ou cutover por implicação desta aprovação.
+
+**Próximo passo autorizado:** Executor deve (1) fazer um único commit local do C1-D exatamente aprovado; (2) confirmar working tree limpo e registrar SHA final do C1; (3) preparar **somente C2-P — plano executável do Auth Broker/SessionLease**, sem implementar C2; (4) desenhar reuso do coletor HTTP já validado, contrato SessionLease, publisher identity/local generation, `realm_epoch`, anti-replay, expiração/revogação, standby headless e testes/gates; (5) estruturar C2 em poucos checkpoints maiores onde seguro; (6) atualizar o handoff e parar para **R5 independente**, sem commit do C2-P até aprovação. C2 funcional não começa antes de R5.

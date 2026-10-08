@@ -26,6 +26,11 @@ def create_cloud_binding_router(repository: AlertaRepository) -> APIRouter:
     @router.get(
         "/{device_id}/cloud-binding",
         response_model=CloudBindingResponse,
+        responses={
+            401: {"description": "Credenciais do Desktop inválidas."},
+            404: {"description": "CloudBinding não encontrado."},
+            503: {"description": "Persistência indisponível."},
+        },
     )
     def get_cloud_binding(
         device_id: str,
@@ -38,6 +43,12 @@ def create_cloud_binding_router(repository: AlertaRepository) -> APIRouter:
     @router.put(
         "/{device_id}/cloud-binding",
         response_model=CloudBindingResponse,
+        responses={
+            401: {"description": "Credenciais do Desktop inválidas."},
+            403: {"description": "Realm não autorizado."},
+            409: {"description": "CloudBinding ativo conflitante."},
+            503: {"description": "Persistência indisponível."},
+        },
     )
     def ensure_cloud_binding(
         device_id: str,
@@ -54,6 +65,12 @@ def create_cloud_binding_router(repository: AlertaRepository) -> APIRouter:
     @router.post(
         "/{device_id}/cloud-binding/rotate",
         response_model=CloudBindingResponse,
+        responses={
+            401: {"description": "Credenciais do Desktop inválidas."},
+            403: {"description": "Realm não autorizado."},
+            404: {"description": "CloudBinding não encontrado."},
+            503: {"description": "Persistência indisponível."},
+        },
     )
     def rotate_cloud_binding(
         device_id: str,
@@ -67,6 +84,12 @@ def create_cloud_binding_router(repository: AlertaRepository) -> APIRouter:
     @router.delete(
         "/{device_id}/cloud-binding",
         response_model=CloudBindingResponse,
+        responses={
+            401: {"description": "Credenciais do Desktop inválidas."},
+            403: {"description": "Realm não autorizado."},
+            404: {"description": "CloudBinding não encontrado."},
+            503: {"description": "Persistência indisponível."},
+        },
     )
     def revoke_cloud_binding(
         device_id: str,
