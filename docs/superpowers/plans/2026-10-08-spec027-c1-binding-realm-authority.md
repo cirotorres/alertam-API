@@ -29,7 +29,7 @@
 R0 deve revisar e autorizar esta sequência; P0 não a executa:
 
 1. **Desktop:** integrar `feat/spec025-plan5-shadow-evidence-gate@9e5b5e1` em `develop@abe386f` por fast-forward, usando checkout/worktree separado para não trocar nem interromper o processo Shadow em execução.
-2. **API/PWA:** integrar `feat/pre-spec027-cloud-infra-spike@dc23003` na base real pós-R0 `feat/api-bootstrap@20c8576` (sucessora documental de `3b7c932`). Auditoria R0.1: `git merge-base 20c8576 dc23003` = `af5e81f4bb7c10ac7f0c07712f84f107c4a41aa4`; `git merge-tree --write-tree 20c8576 dc23003` = `f6d55bd52048d183895f72be70fcb32ce8819617`, PASS sem conflito. Será merge real porque as branches divergiram em `af5e81f`.
+2. **API/PWA:** integrar `feat/pre-spec027-cloud-infra-spike@dc23003` sobre o **HEAD corrente de `feat/api-bootstrap` no momento da reconciliação**, contendo obrigatoriamente `8eeeffc`, `6eab67b` e quaisquer commits documentais posteriores aprovados. O Executor deve, imediatamente antes do merge: (a) registrar o SHA completo real de `feat/api-bootstrap`; (b) executar e registrar `git merge-base <SHA_REAL> dc23003`; (c) executar e registrar `git merge-tree --write-tree <SHA_REAL> dc23003`; (d) só prosseguir se a simulação continuar sem conflito. Histórico de auditoria, não alvo fixo: `20c8576` → merge-tree `f6d55bd5...`; `8eeeffc` → `b7bb6d37...`; `6eab67b` → merge-base `af5e81f4bb7c10ac7f0c07712f84f107c4a41aa4` e merge-tree `3ab100bc0d01c01d85543ceb6c3d39594581eacb`, todos PASS. Será merge real porque as branches divergiram em `af5e81f`.
 3. **Documentação antiga:** não mergear `docs/pre-plan4-gate-alignment@ecb7b37`; seu conteúdo útil já está incorporado e superseded na base atual. Remover branch/worktree somente após R0 e nova verificação de conteúdo.
 4. Rodar regressões da base reconciliada e registrar o novo SHA.
 5. Só então criar `feat/spec027-cloud` a partir do novo SHA de `feat/api-bootstrap`.
@@ -273,7 +273,7 @@ Create `api/tests/unit/test_admin_cloud_realm.py`.
 - imprime somente IDs/status não secretos;
 - nunca cria CloudBinding/Cloud credential.
 
-Testes do script/service devem provar que deactivate bloqueia imediatamente `authenticate_cloud_binding`, activate restaura somente quando binding/device/membership continuam válidos e chamadas repetidas não alteram timestamps indevidamente nem criam duplicatas.
+Em C1-B/B9, testar **somente** o lifecycle administrativo/persistente de realm e membership: criação/estado `active`, activate/deactivate idempotentes, authorize/revoke/reauthorize idempotentes, ausência de duplicatas e timestamps/projection persistente coerentes. **Não** criar nem chamar `authenticate_cloud_binding()` em B9; essa função pertence exclusivamente ao C1-C.
 
 Modificar `_DEPENDENCY_PROBES` em `admin_device.py` para impedir compensação/deleção de device com realm authorization ou binding existente.
 
@@ -327,6 +327,8 @@ Casos RED:
 ### Step C2 — GREEN: verificador central
 
 Implementar usando projection coerente do repository. C1 não cria grace próprio: sem autorização confirmada, bloqueia. Qualquer grace do runtime Cloud exige plano posterior.
+
+Após `authenticate_cloud_binding()` existir em C1-C, adicionar a prova comportamental que foi deliberadamente excluída de B9: `deactivate realm` deve bloquear imediatamente uma credencial antes válida; `activate realm` deve restaurar autorização apenas quando device enabled, membership ativa e binding ativo. Repetições de activate/deactivate continuam idempotentes.
 
 Nenhuma rota usa isso para WebPilot ou snapshot em C1.
 

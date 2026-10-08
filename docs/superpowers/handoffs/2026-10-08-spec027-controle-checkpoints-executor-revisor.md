@@ -1,9 +1,9 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** R0.1-FIX — R0-F2..F5 encerrados; dois ajustes documentais finais pendentes antes de liberar reconciliação/C1-A
+**Status:** R0.1-F1/F2 CORRIGIDOS DOCUMENTALMENTE — aguardando R0.2 independente; R0-F2..F5 permanecem encerrados
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
-**Base API/PWA para R0.1:** `feat/api-bootstrap@20c8576` antes deste commit de correção (sucessora documental de `3b7c932`); o HEAD após a correção será apenas seu sucessor documental. **Base Desktop auditada:** `develop@abe386f`, com Plan 5 pendente em `9e5b5e1`. A futura implementação da SPEC 027 usará uma única `feat/spec027-cloud`, criada somente após R0.1 e reconciliação aprovada.
+**Base API/PWA de reconciliação:** não congelar SHA. Usar o **HEAD corrente de `feat/api-bootstrap` imediatamente antes do merge**, contendo `8eeeffc`, `6eab67b` e quaisquer commits documentais posteriores aprovados; registrar esse SHA e repetir `merge-base/merge-tree` nesse instante. **Base Desktop auditada:** `develop@abe386f`, com Plan 5 pendente em `9e5b5e1`. A futura `feat/spec027-cloud` só pode nascer após R0.2 e reconciliação aprovada.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
 **Objetivo:** um protocolo auditável de entregas incrementais, com parada obrigatória após cada checkpoint, para SPEC 027 sem efeitos operacionais prematuros.
 
@@ -16,15 +16,15 @@
 5. specs/025-webpilot-http-observed-weather-shadow-migration.md e specs/030-device-operational-gate.md, **se presente**; se não existir nesse repo, localizar fonte canônica antes de projetar.
 6. docs/superpowers/strategy/2026-10-02-alertam-cloud-evolution-roadmap.md.
 7. docs/superpowers/plans/2026-10-06-pre-spec027-cloud-infra-spike.md e handoff correspondente.
-8. `docs/superpowers/plans/2026-10-08-spec027-c1-binding-realm-authority.md` — criado no P0, corrigido por R0-F1..F5; execução depende de aprovação R0.1.
+8. `docs/superpowers/plans/2026-10-08-spec027-c1-binding-realm-authority.md` — criado no P0, corrigido por R0-F1..F5 e R0.1-F1/F2; execução depende de aprovação R0.2.
 
 ## 2. Estado de entrada verificado (2026-10-08)
 
 - SPEC 025 Plan 5: gate técnico MET; 25h53m, 1501 comparáveis, 1499 equivalentes, 109 limpos, nenhuma falha; 4 registros explicados de 2 episódios, hipótese forte de diferença temporal Selenium/HTTP, **não comprovada como causa-raiz**.
 - Usuário aceitou a hipótese documentada e autorizou avançar o **desenvolvimento** da SPEC 027; **não** autorizou migrações de produção, WebPilot real no Cloud, publicação source=cloud, cutover ou failover real.
 - Desktop: feat/spec025-plan5-shadow-evidence-gate, HEAD após organização 9e5b5e1 (documentação R2/Task 5 commitada); develop abe386f; checkout limpo, branch Plan 5 não integrada, Shadow real não deve ser interrompido.
-- API/PWA: correção R0.1 iniciada em `feat/api-bootstrap@20c8576`, `origin/feat/api-bootstrap@3d85578`; checkout limpo, sem push. `20c8576` contém apenas a revisão R0 sobre o P0 documental `3b7c932`.
-- API/PWA checkout principal auditado novamente em `20c8576`; merge-base com o spike = `af5e81f4bb7c10ac7f0c07712f84f107c4a41aa4`; `git merge-tree --write-tree 20c8576 dc23003` = `f6d55bd52048d183895f72be70fcb32ce8819617`, PASS sem conflito.
+- API/PWA: ao iniciar a correção R0.1-F1/F2, o HEAD observado era `feat/api-bootstrap@6eab67b`, limpo e sem push; esse SHA é **histórico de auditoria, não alvo fixo de integração**.
+- Auditoria histórica mais recente: `git merge-base 6eab67b dc23003` = `af5e81f4bb7c10ac7f0c07712f84f107c4a41aa4`; `git merge-tree --write-tree 6eab67b dc23003` = `3ab100bc0d01c01d85543ceb6c3d39594581eacb`, PASS. Na reconciliação real, repetir ambos contra o HEAD corrente naquele momento.
 - Spike Northflank em worktree .worktrees/pre-spec027-cloud-infra-spike, branch feat/pre-spec027-cloud-infra-spike, HEAD documental local dc23003 (à frente do remoto), núcleo infra já no remoto no commit 9508af3; aprovado só como sandbox infra.
 - Achado residual Shadow: assinatura explicada reincidente pode incrementar occurrences/last_seen sem reabrir status. Tratar como hotfix TDD Desktop separado, sem modificar aplicação em coleta por conta própria. Reexaminar reincidências.
 
@@ -53,7 +53,7 @@
 
 | Ordem | Checkpoint | Entrega sob controle | Gate independente | Situação |
 |---|---|---|---|---|
-| 0 | P0 — Reconciliação e plano | Verificar estado cross-repo; preparar proposta de integração sem alterar produção; planejar C1 com tasks TDD e contratos | R0/R0.1 aprovam base e plano antes de programar | **R0.1-FIX — 2 ajustes documentais finais** |
+| 0 | P0 — Reconciliação e plano | Verificar estado cross-repo; preparar proposta de integração sem alterar produção; planejar C1 com tasks TDD e contratos | R0/R0.1/R0.2 aprovam base e plano antes de programar | **PRONTO PARA R0.2 — R0.1-F1/F2 corrigidos** |
 | 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1 revisa identidade, constraints, isolamento e contrato | BLOQUEADO por R0.2 |
 | 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2 revisa autorização, secrets e idempotência | BLOQUEADO |
 | 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | BLOQUEADO |
@@ -64,19 +64,19 @@
 | 8 | C4 — Observabilidade | Status, logs sanitizados, smoke prolongado, degradação e reconciliação | Revisão operacional humana | BLOQUEADO |
 | 9 | C5 — Eventos/Push | Plano próprio de idempotência cross-source, sem duplicação | **Somente se autorizado separadamente** | FORA DA LIBERAÇÃO ATUAL |
 
-O detalhamento e subdivisão de C1-A a C1-D podem ser aperfeiçoados pelo plano P0, **mas agora exigem aprovação de R0.1 antes da execução**. Para C2/C3, criar planos e checkpoints detalhados antes de iniciar; a aprovação de C1 não é aprovação operacional dessas fases.
+O detalhamento e subdivisão de C1-A a C1-D podem ser aperfeiçoados pelo plano P0, **mas agora exigem aprovação de R0.2 antes da execução**. Para C2/C3, criar planos e checkpoints detalhados antes de iniciar; a aprovação de C1 não é aprovação operacional dessas fases.
 
 ### Estratégia simplificada de branch/worktree
 
 A SPEC 027 usa **uma branch longa de feature por repositório**, e não uma branch por fase/checkpoint:
 
-- API/PWA/Cloud: `feat/spec027-cloud`, criada somente após aprovação R0.1 e reconciliação efetiva de `feat/api-bootstrap` com o spike Northflank.
+- API/PWA/Cloud: `feat/spec027-cloud`, criada somente após aprovação R0.2 e reconciliação efetiva do HEAD corrente de `feat/api-bootstrap` com o spike Northflank.
 - Desktop: usar também `feat/spec027-cloud` **somente quando surgir a primeira alteração Desktop da SPEC 027**, criada a partir de `develop` já contendo o fechamento da SPEC 025.
 - C1, C2, C3 e C4 avançam na mesma branch, separados por commits e checkpoints independentes R1...Rn.
 - Preferir uma única worktree `.worktrees/spec027-cloud` por repo quando necessário; não criar worktree por subetapa.
 - Ao final de cada checkpoint: commit local + testes + handoff + STOP para revisor. **A revisão é o isolamento; a branch não precisa mudar.**
 - Sincronizações com a branch-base acontecem apenas em pontos planejados, com working tree limpa e revisão de conflito; não fazer rebase/merge oportunista no meio de um checkpoint.
-- A branch antiga `feat/pre-spec027-cloud-infra-spike` só pode ser integrada/removida após aprovação R0.1 e execução explícita da reconciliação.
+- A branch antiga `feat/pre-spec027-cloud-infra-spike` só pode ser integrada/removida após aprovação R0.2 e execução explícita da reconciliação.
 - C5 Eventos/Push permanece fora desta branch inicial por ser evolução opcional com plano/autorização próprios; se for aprovada futuramente, decide-se naquele momento se continua na SPEC 027 ou abre feature separada.
 
 ### P0 — Entrega exata exigida
@@ -125,12 +125,12 @@ A SPEC 027 usa **uma branch longa de feature por repositório**, e não uma bran
 
 ### P0 — Reconciliação + plano C1
 
-**Status:** R0.1-FIX — R0-F2..F5 encerrados; dois ajustes documentais finais pendentes.
-**Executor:** P0 e correções R0-F1..F5 concluídos em 2026-10-08. **Revisor R0.1:** revisão independente concluída abaixo.
-**Próximo ato permitido:** corrigir somente R0.1-F1 e R0.1-F2 e retornar para R0.2. Nenhuma integração, criação de `feat/spec027-cloud` ou implementação C1-A antes da aprovação.
+**Status:** PRONTO PARA R0.2 INDEPENDENTE — R0.1-F1/F2 corrigidos; R0-F2..F5 encerrados.
+**Executor:** P0, correções R0 e correções R0.1 concluídos documentalmente em 2026-10-08. **Revisor R0.2:** pendente.
+**Próximo ato permitido:** somente R0.2. Nenhuma integração, criação de `feat/spec027-cloud` ou implementação C1-A antes da aprovação.
 
 **Estado Git auditado**
-- API/PWA base executável para a correção: `feat/api-bootstrap@20c8576`, limpa antes dos edits; `origin/feat/api-bootstrap@3d85578`; sem push. O commit desta correção será somente documental e sucessor de `20c8576`.
+- API/PWA: **não há SHA de integração congelado**. O HEAD observado ao iniciar esta correção foi `6eab67b`, mas a reconciliação deverá usar o HEAD corrente de `feat/api-bootstrap` imediatamente antes do merge, contendo `8eeeffc`, `6eab67b` e todos os commits documentais posteriores aprovados. O Executor registrará o SHA completo real e repetirá `merge-base/merge-tree` nesse SHA.
 - Spike: `feat/pre-spec027-cloud-infra-spike@dc23003`, worktree limpa; remoto da branch em `9508af3`. O commit `dc23003` fecha documentalmente o spike homologado Northflank.
 - Desktop checkout principal: `feat/spec025-plan5-shadow-evidence-gate@9e5b5e1`, limpo; `develop@abe386f` e `origin/develop@abe386f`.
 - Worktrees sujas não relacionadas foram identificadas e preservadas: API `/home/ciro/dev/prog/.worktrees/alertamaritimoAPI-spec029`; Desktop `/home/ciro/dev/prog/.worktrees/alertamaritimo-win-updater-provisioning`; externos `~/.cache/claude-hfi/.../elm` e `.../oak`. `/home/ciro/dev/prog/alertamaritimo/.worktrees/spec028-plan1` está limpo porém não integrado e também foi preservado.
@@ -181,7 +181,8 @@ A SPEC 027 usa **uma branch longa de feature por repositório**, e não uma bran
 - `feat/spec027-cloud` inexistente nos dois repos.
 - Nenhuma suíte funcional foi rerodada no P0 porque o único diff produzido é documental/plano; regressões funcionais são gate da base reconciliada pós-R0 antes de criar a feature.
 
-**Pendências para depois de R0.1**
+**Pendências para depois de R0.2**
+- imediatamente antes da integração, registrar o HEAD corrente de `feat/api-bootstrap` e repetir `merge-base/merge-tree` contra `dc23003`;
 - executar as integrações aprovadas e registrar os novos SHAs reconciliados;
 - rodar regressões da base reconciliada;
 - criar `feat/spec027-cloud` somente então;
@@ -191,7 +192,7 @@ A SPEC 027 usa **uma branch longa de feature por repositório**, e não uma bran
 
 ### C1-A / C1-B / C1-C / C1-D
 
-**Status:** BLOQUEADO até aprovação de R0.1; abrir seção específica em cada entrega.
+**Status:** BLOQUEADO até aprovação de R0.2; abrir seção específica em cada entrega.
 
 ### C2-P / C2 / C3-P / C3 / C4 / C5
 
@@ -366,3 +367,23 @@ No C1-B/Step B9 o plano exige provar que activate/deactivate bloqueiam/restauram
 - Nenhuma nova mudança funcional foi solicitada.
 
 **Próximo passo autorizado:** corrigir somente R0.1-F1 e R0.1-F2 no plano/checkpoint, rodar `git diff --check`, fazer commit documental local e parar para **R0.2 independente**. Não integrar branches, não criar `feat/spec027-cloud`, não implementar C1-A, não push/deploy/migration e não tocar no Shadow.
+
+### Correções R0.1-F1/F2 — Executor (2026-10-08)
+
+**Status:** PRONTO PARA R0.2 INDEPENDENTE. R0-F2..F5 permanecem encerrados; nenhuma mudança funcional nova foi introduzida.
+
+**R0.1-F1 — base dinâmica de reconciliação — CORRIGIDA**
+- O plano não fixa mais `20c8576`, `8eeeffc` ou `6eab67b` como alvo de integração; esses SHAs permanecem somente como histórico de auditoria.
+- Regra executável: usar o HEAD corrente de `feat/api-bootstrap` imediatamente antes do merge, contendo obrigatoriamente `8eeeffc`, `6eab67b` e commits documentais posteriores aprovados.
+- O Executor deve registrar o SHA completo real imediatamente antes do merge e repetir `git merge-base <SHA_REAL> dc23003` e `git merge-tree --write-tree <SHA_REAL> dc23003`; conflito bloqueia a integração.
+- Histórico mais recente antes desta correção: `6eab67b` com merge-base `af5e81f4bb7c10ac7f0c07712f84f107c4a41aa4` e merge-tree `3ab100bc0d01c01d85543ceb6c3d39594581eacb`, PASS.
+
+**R0.1-F2 — dependência prematura de authenticate_cloud_binding — CORRIGIDA**
+- C1-B/B9 agora testa somente lifecycle administrativo/persistente de realm/membership: active, activate/deactivate, authorize/revoke/reauthorize, idempotência, ausência de duplicatas e timestamps/projection coerentes.
+- B9 proíbe explicitamente criar ou chamar `authenticate_cloud_binding()`.
+- A prova comportamental “deactivate bloqueia / activate restaura `authenticate_cloud_binding`” foi movida para C1-C, após a função nascer em C1-C1/C2.
+- Nenhum código C1-C é antecipado para C1-B.
+
+**Escopo preservado:** nenhuma integração, branch `feat/spec027-cloud`, C1-A, push, deploy, migration ou alteração do Shadow foi executada.
+
+**PARECER SOLICITADO:** **R0.2 independente** sobre R0.1-F1/F2; nenhuma etapa seguinte iniciada.
