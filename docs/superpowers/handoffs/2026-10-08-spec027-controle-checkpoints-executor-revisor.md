@@ -1,7 +1,7 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** C1-A CONCLUÍDO — PRONTO PARA R1 INDEPENDENTE; C1-B permanece bloqueado
+**Status:** C1-A R1-FIX — dois achados obrigatórios R1-F1/F2; C1-B permanece bloqueado
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
 **Base reconciliada:** API/PWA `feat/api-bootstrap@23a78bebdf46062eef937966101246567cd963de`; Desktop `develop@9e5b5e1a33cb7d61db200866aea683a6334de922`. **Feature:** `feat/spec027-cloud`, criada a partir de `23a78be` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`. **C1-A code HEAD:** `36b3c9b96ecfe8e88b6471f57ce0564a9e87850f`; o commit documental deste checkpoint será seu sucessor local.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
@@ -54,8 +54,8 @@
 | Ordem | Checkpoint | Entrega sob controle | Gate independente | Situação |
 |---|---|---|---|---|
 | 0 | P0 — Reconciliação e plano | Verificar estado cross-repo; preparar proposta de integração sem alterar produção; planejar C1 com tasks TDD e contratos | R0/R0.1/R0.2 aprovam base e plano antes de programar | **APROVADO EM R0.2** |
-| 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1 revisa identidade, constraints, isolamento e contrato | **PRONTO PARA R1** |
-| 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2 revisa autorização, secrets e idempotência | **BLOQUEADO por R1** |
+| 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1 revisa identidade, constraints, isolamento e contrato | **R1-FIX — R1-F1/F2** |
+| 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2 revisa autorização, secrets e idempotência | **BLOQUEADO até R1.1** |
 | 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | BLOQUEADO |
 | 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | BLOQUEADO |
 | 5 | C2-P — Plano Auth Broker | Desenhar reuso do coletor validado, contrato SessionLease, epoch, segurança, standby | R5 (plano); **não** copiar parser/coletor | BLOQUEADO |
@@ -207,10 +207,10 @@ A SPEC 027 usa **uma branch longa de feature por repositório**, e não uma bran
 
 ### C1-A — Domínio, interfaces e invariantes
 
-**Status:** PRONTO PARA R1 INDEPENDENTE.
+**Status:** R1-FIX — CORREÇÕES OBRIGATÓRIAS R1-F1/F2.
 **Base:** `23a78bebdf46062eef937966101246567cd963de`.
-**C1-A code HEAD:** `36b3c9b96ecfe8e88b6471f57ce0564a9e87850f`.
-**Commit:** `36b3c9b feat(cloud): define binding and realm domain contracts`.
+**C1-A code HEAD revisado:** `36b3c9b96ecfe8e88b6471f57ce0564a9e87850f`.
+**Commit funcional revisado:** `36b3c9b feat(cloud): define binding and realm domain contracts`.
 
 **Arquivos**
 - criado `api/app/repositories/cloud_bindings.py`;
@@ -251,6 +251,43 @@ A SPEC 027 usa **uma branch longa de feature por repositório**, e não uma bran
 - Próximo ato permitido: **R1 independente sobre C1-A**. Nenhuma etapa C1-B pode começar antes do parecer.
 
 **PARECER SOLICITADO:** **R1 independente** — revisar `23a78be..36b3c9b` e este registro.
+
+### R1 independente — revisão C1-A (2026-10-08)
+
+**Resultado:** CORREÇÕES OBRIGATÓRIAS. C1-A está estruturalmente bem delimitado e as regressões estão verdes, porém dois defeitos de domínio/idempotência precisam ser corrigidos antes de liberar C1-B.
+
+**Evidência independente**
+- Base/feature confirmadas: `feat/api-bootstrap@23a78be` → `feat/spec027-cloud`; commit funcional `36b3c9b`, seguido somente do checkpoint documental `44b7ee0`.
+- Diff funcional revisado: apenas `cloud_bindings.py`, `memory.py` e dois testes C1-A; nenhum endpoint, service, migration, WebPilot/SessionLease, `source=cloud` ou runtime Cloud operacional foi antecipado.
+- `git diff --check 23a78be..36b3c9b`: PASS.
+- Testes independentes C1-A: **14/14 passed**.
+- Regressões focadas existentes: **7/7 passed**.
+- Suíte API completa independente: exit code 0, sem falhas.
+- Desktop `develop` está em `9e5b5e1`; processo Shadow segue ativo nos PIDs observados 45750/45758.
+- Reconciliação do spike está correta: merge commit `23a78be` tem pais `081aeca` e `dc23003`; feature nasce exatamente desse merge.
+
+**R1-F1 — `CloudBindingRecord` aceita status runtime inválido e permite furar o invariante**
+`CloudBindingRecord.__post_init__` usa identidade contra `CloudBindingStatus`, mas dataclass/type hints não validam o tipo em runtime. Prova independente: foram aceitos sem exceção `status="active"` com `revoked_at` preenchido, `status="revoked"` com `revoked_at=None` e até `status="garbage"`. Isso permite que futuras mappings Postgres/Supabase construam um record inválido e burlem exatamente o invariante `status ↔ revoked_at`.
+
+**Critério de aceite R1-F1:** TDD RED primeiro; o record deve rejeitar status que não seja `CloudBindingStatus` (ou exigir conversão explícita validada antes de construí-lo) e continuar rejeitando as combinações inválidas ACTIVE/REVOKED. Cobrir ao menos os três casos reproduzidos acima. Não mascarar valor inválido por coerção silenciosa permissiva.
+
+**R1-F2 — retry de revoke pode devolver binding histórico errado após rebind no mesmo timestamp**
+Quando não há binding ativo, `revoke_cloud_binding()` tenta descobrir o último histórico ordenando por `(created_at, UUID)`. UUID não é ordem temporal. Prova independente com clock fixo e UUIDs adversariais:
+1. cria/revoga binding A;
+2. cria/revoga binding B no mesmo timestamp;
+3. retry de revoke retorna **A**, embora a operação imediatamente anterior tenha revogado **B**.
+Isso viola a idempotência do retry do lifecycle corrente e pode fazer backends divergir quando timestamps empatam.
+
+**Critério de aceite R1-F2:** TDD RED reproduzindo dois ciclos revoke→rebind→revoke no mesmo timestamp com IDs cuja ordem lexical contrarie a ordem de criação. O retry deve retornar o binding do **último lifecycle revogado (B)**, sem usar UUID como substituto de temporalidade. Preservar histórico e isolamento por device.
+
+**Demais pontos R1**
+- Escopo C1-A: **APROVADO**.
+- Reconciliação Git/base: **APROVADA**.
+- TDD apresentado: **aceito**, mas deve ser estendido pelos RED de R1-F1/F2.
+- Nenhuma migration 019 foi criada/aplicada: **correto**.
+- C1-B permanece **BLOQUEADO**.
+
+**Próximo passo autorizado:** Executor corrige somente R1-F1 e R1-F2 com TDD, roda testes C1-A + regressões focadas + suíte API completa + `git diff --check`, faz commit funcional local e atualiza este checkpoint. Parar para **R1.1 independente**. Não iniciar C1-B, não criar migration 019, não push/deploy e não tocar no Shadow.
 
 ### C2-P / C2 / C3-P / C3 / C4 / C5
 
