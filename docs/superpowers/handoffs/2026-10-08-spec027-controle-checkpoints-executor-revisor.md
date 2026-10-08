@@ -1,7 +1,7 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** C1-A R1-F1/F2 CORRIGIDOS — PRONTO PARA R1.1 INDEPENDENTE; C1-B permanece bloqueado
+**Status:** C1-A APROVADO EM R1.1 — C1-B LIBERADO para execução conforme plano; C1-C permanece bloqueado
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
 **Base reconciliada:** API/PWA `feat/api-bootstrap@23a78bebdf46062eef937966101246567cd963de`; Desktop `develop@9e5b5e1a33cb7d61db200866aea683a6334de922`. **Feature:** `feat/spec027-cloud`, criada a partir de `23a78be` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`. **C1-A functional HEAD após correções R1:** `17afb4e19e21ce93e8eb1b8b0c8bfe47ebcf3364`; o commit documental deste registro será seu sucessor local.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
@@ -54,8 +54,8 @@
 | Ordem | Checkpoint | Entrega sob controle | Gate independente | Situação |
 |---|---|---|---|---|
 | 0 | P0 — Reconciliação e plano | Verificar estado cross-repo; preparar proposta de integração sem alterar produção; planejar C1 com tasks TDD e contratos | R0/R0.1/R0.2 aprovam base e plano antes de programar | **APROVADO EM R0.2** |
-| 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1/R1.1 revisam identidade, constraints, isolamento e contrato | **PRONTO PARA R1.1 — R1-F1/F2 corrigidos** |
-| 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2 revisa autorização, secrets e idempotência | **BLOQUEADO até R1.1** |
+| 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1/R1.1 revisam identidade, constraints, isolamento e contrato | **APROVADO EM R1.1** |
+| 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2 revisa autorização, secrets e idempotência | **LIBERADO — parar para R2** |
 | 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | BLOQUEADO |
 | 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | BLOQUEADO |
 | 5 | C2-P — Plano Auth Broker | Desenhar reuso do coletor validado, contrato SessionLease, epoch, segurança, standby | R5 (plano); **não** copiar parser/coletor | BLOQUEADO |
@@ -207,10 +207,10 @@ A SPEC 027 usa **uma branch longa de feature por repositório**, e não uma bran
 
 ### C1-A — Domínio, interfaces e invariantes
 
-**Status:** R1-FIX — CORREÇÕES OBRIGATÓRIAS R1-F1/F2.
+**Status:** APROVADO EM R1.1.
 **Base:** `23a78bebdf46062eef937966101246567cd963de`.
-**C1-A code HEAD revisado:** `36b3c9b96ecfe8e88b6471f57ce0564a9e87850f`.
-**Commit funcional revisado:** `36b3c9b feat(cloud): define binding and realm domain contracts`.
+**C1-A code HEAD inicial:** `36b3c9b96ecfe8e88b6471f57ce0564a9e87850f`; **correção R1 aprovada:** `17afb4e19e21ce93e8eb1b8b0c8bfe47ebcf3364`.
+**Commits:** `36b3c9b feat(cloud): define binding and realm domain contracts`; `17afb4e fix(cloud): harden c1-a binding invariants`.
 
 **Arquivos**
 - criado `api/app/repositories/cloud_bindings.py`;
@@ -553,3 +553,34 @@ C1-B/B9 ficou restrito ao lifecycle administrativo/persistente de realm/membersh
 - Push, deploy, migration de produção, WebPilot real no Cloud, SessionLease real, `source=cloud`, failover/failback e cutover continuam proibidos.
 
 **Próximo passo autorizado ao Executor:** executar a reconciliação Git exatamente como planejada, preservar o Shadow, rodar regressões da base reconciliada e, se verdes, criar `feat/spec027-cloud` e executar **somente C1-A** com TDD. Ao final, atualizar este documento e parar para **R1 independente**.
+
+### R1.1 independente — encerramento do C1-A (2026-10-08)
+
+**Resultado:** APROVADO. R1-F1 e R1-F2 encerrados; C1-A liberado e C1-B autorizado conforme o plano.
+
+**Evidência independente**
+- Commit funcional revisado: `17afb4e` (`fix(cloud): harden c1-a binding invariants`), seguido apenas do registro documental `436a754`.
+- Diff funcional R1→R1.1 limitado a `cloud_bindings.py`, `memory.py` e os dois testes C1-A; nenhum endpoint, migration, Postgres/Supabase, admin script ou runtime Cloud operacional foi antecipado.
+- `git diff --check 3b6d087..17afb4e`: PASS.
+- Testes C1-A independentes: **18/18 passed**.
+- Regressões focadas existentes: **7/7 passed**.
+- Suíte API completa independente: exit code 0, sem falhas.
+- Migration `019_cloud_binding_realm.sql`: ausente, como exigido antes de C1-B.
+- Shadow permanece ativo nos PIDs observados 45750/45758.
+
+**R1-F1 — ENCERRADO**
+`CloudBindingRecord.__post_init__` agora rejeita qualquer `status` que não seja instância de `CloudBindingStatus`. Reprodução independente confirmou rejeição de `"active"`, `"revoked"` e `"garbage"` passados como strings, enquanto estados enum válidos continuam aceitos e sujeitos ao invariante `status ↔ revoked_at`.
+
+**R1-F2 — ENCERRADO**
+O retry de revoke não ordena mais histórico por `(created_at, UUID)`. O `MemoryDeviceRepository`, sob lock, preserva a ordem de inserção dos lifecycles; reprodução independente com clock fixo e UUIDs adversariais confirmou que o retry retorna o segundo/último binding revogado. Histórico e isolamento por `device_id` permanecem preservados.
+
+**Parecer R1.1**
+- C1-A: **APROVADO**.
+- R1-F1/F2: **ENCERRADOS**.
+- C1-B: **LIBERADO para execução conforme o plano C1-B/B1..B10**.
+- C1-C continua bloqueado até R2.
+- Em C1-B, PostgreSQL efêmero/local real com migration 019 aplicada em ambiente de teste é gate obrigatório; qualquer skip desses testes bloqueia R2.
+- Migration 019 pode ser criada e aplicada somente em ambiente local/efêmero de teste; **produção continua proibida**.
+- Push, deploy, WebPilot real no Cloud, SessionLease real, `source=cloud`, failover/failback e cutover continuam proibidos.
+
+**Próximo passo autorizado:** Executor executa somente C1-B com TDD, incluindo migration 019 local, repository Postgres/Supabase, service/model de credencial, endpoints Desktop-only e autoridade administrativa de realm conforme plano; roda obrigatoriamente Postgres real efêmero/local + MockTransport + regressões; registra RED/GREEN e para para **R2 independente**. Não iniciar C1-C.
