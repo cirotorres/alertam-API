@@ -8,6 +8,13 @@ from uuid import UUID, uuid4
 
 from app.models.maneuver_event import ManeuverEventIn
 from app.models.vessel_tracking_event import VesselTrackingEventIn
+from app.repositories.cloud_bindings import (
+    CloudBindingConflictError,
+    CloudBindingRecord,
+    CloudBindingStatus,
+    RealmDeviceAuthorizationRecord,
+    WebPilotAuthRealmRecord,
+)
 from app.repositories.devices import (
     AcceptSnapshotResult,
     AcceptSnapshotStatus,
@@ -61,6 +68,11 @@ class MemoryDeviceRepository:
     ) -> None:
         self._devices = {item.device_id: item for item in devices}
         self._snapshots = {item.device_id: item for item in snapshots}
+        self._webpilot_auth_realms: dict[str, WebPilotAuthRealmRecord] = {}
+        self._realm_device_authorizations: dict[
+            tuple[str, str], RealmDeviceAuthorizationRecord
+        ] = {}
+        self._cloud_bindings: dict[UUID, CloudBindingRecord] = {}
         self._events_by_id: dict[str, StoredManeuverEvent] = {}
         self._event_ingestion_sequence = 0
         self._tracking_events_by_id: dict[str, StoredVesselTrackingEvent] = {}
@@ -90,6 +102,213 @@ class MemoryDeviceRepository:
 
     def get_device_auth(self, device_id: str) -> DeviceAuthRecord | None:
         return self._devices.get(device_id)
+
+    def put_webpilot_auth_realm(
+        self,
+        record: WebPilotAuthRealmRecord,
+    ) -> None:
+        with self._lock:
+            self._webpilot_auth_realms[record.realm_id] = record
+
+    def get_webpilot_auth_realm(
+        self,
+        realm_id: str,
+    ) -> WebPilotAuthRealmRecord | None:
+        with self._lock:
+            return self._webpilot_auth_realms.get(realm_id)
+
+    def authorize_realm_device(
+        self,
+        realm_id: str,
+        device_id: str,
+    ) -> RealmDeviceAuthorizationRecord | None:
+        with self._lock:
+            if (
+                realm_id not in self._webpilot_auth_realms
+                or device_id not in self._devices
+            ):
+                return None
+            key = (realm_id, device_id)
+            current = self._realm_device_authorizations.get(key)
+            if current is not None and current.active:
+                return current
+            authorized = RealmDeviceAuthorizationRecord(
+                realm_id=realm_id,
+                device_id=device_id,
+                authorized_at=self._clock(),
+                revoked_at=None,
+            )
+            self._realm_device_authorizations[key] = authorized
+            return authorized
+
+    def get_realm_device_authorization(
+        self,
+        realm_id: str,
+        device_id: str,
+    ) -> RealmDeviceAuthorizationRecord | None:
+        with self._lock:
+            return self._realm_device_authorizations.get((realm_id, device_id))
+
+    def _binding_authority_active_unlocked(
+        self,
+        device_id: str,
+        realm_id: str,
+    ) -> bool:
+        device = self._devices.get(device_id)
+        realm = self._webpilot_auth_realms.get(realm_id)
+        authorization = self._realm_device_authorizations.get(
+            (realm_id, device_id)
+        )
+        return bool(
+            device is not None
+            and device.enabled
+            and realm is not None
+            and realm.active
+            and authorization is not None
+            and authorization.active
+        )
+
+    def _get_active_cloud_binding_unlocked(
+        self,
+        device_id: str,
+    ) -> CloudBindingRecord | None:
+        for binding in self._cloud_bindings.values():
+            if (
+                binding.device_id == device_id
+                and binding.status is CloudBindingStatus.ACTIVE
+            ):
+                return binding
+        return None
+
+    def get_active_cloud_binding(
+        self,
+        device_id: str,
+    ) -> CloudBindingRecord | None:
+        with self._lock:
+            return self._get_active_cloud_binding_unlocked(device_id)
+
+    def list_cloud_bindings(
+        self,
+        device_id: str,
+    ) -> tuple[CloudBindingRecord, ...]:
+        with self._lock:
+            bindings = [
+                binding
+                for binding in self._cloud_bindings.values()
+                if binding.device_id == device_id
+            ]
+            bindings.sort(
+                key=lambda item: (
+                    item.created_at,
+                    str(item.cloud_binding_id),
+                )
+            )
+            return tuple(bindings)
+
+    def ensure_cloud_binding(
+        self,
+        device_id: str,
+        realm_id: str,
+        credential_hash: str,
+    ) -> CloudBindingRecord | None:
+        with self._lock:
+            if not self._binding_authority_active_unlocked(
+                device_id,
+                realm_id,
+            ):
+                return None
+
+            current = self._get_active_cloud_binding_unlocked(device_id)
+            if current is not None:
+                if (
+                    current.realm_id == realm_id
+                    and current.credential_hash == credential_hash
+                ):
+                    return current
+                raise CloudBindingConflictError(device_id)
+
+            now = self._clock()
+            binding = CloudBindingRecord(
+                cloud_binding_id=uuid4(),
+                device_id=device_id,
+                realm_id=realm_id,
+                credential_hash=credential_hash,
+                credential_version=1,
+                status=CloudBindingStatus.ACTIVE,
+                created_at=now,
+                updated_at=now,
+                revoked_at=None,
+            )
+            self._cloud_bindings[binding.cloud_binding_id] = binding
+            return binding
+
+    def rotate_cloud_binding(
+        self,
+        device_id: str,
+        credential_hash: str,
+    ) -> CloudBindingRecord | None:
+        with self._lock:
+            current = self._get_active_cloud_binding_unlocked(device_id)
+            if current is None or not self._binding_authority_active_unlocked(
+                device_id,
+                current.realm_id,
+            ):
+                return None
+            if current.credential_hash == credential_hash:
+                return current
+
+            rotated = replace(
+                current,
+                credential_hash=credential_hash,
+                credential_version=current.credential_version + 1,
+                updated_at=self._clock(),
+            )
+            self._cloud_bindings[current.cloud_binding_id] = rotated
+            return rotated
+
+    def revoke_cloud_binding(
+        self,
+        device_id: str,
+    ) -> CloudBindingRecord | None:
+        with self._lock:
+            current = self._get_active_cloud_binding_unlocked(device_id)
+            if current is None:
+                previous = [
+                    binding
+                    for binding in self._cloud_bindings.values()
+                    if binding.device_id == device_id
+                ]
+                if not previous:
+                    return None
+                previous.sort(
+                    key=lambda item: (
+                        item.created_at,
+                        str(item.cloud_binding_id),
+                    )
+                )
+                latest = previous[-1]
+                if not self._binding_authority_active_unlocked(
+                    device_id,
+                    latest.realm_id,
+                ):
+                    return None
+                return latest
+
+            if not self._binding_authority_active_unlocked(
+                device_id,
+                current.realm_id,
+            ):
+                return None
+
+            now = self._clock()
+            revoked = replace(
+                current,
+                status=CloudBindingStatus.REVOKED,
+                updated_at=now,
+                revoked_at=now,
+            )
+            self._cloud_bindings[current.cloud_binding_id] = revoked
+            return revoked
 
     def ensure_mobile_installation(
         self,
