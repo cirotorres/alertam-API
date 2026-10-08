@@ -1,7 +1,7 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** R0.1-F1/F2 CORRIGIDOS DOCUMENTALMENTE — aguardando R0.2 independente; R0-F2..F5 permanecem encerrados
+**Status:** P0 APROVADO EM R0.2 — reconciliação Git autorizada; C1-A só após base reconciliada, regressões verdes e criação da `feat/spec027-cloud`
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
 **Base API/PWA de reconciliação:** não congelar SHA. Usar o **HEAD corrente de `feat/api-bootstrap` imediatamente antes do merge**, contendo `8eeeffc`, `6eab67b` e quaisquer commits documentais posteriores aprovados; registrar esse SHA e repetir `merge-base/merge-tree` nesse instante. **Base Desktop auditada:** `develop@abe386f`, com Plan 5 pendente em `9e5b5e1`. A futura `feat/spec027-cloud` só pode nascer após R0.2 e reconciliação aprovada.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
@@ -53,8 +53,8 @@
 
 | Ordem | Checkpoint | Entrega sob controle | Gate independente | Situação |
 |---|---|---|---|---|
-| 0 | P0 — Reconciliação e plano | Verificar estado cross-repo; preparar proposta de integração sem alterar produção; planejar C1 com tasks TDD e contratos | R0/R0.1/R0.2 aprovam base e plano antes de programar | **PRONTO PARA R0.2 — R0.1-F1/F2 corrigidos** |
-| 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1 revisa identidade, constraints, isolamento e contrato | BLOQUEADO por R0.2 |
+| 0 | P0 — Reconciliação e plano | Verificar estado cross-repo; preparar proposta de integração sem alterar produção; planejar C1 com tasks TDD e contratos | R0/R0.1/R0.2 aprovam base e plano antes de programar | **APROVADO EM R0.2** |
+| 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1 revisa identidade, constraints, isolamento e contrato | LIBERADO após reconciliação + regressões + branch feature |
 | 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2 revisa autorização, secrets e idempotência | BLOQUEADO |
 | 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | BLOQUEADO |
 | 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | BLOQUEADO |
@@ -125,9 +125,9 @@ A SPEC 027 usa **uma branch longa de feature por repositório**, e não uma bran
 
 ### P0 — Reconciliação + plano C1
 
-**Status:** PRONTO PARA R0.2 INDEPENDENTE — R0.1-F1/F2 corrigidos; R0-F2..F5 encerrados.
-**Executor:** P0, correções R0 e correções R0.1 concluídos documentalmente em 2026-10-08. **Revisor R0.2:** pendente.
-**Próximo ato permitido:** somente R0.2. Nenhuma integração, criação de `feat/spec027-cloud` ou implementação C1-A antes da aprovação.
+**Status:** APROVADO EM R0.2.
+**Executor:** P0, correções R0 e correções R0.1 concluídos documentalmente em 2026-10-08. **Revisor R0.2:** aprovado.
+**Próximo ato permitido:** executar a reconciliação Git aprovada, rodar regressões da base reconciliada, registrar os SHAs finais e então criar `feat/spec027-cloud`; somente depois iniciar C1-A. Push/deploy/migration produção continuam proibidos.
 
 **Estado Git auditado**
 - API/PWA: **não há SHA de integração congelado**. O HEAD observado ao iniciar esta correção foi `6eab67b`, mas a reconciliação deverá usar o HEAD corrente de `feat/api-bootstrap` imediatamente antes do merge, contendo `8eeeffc`, `6eab67b` e todos os commits documentais posteriores aprovados. O Executor registrará o SHA completo real e repetirá `merge-base/merge-tree` nesse SHA.
@@ -387,3 +387,30 @@ No C1-B/Step B9 o plano exige provar que activate/deactivate bloqueiam/restauram
 **Escopo preservado:** nenhuma integração, branch `feat/spec027-cloud`, C1-A, push, deploy, migration ou alteração do Shadow foi executada.
 
 **PARECER SOLICITADO:** **R0.2 independente** sobre R0.1-F1/F2; nenhuma etapa seguinte iniciada.
+
+### R0.2 independente — encerramento do P0 (2026-10-08)
+
+**Resultado:** APROVADO. R0.1-F1 e R0.1-F2 encerrados; todos os achados R0/R0.1 estão fechados.
+
+**Evidência independente**
+- Commit revisado: `42ac4c1` (`docs: address spec027 r0.1 findings`), somente plano C1 + documento central.
+- `git diff --check 6eab67b..42ac4c1`: PASS.
+- `feat/spec027-cloud` continua inexistente; nenhuma implementação, migration, merge, push ou deploy foi executada.
+- Simulação repetida na base documental atual `42ac4c1`: `git merge-base 42ac4c1 dc23003` = `af5e81f4bb7c10ac7f0c07712f84f107c4a41aa4`; `git merge-tree --write-tree 42ac4c1 dc23003` = `509c36cf417810d21a165efdfc6da3c16614e17c`, PASS sem conflito.
+
+**R0.1-F1 — ENCERRADA**
+O plano agora usa como alvo o HEAD corrente de `feat/api-bootstrap` imediatamente antes da reconciliação, exige registrar o SHA completo real e repetir `merge-base/merge-tree`; SHAs anteriores ficaram apenas como histórico de auditoria.
+
+**R0.1-F2 — ENCERRADA**
+C1-B/B9 ficou restrito ao lifecycle administrativo/persistente de realm/membership e proíbe criar/chamar `authenticate_cloud_binding()`. A prova comportamental deactivate/activate sobre essa função foi movida para C1-C, após a função nascer.
+
+**Parecer R0.2**
+- P0: **APROVADO**.
+- Plano C1: **APROVADO PARA EXECUÇÃO POR CHECKPOINTS**.
+- Estratégia de branch única `feat/spec027-cloud`: **APROVADA**.
+- Reconciliação Git proposta: **AUTORIZADA LOCALMENTE**, com nova verificação do SHA/merge-tree imediatamente antes do merge.
+- C1-A: **LIBERADO somente após** (1) reconciliação Git, (2) regressões verdes na base reconciliada, (3) registro dos SHAs finais e (4) criação da branch/worktree `feat/spec027-cloud`.
+- C1-B/C/D continuam bloqueados pelos respectivos gates R1/R2/R3.
+- Push, deploy, migration de produção, WebPilot real no Cloud, SessionLease real, `source=cloud`, failover/failback e cutover continuam proibidos.
+
+**Próximo passo autorizado ao Executor:** executar a reconciliação Git exatamente como planejada, preservar o Shadow, rodar regressões da base reconciliada e, se verdes, criar `feat/spec027-cloud` e executar **somente C1-A** com TDD. Ao final, atualizar este documento e parar para **R1 independente**.
