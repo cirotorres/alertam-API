@@ -66,3 +66,13 @@ def parse_mobile_pairing_authorization(
     if scheme == "pairing":
         return ("ticket", parts[1].strip())
     raise InvalidViewCredentialsError()
+
+
+def parse_cloud_binding_authorization(header: str | None) -> str:
+    from app.core.errors import CloudRealmUnauthorizedError
+
+    return _parse_authorization(
+        header,
+        "CloudBinding",
+        CloudRealmUnauthorizedError(),
+    )

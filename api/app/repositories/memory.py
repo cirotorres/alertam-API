@@ -41,6 +41,18 @@ from app.repositories.events import (
     PushPreferences,
     StoredManeuverEvent,
 )
+from app.repositories.session_broker import (
+    EncryptedSessionLeaseRecord,
+    ProviderScopeProfile,
+    RequiredProviderScopeRecord,
+    ScopeStatus,
+    SessionLeaseGenerationConflictError,
+    SessionLeaseReplayError,
+    SessionLeaseStatus,
+    SessionPublisherConflictError,
+    SessionPublisherRecord,
+    SessionPublisherStatus,
+)
 from app.repositories.tracking import (
     AcceptTrackingEventResult,
     AcceptTrackingEventStatus,
@@ -74,6 +86,11 @@ class MemoryDeviceRepository:
             tuple[str, str], RealmDeviceAuthorizationRecord
         ] = {}
         self._cloud_bindings: dict[UUID, CloudBindingRecord] = {}
+        self._required_provider_scopes: dict[str, RequiredProviderScopeRecord] = {}
+        self._session_publishers: dict[UUID, SessionPublisherRecord] = {}
+        self._session_leases: dict[UUID, EncryptedSessionLeaseRecord] = {}
+        self._session_lease_by_generation: dict[tuple[UUID, int], UUID] = {}
+        self._realm_epoch_counters: dict[str, int] = {}
         self._events_by_id: dict[str, StoredManeuverEvent] = {}
         self._event_ingestion_sequence = 0
         self._tracking_events_by_id: dict[str, StoredVesselTrackingEvent] = {}
@@ -200,6 +217,300 @@ class MemoryDeviceRepository:
     ) -> RealmDeviceAuthorizationRecord | None:
         with self._lock:
             return self._realm_device_authorizations.get((realm_id, device_id))
+
+    def set_required_provider_scope(
+        self,
+        realm_id: str,
+        profile: ProviderScopeProfile,
+    ) -> RequiredProviderScopeRecord | None:
+        with self._lock:
+            if realm_id not in self._webpilot_auth_realms:
+                return None
+            record = RequiredProviderScopeRecord(
+                realm_id=realm_id,
+                profile=profile,
+                updated_at=self._clock(),
+            )
+            self._required_provider_scopes[realm_id] = record
+            return record
+
+    def get_required_provider_scope(
+        self,
+        realm_id: str,
+    ) -> RequiredProviderScopeRecord | None:
+        with self._lock:
+            return self._required_provider_scopes.get(realm_id)
+
+    def ensure_session_publisher(
+        self,
+        *,
+        device_id: str,
+        realm_id: str,
+        publisher_id: UUID,
+        provider_scope: ProviderScopeProfile,
+    ) -> SessionPublisherRecord | None:
+        with self._lock:
+            if not self._binding_authority_active_unlocked(device_id, realm_id):
+                return None
+            now = self._clock()
+            current = self._session_publishers.get(publisher_id)
+            if current is not None:
+                if current.device_id != device_id or current.realm_id != realm_id:
+                    raise SessionPublisherConflictError()
+                if current.status is SessionPublisherStatus.REVOKED:
+                    raise SessionPublisherConflictError()
+                if current.provider_scope == provider_scope:
+                    return current
+                updated = replace(
+                    current,
+                    provider_scope=provider_scope,
+                    scope_status=ScopeStatus.UNVERIFIED,
+                    scope_verified_at=None,
+                    updated_at=now,
+                )
+                self._session_publishers[publisher_id] = updated
+                return updated
+
+            for existing_id, existing in tuple(self._session_publishers.items()):
+                if (
+                    existing.device_id == device_id
+                    and existing.realm_id == realm_id
+                    and existing.status is SessionPublisherStatus.ACTIVE
+                ):
+                    self._session_publishers[existing_id] = replace(
+                        existing,
+                        status=SessionPublisherStatus.REVOKED,
+                        revoked_at=now,
+                        updated_at=now,
+                    )
+
+            publisher = SessionPublisherRecord(
+                publisher_id=publisher_id,
+                realm_id=realm_id,
+                device_id=device_id,
+                provider_scope=provider_scope,
+                scope_status=ScopeStatus.UNVERIFIED,
+                scope_verified_at=None,
+                last_generation=0,
+                status=SessionPublisherStatus.ACTIVE,
+                created_at=now,
+                updated_at=now,
+                revoked_at=None,
+            )
+            self._session_publishers[publisher_id] = publisher
+            return publisher
+
+    def get_session_publisher(
+        self,
+        publisher_id: UUID,
+    ) -> SessionPublisherRecord | None:
+        with self._lock:
+            return self._session_publishers.get(publisher_id)
+
+    def verify_session_publisher_scope(
+        self,
+        publisher_id: UUID,
+    ) -> SessionPublisherRecord | None:
+        with self._lock:
+            publisher = self._session_publishers.get(publisher_id)
+            if publisher is None or publisher.status is SessionPublisherStatus.REVOKED:
+                return publisher
+            required = self._required_provider_scopes.get(publisher.realm_id)
+            status = (
+                ScopeStatus.VERIFIED
+                if required is not None and required.profile == publisher.provider_scope
+                else ScopeStatus.INCOMPATIBLE
+            )
+            now = self._clock()
+            updated = replace(
+                publisher,
+                scope_status=status,
+                scope_verified_at=now if status is ScopeStatus.VERIFIED else None,
+                updated_at=now,
+            )
+            self._session_publishers[publisher_id] = updated
+            return updated
+
+    def revoke_session_publisher(
+        self,
+        publisher_id: UUID,
+    ) -> SessionPublisherRecord | None:
+        with self._lock:
+            publisher = self._session_publishers.get(publisher_id)
+            if publisher is None or publisher.status is SessionPublisherStatus.REVOKED:
+                return publisher
+            now = self._clock()
+            revoked = replace(
+                publisher,
+                status=SessionPublisherStatus.REVOKED,
+                revoked_at=now,
+                updated_at=now,
+            )
+            self._session_publishers[publisher_id] = revoked
+            return revoked
+
+    def _publisher_eligible_unlocked(
+        self,
+        publisher: SessionPublisherRecord,
+    ) -> bool:
+        required = self._required_provider_scopes.get(publisher.realm_id)
+        return bool(
+            publisher.status is SessionPublisherStatus.ACTIVE
+            and publisher.scope_status is ScopeStatus.VERIFIED
+            and required is not None
+            and required.profile == publisher.provider_scope
+            and self._binding_authority_active_unlocked(
+                publisher.device_id,
+                publisher.realm_id,
+            )
+        )
+
+    def accept_session_lease_atomic(
+        self,
+        *,
+        device_id: str,
+        realm_id: str,
+        publisher_id: UUID,
+        lease_id: UUID,
+        local_generation: int,
+        payload_fingerprint: str,
+        ciphertext: str,
+        nonce: str,
+        key_version: int,
+        payload_schema_version: int,
+        expires_at: datetime | None,
+    ) -> EncryptedSessionLeaseRecord | None:
+        with self._lock:
+            publisher = self._session_publishers.get(publisher_id)
+            if (
+                publisher is None
+                or publisher.device_id != device_id
+                or publisher.realm_id != realm_id
+                or not self._publisher_eligible_unlocked(publisher)
+            ):
+                return None
+
+            generation_key = (publisher_id, local_generation)
+            existing_id = self._session_lease_by_generation.get(generation_key)
+            if existing_id is not None:
+                existing = self._session_leases[existing_id]
+                if existing.status is not SessionLeaseStatus.ACCEPTED:
+                    raise SessionLeaseReplayError()
+                if existing.payload_fingerprint != payload_fingerprint:
+                    raise SessionLeaseGenerationConflictError()
+                return existing
+
+            if local_generation <= publisher.last_generation:
+                raise SessionLeaseReplayError()
+
+            next_epoch = self._realm_epoch_counters.get(realm_id, 0) + 1
+            self._realm_epoch_counters[realm_id] = next_epoch
+            now = self._clock()
+            lease = EncryptedSessionLeaseRecord(
+                lease_id=lease_id,
+                realm_id=realm_id,
+                publisher_id=publisher_id,
+                local_generation=local_generation,
+                realm_epoch=next_epoch,
+                payload_fingerprint=payload_fingerprint,
+                ciphertext=ciphertext,
+                nonce=nonce,
+                key_version=key_version,
+                payload_schema_version=payload_schema_version,
+                received_at=now,
+                expires_at=expires_at,
+                status=SessionLeaseStatus.ACCEPTED,
+            )
+            self._session_leases[lease_id] = lease
+            self._session_lease_by_generation[generation_key] = lease_id
+            self._session_publishers[publisher_id] = replace(
+                publisher,
+                last_generation=local_generation,
+                updated_at=now,
+            )
+            return lease
+
+    def get_session_lease(
+        self,
+        lease_id: UUID,
+    ) -> EncryptedSessionLeaseRecord | None:
+        with self._lock:
+            return self._session_leases.get(lease_id)
+
+    def get_current_session_lease(
+        self,
+        realm_id: str,
+        *,
+        now: datetime,
+    ) -> EncryptedSessionLeaseRecord | None:
+        with self._lock:
+            candidates: list[EncryptedSessionLeaseRecord] = []
+            for lease in self._session_leases.values():
+                if (
+                    lease.realm_id != realm_id
+                    or lease.status is not SessionLeaseStatus.ACCEPTED
+                    or (lease.expires_at is not None and lease.expires_at <= now)
+                ):
+                    continue
+                publisher = self._session_publishers.get(lease.publisher_id)
+                if publisher is not None and self._publisher_eligible_unlocked(publisher):
+                    candidates.append(lease)
+            if not candidates:
+                return None
+            return max(candidates, key=lambda item: item.realm_epoch)
+
+    def revoke_session_lease(
+        self,
+        *,
+        device_id: str,
+        realm_id: str,
+        lease_id: UUID,
+    ) -> EncryptedSessionLeaseRecord | None:
+        with self._lock:
+            lease = self._session_leases.get(lease_id)
+            if lease is None or lease.realm_id != realm_id:
+                return None
+            publisher = self._session_publishers.get(lease.publisher_id)
+            if (
+                publisher is None
+                or publisher.device_id != device_id
+                or not self._binding_authority_active_unlocked(device_id, realm_id)
+            ):
+                return None
+            if lease.status is not SessionLeaseStatus.ACCEPTED:
+                return lease
+            revoked = replace(
+                lease,
+                status=SessionLeaseStatus.REVOKED,
+                revoked_at=self._clock(),
+            )
+            self._session_leases[lease_id] = revoked
+            return revoked
+
+    def invalidate_session_lease(
+        self,
+        *,
+        realm_id: str,
+        lease_id: UUID,
+        realm_epoch: int,
+    ) -> EncryptedSessionLeaseRecord | None:
+        with self._lock:
+            lease = self._session_leases.get(lease_id)
+            if (
+                lease is None
+                or lease.realm_id != realm_id
+                or lease.realm_epoch != realm_epoch
+            ):
+                return None
+            if lease.status is not SessionLeaseStatus.ACCEPTED:
+                return lease
+            invalidated = replace(
+                lease,
+                status=SessionLeaseStatus.INVALIDATED,
+                invalidated_at=self._clock(),
+            )
+            self._session_leases[lease_id] = invalidated
+            return invalidated
 
     def _binding_authority_active_unlocked(
         self,

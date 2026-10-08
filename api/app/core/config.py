@@ -45,6 +45,10 @@ class Settings(BaseSettings):
         repr=False,
     )
 
+    session_broker_fingerprint_key: str = Field(default="", repr=False)
+    session_broker_keyring: str = Field(default="", repr=False)
+    session_broker_active_key_version: int = Field(default=1, gt=0)
+
     @property
     def allowed_origins_list(self) -> list[str]:
         return [

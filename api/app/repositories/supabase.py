@@ -41,6 +41,18 @@ from app.repositories.events import (
     PushPreferences,
     StoredManeuverEvent,
 )
+from app.repositories.session_broker import (
+    EncryptedSessionLeaseRecord,
+    ProviderScopeProfile,
+    RequiredProviderScopeRecord,
+    ScopeStatus,
+    SessionLeaseGenerationConflictError,
+    SessionLeaseReplayError,
+    SessionLeaseStatus,
+    SessionPublisherConflictError,
+    SessionPublisherRecord,
+    SessionPublisherStatus,
+)
 from app.repositories.tracking import (
     AcceptTrackingEventResult,
     AcceptTrackingEventStatus,
@@ -312,6 +324,230 @@ class SupabaseDeviceRepository:
             self._cloud_binding_from_mapping,
         )
 
+    def set_required_provider_scope(
+        self,
+        realm_id: str,
+        profile: ProviderScopeProfile,
+    ) -> RequiredProviderScopeRecord | None:
+        return self._mapped_cloud_rpc(
+            "set_required_provider_scope",
+            {
+                "p_realm_id": realm_id,
+                "p_scope_id": profile.scope_id,
+                "p_schema_version": profile.schema_version,
+                "p_capabilities": list(profile.capabilities),
+            },
+            self._required_provider_scope_from_mapping,
+        )
+
+    def get_required_provider_scope(
+        self,
+        realm_id: str,
+    ) -> RequiredProviderScopeRecord | None:
+        return self._get_session_broker_row(
+            "webpilot_provider_scope_requirements",
+            {
+                "select": (
+                    "realm_id,scope_id,schema_version,capabilities,updated_at"
+                ),
+                "realm_id": f"eq.{realm_id}",
+                "limit": "1",
+            },
+            self._required_provider_scope_from_mapping,
+        )
+
+    def ensure_session_publisher(
+        self,
+        *,
+        device_id: str,
+        realm_id: str,
+        publisher_id: UUID,
+        provider_scope: ProviderScopeProfile,
+    ) -> SessionPublisherRecord | None:
+        return self._mapped_cloud_rpc(
+            "ensure_session_publisher",
+            {
+                "p_device_id": device_id,
+                "p_realm_id": realm_id,
+                "p_publisher_id": str(publisher_id),
+                "p_scope_id": provider_scope.scope_id,
+                "p_scope_schema_version": provider_scope.schema_version,
+                "p_scope_capabilities": list(provider_scope.capabilities),
+            },
+            self._session_publisher_from_mapping,
+        )
+
+    def get_session_publisher(
+        self,
+        publisher_id: UUID,
+    ) -> SessionPublisherRecord | None:
+        return self._get_session_broker_row(
+            "webpilot_session_publishers",
+            {
+                "select": (
+                    "publisher_id,realm_id,device_id,provider_scope_id,"
+                    "provider_scope_schema_version,provider_scope_capabilities,"
+                    "scope_status,scope_verified_at,last_generation,status,"
+                    "created_at,updated_at,revoked_at"
+                ),
+                "publisher_id": f"eq.{publisher_id}",
+                "limit": "1",
+            },
+            self._session_publisher_from_mapping,
+        )
+
+    def verify_session_publisher_scope(
+        self,
+        publisher_id: UUID,
+    ) -> SessionPublisherRecord | None:
+        return self._mapped_cloud_rpc(
+            "verify_session_publisher_scope",
+            {"p_publisher_id": str(publisher_id)},
+            self._session_publisher_from_mapping,
+        )
+
+    def revoke_session_publisher(
+        self,
+        publisher_id: UUID,
+    ) -> SessionPublisherRecord | None:
+        return self._mapped_cloud_rpc(
+            "revoke_session_publisher",
+            {"p_publisher_id": str(publisher_id)},
+            self._session_publisher_from_mapping,
+        )
+
+    def accept_session_lease_atomic(
+        self,
+        *,
+        device_id: str,
+        realm_id: str,
+        publisher_id: UUID,
+        lease_id: UUID,
+        local_generation: int,
+        payload_fingerprint: str,
+        ciphertext: str,
+        nonce: str,
+        key_version: int,
+        payload_schema_version: int,
+        expires_at: datetime | None,
+    ) -> EncryptedSessionLeaseRecord | None:
+        return self._mapped_cloud_rpc(
+            "accept_session_lease",
+            {
+                "p_device_id": device_id,
+                "p_realm_id": realm_id,
+                "p_publisher_id": str(publisher_id),
+                "p_lease_id": str(lease_id),
+                "p_local_generation": local_generation,
+                "p_payload_fingerprint": payload_fingerprint,
+                "p_ciphertext": ciphertext,
+                "p_nonce": nonce,
+                "p_key_version": key_version,
+                "p_payload_schema_version": payload_schema_version,
+                "p_expires_at": (
+                    None if expires_at is None else expires_at.isoformat()
+                ),
+            },
+            self._session_lease_from_mapping,
+        )
+
+    def get_session_lease(
+        self,
+        lease_id: UUID,
+    ) -> EncryptedSessionLeaseRecord | None:
+        return self._get_session_broker_row(
+            "webpilot_session_leases",
+            {
+                "select": (
+                    "lease_id,realm_id,publisher_id,local_generation,realm_epoch,"
+                    "payload_fingerprint,ciphertext,nonce,key_version,"
+                    "payload_schema_version,received_at,expires_at,status,"
+                    "revoked_at,invalidated_at"
+                ),
+                "lease_id": f"eq.{lease_id}",
+                "limit": "1",
+            },
+            self._session_lease_from_mapping,
+        )
+
+    def get_current_session_lease(
+        self,
+        realm_id: str,
+        *,
+        now: datetime,
+    ) -> EncryptedSessionLeaseRecord | None:
+        return self._mapped_cloud_rpc(
+            "get_current_session_lease",
+            {
+                "p_realm_id": realm_id,
+                "p_now": now.isoformat(),
+            },
+            self._session_lease_from_mapping,
+        )
+
+    def revoke_session_lease(
+        self,
+        *,
+        device_id: str,
+        realm_id: str,
+        lease_id: UUID,
+    ) -> EncryptedSessionLeaseRecord | None:
+        return self._mapped_cloud_rpc(
+            "revoke_session_lease",
+            {
+                "p_device_id": device_id,
+                "p_realm_id": realm_id,
+                "p_lease_id": str(lease_id),
+            },
+            self._session_lease_from_mapping,
+        )
+
+    def invalidate_session_lease(
+        self,
+        *,
+        realm_id: str,
+        lease_id: UUID,
+        realm_epoch: int,
+    ) -> EncryptedSessionLeaseRecord | None:
+        return self._mapped_cloud_rpc(
+            "invalidate_session_lease",
+            {
+                "p_realm_id": realm_id,
+                "p_lease_id": str(lease_id),
+                "p_realm_epoch": realm_epoch,
+            },
+            self._session_lease_from_mapping,
+        )
+
+    def _get_session_broker_row(
+        self,
+        table: str,
+        params: dict[str, str],
+        mapper,
+    ):
+        try:
+            response = self._client.get(
+                f"{self._base_url}/rest/v1/{table}",
+                headers=self._headers(),
+                params=params,
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise TypeError("Resposta SessionBroker inválida.")
+            if not data:
+                return None
+            if len(data) != 1 or not isinstance(data[0], dict):
+                raise ValueError("Resposta SessionBroker inválida.")
+            return mapper(data[0])
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
     def _mapped_cloud_rpc(
         self,
         name: str,
@@ -347,8 +583,15 @@ class SupabaseDeviceRepository:
                 raise ValueError("Resposta RPC Cloud inválida.")
             return data[0]
         except httpx.HTTPStatusError as exc:
-            if "cloud_binding_conflict" in exc.response.text:
+            response_text = exc.response.text
+            if "cloud_binding_conflict" in response_text:
                 raise CloudBindingConflictError() from exc
+            if "session_publisher_conflict" in response_text:
+                raise SessionPublisherConflictError() from exc
+            if "session_lease_generation_conflict" in response_text:
+                raise SessionLeaseGenerationConflictError() from exc
+            if "session_lease_replay" in response_text:
+                raise SessionLeaseReplayError() from exc
             raise PersistenceUnavailableError() from exc
         except (
             httpx.HTTPError,
@@ -393,6 +636,89 @@ class SupabaseDeviceRepository:
             ValueError,
         ) as exc:
             raise PersistenceUnavailableError() from exc
+
+    @classmethod
+    def _required_provider_scope_from_mapping(
+        cls,
+        row: Any,
+    ) -> RequiredProviderScopeRecord:
+        if not isinstance(row, dict):
+            raise TypeError("Provider scope persistido inválido.")
+        updated_at = cls._parse_datetime(row.get("updated_at"))
+        if updated_at is None:
+            raise ValueError("updated_at ausente.")
+        capabilities = row.get("capabilities")
+        if not isinstance(capabilities, list):
+            raise TypeError("capabilities inválidas.")
+        return RequiredProviderScopeRecord(
+            realm_id=str(row["realm_id"]),
+            profile=ProviderScopeProfile(
+                scope_id=str(row["scope_id"]),
+                schema_version=int(row["schema_version"]),
+                capabilities=tuple(str(item) for item in capabilities),
+            ),
+            updated_at=updated_at,
+        )
+
+    @classmethod
+    def _session_publisher_from_mapping(
+        cls,
+        row: Any,
+    ) -> SessionPublisherRecord:
+        if not isinstance(row, dict):
+            raise TypeError("Publisher persistido inválido.")
+        capabilities = row.get("provider_scope_capabilities")
+        if not isinstance(capabilities, list):
+            raise TypeError("capabilities de publisher inválidas.")
+        created_at = cls._parse_datetime(row.get("created_at"))
+        updated_at = cls._parse_datetime(row.get("updated_at"))
+        if created_at is None or updated_at is None:
+            raise ValueError("timestamps de publisher ausentes.")
+        return SessionPublisherRecord(
+            publisher_id=UUID(str(row["publisher_id"])),
+            realm_id=str(row["realm_id"]),
+            device_id=str(row["device_id"]),
+            provider_scope=ProviderScopeProfile(
+                scope_id=str(row["provider_scope_id"]),
+                schema_version=int(row["provider_scope_schema_version"]),
+                capabilities=tuple(str(item) for item in capabilities),
+            ),
+            scope_status=ScopeStatus(str(row["scope_status"])),
+            scope_verified_at=cls._parse_datetime(row.get("scope_verified_at")),
+            last_generation=int(row["last_generation"]),
+            status=SessionPublisherStatus(str(row["status"])),
+            created_at=created_at,
+            updated_at=updated_at,
+            revoked_at=cls._parse_datetime(row.get("revoked_at")),
+        )
+
+    @classmethod
+    def _session_lease_from_mapping(
+        cls,
+        row: Any,
+    ) -> EncryptedSessionLeaseRecord:
+        if not isinstance(row, dict):
+            raise TypeError("SessionLease persistida inválida.")
+        received_at = cls._parse_datetime(row.get("received_at"))
+        if received_at is None:
+            raise ValueError("received_at ausente.")
+        return EncryptedSessionLeaseRecord(
+            lease_id=UUID(str(row["lease_id"])),
+            realm_id=str(row["realm_id"]),
+            publisher_id=UUID(str(row["publisher_id"])),
+            local_generation=int(row["local_generation"]),
+            realm_epoch=int(row["realm_epoch"]),
+            payload_fingerprint=str(row["payload_fingerprint"]),
+            ciphertext=str(row["ciphertext"]),
+            nonce=str(row["nonce"]),
+            key_version=int(row["key_version"]),
+            payload_schema_version=int(row["payload_schema_version"]),
+            received_at=received_at,
+            expires_at=cls._parse_datetime(row.get("expires_at")),
+            status=SessionLeaseStatus(str(row["status"])),
+            revoked_at=cls._parse_datetime(row.get("revoked_at")),
+            invalidated_at=cls._parse_datetime(row.get("invalidated_at")),
+        )
 
     @classmethod
     def _webpilot_auth_realm_from_mapping(

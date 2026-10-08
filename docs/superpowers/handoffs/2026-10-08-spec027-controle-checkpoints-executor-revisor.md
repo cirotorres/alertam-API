@@ -1,7 +1,7 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** C1 FINAL COMMITADO — `61342b2ac47ffa48bfe90787b8aa2afb4bb4cda8`; C2-P **APROVADO EM R5.1** — commit documental exato autorizado; C2-A liberado somente após esse commit e working tree limpo
+**Status:** C2-A **APROVADO EM R6.1** — commit consolidado autorizado nesta revisão; C2-B liberado somente após confirmação do commit e working tree limpo
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
 **Base reconciliada:** API/PWA `feat/api-bootstrap@23a78bebdf46062eef937966101246567cd963de`; Desktop `develop@9e5b5e1a33cb7d61db200866aea683a6334de922`. **Feature:** `feat/spec027-cloud`, criada a partir de `23a78be` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`. **C1-A functional HEAD após correções R1:** `17afb4e19e21ce93e8eb1b8b0c8bfe47ebcf3364`; o commit documental deste registro será seu sucessor local.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
@@ -61,8 +61,8 @@
 | 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2/R2.1 revisam autorização, secrets e idempotência | **APROVADO EM R2.1 — commit a4e1af85872308a907afb85d53f8cebac3dae6b5** |
 | 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | **APROVADO EM R3 — commit 25485bba0143fd0c1659a88df89743db629951c2** |
 | 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | **APROVADO EM R4 — commit final C1 `61342b2ac47ffa48bfe90787b8aa2afb4bb4cda8`** |
-| 5 | C2-P — Plano Auth Broker | Desenhar reuso do coletor validado, contrato SessionLease, epoch, segurança, standby | R5/R5.1 (plano); **não** copiar parser/coletor | **APROVADO EM R5.1 — AGUARDA COMMIT** |
-| 6 | C2 — Execução em checkpoints próprios | Broker federado, anti-replay e core HTTP em standby headless sem source efetivo | R6/R7/R8; commit somente após cada aprovação | **C2-A LIBERADO após commit C2-P + working tree limpo** |
+| 5 | C2-P — Plano Auth Broker | Desenhar reuso do coletor validado, contrato SessionLease, epoch, segurança, standby | R5/R5.1 (plano); **não** copiar parser/coletor | **APROVADO EM R5.1 — commit `7c9f19516673c80860b144b9f421aaea0810e423`** |
+| 6 | C2 — Execução em checkpoints próprios | Broker federado, anti-replay e core HTTP em standby headless sem source efetivo | R6/R7/R8; commit somente após cada aprovação | **C2-A APROVADO EM R6.1 — commit consolidado nesta revisão; C2-B depois do working tree limpo** |
 | 7 | C3-P / C3 — Autoridade e snapshots | Plano aprovado; lease/fencing, hysteresis, failover/failback, anti-split-brain; primeira versão só snapshots | Revisões por subtask, gate operacional explícito | BLOQUEADO |
 | 8 | C4 — Observabilidade | Status, logs sanitizados, smoke prolongado, degradação e reconciliação | Revisão operacional humana | BLOQUEADO |
 | 9 | C5 — Eventos/Push | Plano próprio de idempotência cross-source, sem duplicação | **Somente se autorizado separadamente** | FORA DA LIBERAÇÃO ATUAL |
@@ -1341,3 +1341,361 @@ O `pyproject.toml` Desktop atual declara no pacote principal `selenium`, `webdri
 - merge/push/deploy, migration 020 em produção, WebPilot real no Cloud, SessionLease operacional real, `source=cloud`, snapshot Cloud, failover/failback e cutover continuam proibidos.
 
 **Próximo passo autorizado:** Executor deve (1) fazer um único commit local documental do C2-P exatamente aprovado; (2) confirmar working tree limpo e registrar SHA; (3) executar somente C2-A/A1→A7 com TDD; (4) criar migration 020 apenas local/efêmera; (5) cumprir PostgreSQL real sem skip, Supabase MockTransport, crypto/idempotência/provider-scope e endpoints; (6) deixar todo o C2-A sem commit/stage e parar para **R6 independente**. Não iniciar C2-B.
+
+### C2-A — Executor; A1→A7 no working tree (2026-10-08)
+
+**Status:** **PRONTO PARA R6 INDEPENDENTE**. C2-A concluído no working tree, sem commit/stage. C2-B não iniciado.
+
+**Base documental de entrada**
+- ao iniciar o checkpoint, o working tree já estava limpo em **`7c9f19516673c80860b144b9f421aaea0810e423`** — `docs(cloud): approve c2 auth broker plan`;
+- esse commit contém exatamente o C2-P/handoff aprovados em R5.1 e foi criado pela sessão de revisão R5.1;
+- por já existir o commit documental exato solicitado, o Executor **não criou commit vazio/duplicado**;
+- `7c9f19516673c80860b144b9f421aaea0810e423` é a base aprovada do C2-A e permanece o HEAD atual.
+
+**A1/A2 — domínio, anti-replay e crypto — RED→GREEN**
+- RED inicial: collection errors porque `app.models.session_broker` e `app.repositories.session_broker` ainda não existiam.
+- criados contratos:
+  - `ProviderScopeProfile`;
+  - publisher status/scope status;
+  - `SessionPublisherRecord`;
+  - `EncryptedSessionLeaseRecord`;
+  - `SessionLeasePublishRequest` e metadata/consume responses;
+  - exceções tipadas de publisher conflict, generation conflict e replay.
+- canonicalização server-side:
+  - cookies ordenados por nome;
+  - nomes duplicados rejeitados antes de crypto;
+  - `expires_at` exige timezone e é normalizado para UTC;
+  - payload canônico inclui realm/publisher/generation/expiry/cookies.
+- fingerprint:
+  - HMAC-SHA-256 keyed;
+  - key dedicada distinta das chaves AEAD;
+  - fingerprint não é hash simples do cookie.
+- AES-256-GCM:
+  - nonce randômico 96 bits;
+  - AAD com schema, lease, realm, publisher, generation, expiry e key version;
+  - keyring versionado com uma active key para encrypt e antigas decrypt-only.
+- testes cobrem roundtrip, nonce distinto, wrong lease/realm/expiry/key version, nonce/ciphertext swap/tamper, unknown/invalid keyring e redaction.
+- Memory broker cobre scope verify/reclassify, generation local, `realm_epoch` por realm, idempotência same payload, conflito different payload, revoke/invalidate/replay.
+
+**A3 — migration 020 + PostgreSQL real — RED→GREEN**
+- RED estrutural: `020_webpilot_session_broker.sql` ausente.
+- criada somente localmente/efêmera:
+  - `webpilot_provider_scope_requirements`;
+  - `webpilot_session_publishers`;
+  - `webpilot_session_leases`;
+  - `webpilot_realm_epoch_counters`.
+- invariantes:
+  - publisher único ativo por realm/device;
+  - unique `publisher_id + local_generation`;
+  - unique `realm_id + realm_epoch`;
+  - generation/epoch/key/schema positivos;
+  - status/temporal checks;
+  - provider scope status persistido.
+- RLS habilitado nas quatro tabelas; sem policy pública.
+- RPCs `SECURITY DEFINER`, search path fixo e EXECUTE backend-only/service_role.
+- RED PostgreSQL real inicial: migration aplicou, mas repository ainda não tinha os métodos C2.
+- durante GREEN, PostgreSQL real encontrou duas ambiguidades PL/pgSQL em `ON CONFLICT (realm_id)`; corrigidas usando PK constraints explícitas.
+- `accept_session_lease`:
+  - locka/revalida device, realm, membership, publisher e required scope;
+  - procura mesma publisher/generation **antes** do contador;
+  - mesmo fingerprint retorna a lease persistida;
+  - fingerprint diferente gera `session_lease_generation_conflict`;
+  - generation menor/reuso após revoke/invalidate gera `session_lease_replay`;
+  - só nova aceitação incrementa `realm_epoch`.
+- concorrência PostgreSQL real:
+  - mesmo payload/same generation → mesma lease/epoch, uma linha;
+  - payload diferente/same generation → um vencedor + conflito, `last_epoch=1`;
+  - rotação concorrente de publisher → exatamente um publisher ativo.
+- PostgreSQL final: **5 passed / 0 skipped / 0 failed**.
+
+**A4 — envelope crypto**
+- `cryptography>=50,<51` passou a ser dependência direta da API; lock atualizado offline.
+- Settings novos, todos secrets com `repr=False`:
+  - `SESSION_BROKER_FINGERPRINT_KEY`;
+  - `SESSION_BROKER_KEYRING`;
+  - `SESSION_BROKER_ACTIVE_KEY_VERSION`.
+- ausência total de configuração mantém app inicializável, mas publish/consume de lease falha fechado;
+- configuração parcial/inválida falha fechado;
+- keyring JSON versionado e fingerprint key base64url exigem 32 bytes.
+
+**A5 — repositories + Supabase MockTransport**
+- Postgres, Supabase e Memory implementam o mesmo `SessionBrokerRepository`.
+- Supabase RED: **7 falhas** por métodos ausentes.
+- GREEN MockTransport: **7 passed / 0 skipped / 0 failed**.
+- cobre payloads RPC, mapping, malformed HTTP 200 sanitizado, backend failure sanitizada e erros tipados de replay/generation conflict.
+- server key/backend payload não aparece em exceptions.
+
+**A6 — endpoints e autoridade administrativa**
+- endpoints Desktop-only:
+  - `PUT/DELETE /api/v1/devices/{device_id}/webpilot-session-publisher`;
+  - `POST /api/v1/devices/{device_id}/webpilot-session-leases`;
+  - `POST /api/v1/devices/{device_id}/webpilot-session-leases/revoke`.
+- endpoints Cloud backend:
+  - `GET /api/v1/cloud-bindings/{cloud_binding_id}/webpilot-session-lease`;
+  - `POST .../invalidate`.
+- Desktop usa Device auth; Cloud usa CloudBinding credential + verificador C1.
+- responses de consume/invalidate usam `Cache-Control: no-store`.
+- OpenAPI documenta códigos 401/403/404/409/422/503 conforme operação.
+- cookie input é `writeOnly`; nenhuma rota Mobile/PWA de SessionLease foi criada.
+- operação backend/admin materializada em `scripts/admin_session_broker.py`:
+  - `set-required-scope`;
+  - `verify-publisher`;
+  - usa o mesmo carregamento autenticado de Supabase admin/server credentials do C1;
+  - imprime apenas IDs/status, sem credenciais/cookies.
+- `admin_device.py` passou a tratar `webpilot_session_publishers.device_id` como dependência para compensação segura.
+- publisher nasce `unverified`; only admin/backend verify/reclassify; incompatible/unverified é inelegível.
+- mudança de required scope invalida elegibilidade fail-closed.
+- duplicidade de cookie retorna 422 sem eco do secret; keyring ausente retorna 503 sem eco do cookie.
+- um contract test legado do C1 inicialmente falhou porque tratava qualquer path contendo “cloud-binding” como Desktop; o teste foi refinado para preservar exatamente as rotas Desktop C1 e permitir os novos endpoints internos C2, sem alterar runtime.
+
+**A7 — gates finais**
+- C2-A direcionados locais: **38 passed / 0 skipped / 0 failed**.
+- Supabase MockTransport: **7 passed / 0 skipped / 0 failed**.
+- PostgreSQL 16 real: **5 passed / 0 skipped / 0 failed**.
+- primeira execução de `make test-all`: **617 passed / 1 failed**; única falha era o contract test legado C1 descrito acima.
+- `make test-all` final: **618 passed / 0 skipped / 0 failed**.
+- `make migrate-list`: migrations **001→020**, incluindo `020_webpilot_session_broker.sql`.
+- `git diff --check`: PASS.
+- staged files: **0**.
+- HEAD: **`7c9f19516673c80860b144b9f421aaea0810e423`**.
+
+**Security audit**
+- nenhum secret/cookie/key real encontrado em produção; valores sensíveis literais existem apenas nas fixtures sintéticas;
+- cookie/ciphertext/nonce/fingerprint/key version usam `repr=False` onde aplicável;
+- quick check confirmou plaintext de cookie ausente do `repr` do response model;
+- malformed Supabase payloads e crypto failures saem sanitizados;
+- migration 020 mantém RLS e nenhuma `CREATE POLICY` pública;
+- RPC EXECUTE revogado de PUBLIC/anon/authenticated e concedido apenas a service_role;
+- nenhuma rota Mobile/PWA de broker;
+- nenhuma implementação de snapshot, `source=cloud`, failover/failback, collector ou WebPilot Cloud real.
+
+**Fronteiras preservadas**
+- migration 020 foi aplicada **somente** em PostgreSQL Docker efêmero para testes; **não foi aplicada em produção**;
+- C2-B não iniciado;
+- branch Desktop `feat/spec027-cloud`: não criada;
+- diretório `cloud/`: sem alterações;
+- nenhum push/deploy/prod-migrate;
+- nenhum SessionLease operacional real;
+- nenhum WebPilot real no Cloud;
+- nenhum snapshot/`source=cloud`;
+- nenhum failover/failback;
+- Shadow não foi manipulado; permaneceu ativo nos PIDs observados 14865/14873.
+
+**Estado para revisão**
+- todo o C2-A está no working tree da API/PWA, baseado em `7c9f195...`;
+- nenhum arquivo staged;
+- nenhum commit C2-A;
+- se R6 encontrar achados, corrigir o mesmo working tree e retornar para re-revisão;
+- C2-B permanece bloqueado até R6 aprovado + commit exato do diff revisado.
+
+**PARECER SOLICITADO:** **R6 independente** sobre o working tree C2-A completo. Não iniciar C2-B.
+
+### R6 independente — revisão do C2-A (2026-10-08)
+
+**Resultado:** CORREÇÕES OBRIGATÓRIAS. O C2-A está amplamente aderente ao plano e todos os gates normais passam, mas quatro contratos aprovados no C2-P falham sob probes adversariais. C2-B permanece bloqueado e nenhum commit C2-A é autorizado ainda.
+
+**Evidência independente**
+- HEAD/base permaneceu `7c9f19516673c80860b144b9f421aaea0810e423`; working tree C2-A sem commit/stage.
+- testes C2-A direcionados: **38/38 passed**.
+- PostgreSQL 16 real `test_session_broker_postgres.py`: **5/5 passed**, sem skip.
+- `make test-all` independente: **618 passed / 0 skipped / 0 failed**.
+- `git diff --check`: PASS.
+- migration 020 foi exercitada apenas em PostgreSQL Docker efêmero; não foi aplicada em produção.
+- operação backend/admin exigida em R5.1 foi materializada em `scripts/admin_session_broker.py` com `set-required-scope` e `verify-publisher`; essa condição está satisfeita.
+
+**R6-F1 — `payload_schema_version` persistido não está autenticado pelo AEAD**
+O plano aprovado exige AAD vinculando a versão de schema. A implementação de `_aad()` hardcodeia `schema_version=1`, enquanto `EncryptedSessionLeaseRecord.payload_schema_version` é uma coluna persistida separada e nunca é fornecida a `encrypt()`/`decrypt()`. Assim, alterar somente a coluna `payload_schema_version` não invalida o ciphertext.
+
+**Reprodução independente:** uma lease foi publicada normalmente; o registro em MemoryRepository foi alterado somente de `payload_schema_version=1` para `99`, mantendo ciphertext/nonce/metadata restantes intactos. `SessionBrokerService.consume()` ainda decriptou e devolveu o cookie com sucesso: `TAMPERED_SCHEMA_STILL_CONSUMED 1 secret`.
+
+**Critério de aceite R6-F1:**
+- `payload_schema_version` deve participar explicitamente da AAD usada em encrypt e decrypt, sem hardcode desconectado da metadata persistida;
+- `encrypt()`/`decrypt()` e o service devem usar a versão persistida/canônica correta;
+- alterar somente `payload_schema_version` deve causar `SessionCryptoError`/503 fail-closed;
+- adicionar RED específico para schema-version tamper e regressão de roundtrip/key rotation.
+
+**R6-F2 — wire contract aceita entradas inválidas e não possui limite de payload total**
+O C2-P exige nomes não vazios e limite de payload total. Hoje `scope_id=' '` passa pelo Pydantic e falha depois em `ProviderScopeProfile`, produzindo **500**; cookie com `name='   '` é aceito e a lease retorna **200**; e 64 cookies de 4096 caracteres cada produzem payload canônico de **264838 bytes** sem qualquer limite total.
+
+**Reprodução independente:**
+- `WHITESPACE_SCOPE_STATUS 500 Internal Server Error`;
+- `WHITESPACE_COOKIE_STATUS 200`;
+- `LARGE_PAYLOAD_ACCEPTED_BYTES 264838`.
+
+**Critério de aceite R6-F2:**
+- validar/normalizar `scope_id` na camada de request para que whitespace-only seja 422, nunca 500;
+- rejeitar cookie name vazio/whitespace-only antes de crypto; preservar secret redaction;
+- definir um limite total explícito e testável para o payload SessionLease, além dos limites por campo/quantidade;
+- excesso de payload deve falhar como 422 (ou erro de contrato equivalente documentado), sem fingerprint/encrypt/persistência e sem eco de cookie;
+- incluir testes de fronteira imediatamente abaixo/no/acima do limite.
+
+**R6-F3 — Base64URL malformado pode ser aceito pelo decoder criptográfico**
+`_b64decode()` usa `urlsafe_b64decode()` sem validação estrita. Caracteres fora do alfabeto podem ser ignorados. Em probe independente, um nonce válido prefixado/sufixado por `!` ou newline continuou decriptando o payload com sucesso, contrariando o contrato aprovado de `malformed nonce/ciphertext/tag => fail-closed`.
+
+**Reprodução independente:** nonce com `!`/newline extra resultou em `ACCEPTED` e devolveu o plaintext; o conteúdo binário subjacente foi silenciosamente aceito pelo decoder permissivo.
+
+**Critério de aceite R6-F3:**
+- usar decodificação Base64URL estrita/canônica, rejeitando caracteres fora do alfabeto, whitespace e encoding não-canônico;
+- continuar aceitando o formato URL-safe sem padding escolhido pelo encoder;
+- malformed nonce/ciphertext e também keys/config Base64URL inválidos devem falhar fechado;
+- adicionar RED específico para `!`, newline e outras formas não-canônicas, sem vazar material criptográfico.
+
+**R6-F4 — semântica de conflito de publisher diverge entre Memory e PostgreSQL/Supabase**
+`MemoryDeviceRepository.ensure_session_publisher()` retorna `None` quando o mesmo `publisher_id` já está revogado (e também em colisões de owner/realm), enquanto a migration PostgreSQL levanta `session_publisher_conflict`, mapeado para `SessionPublisherConflictError`/HTTP 409. Portanto, o backend de teste e o backend persistente não implementam o mesmo contrato.
+
+**Reprodução independente:** create publisher → revoke → ensure do mesmo `publisher_id` em Memory retornou `None`; a função SQL `ensure_session_publisher()` explicitamente levanta `session_publisher_conflict` para esse estado.
+
+**Critério de aceite R6-F4:**
+- definir uma única semântica para colisão/reuso de `publisher_id` e torná-la idêntica em Memory/Postgres/Supabase;
+- para o contrato atual já documentado como 409 e implementado no SQL, alinhar Memory com `SessionPublisherConflictError` nos mesmos casos, salvo se todos os backends/API forem conscientemente alterados para outra política;
+- adicionar testes de paridade para publisher revogado e colisão de owner/realm.
+
+**Pontos aceitos em R6**
+- migration 020: tabelas, RLS, backend-only RPCs, epoch e concorrência principal estão coerentes com o C2-P, condicionados às correções acima;
+- idempotência same-generation/same-HMAC e conflito different-HMAC: aceita nos gates atuais;
+- AES-256-GCM/keyring/nonce aleatório e swap de lease/realm/expiry/key version: aceitos, exceto R6-F1/F3;
+- provider-scope + operação administrativa backend: aceitos;
+- endpoints Desktop/Cloud, CloudBinding auth, `Cache-Control: no-store`, ausência de rota Mobile/PWA e redaction principal: aceitos;
+- nenhuma implementação C2-B, Desktop publisher runtime, collector Cloud, snapshot, `source=cloud`, failover/failback ou WebPilot real foi antecipada.
+
+**Próximo passo autorizado:** Executor corrige somente R6-F1..F4 com TDD no mesmo working tree, sem commit/stage. Repetir testes direcionados, crypto/config/API, Supabase MockTransport, PostgreSQL real sem skip, `make test-all`, `make migrate-list`, security/redaction e `git diff --check`; atualizar este handoff e parar para **R6.1 independente**. Não iniciar C2-B, não criar branch Desktop, não push/deploy/prod-migrate e não tocar no Shadow.
+
+
+### Correções R6-F1..F4 — Executor (2026-10-08)
+
+**Status:** **PRONTO PARA R6.1 INDEPENDENTE**. Somente R6-F1..F4 foram corrigidos no mesmo working tree C2-A; nenhum commit/stage foi criado e C2-B permanece bloqueado.
+
+**Base/estado**
+- HEAD/base permanece `7c9f19516673c80860b144b9f421aaea0810e423`;
+- branch `feat/spec027-cloud`;
+- nenhum commit C2-A;
+- staged files: **0**.
+
+**R6-F1 — `payload_schema_version` autenticado pela AAD — RED→GREEN**
+- RED: o teste adulterou somente `EncryptedSessionLeaseRecord.payload_schema_version` de 1 para 99 e `SessionBrokerService.consume()` continuou decriptando; `PersistenceUnavailableApiError` esperado não ocorreu.
+- GREEN:
+  - `SessionCryptoKeyring.encrypt()` e `decrypt()` recebem `payload_schema_version` explicitamente;
+  - `_aad()` deixou de hardcodear schema 1 e usa a versão fornecida;
+  - publish usa uma única `SESSION_PAYLOAD_SCHEMA_VERSION=1` tanto para encrypt quanto para persistência;
+  - consume usa **`record.payload_schema_version` persistido** no decrypt.
+- alterar somente a coluna/record de schema agora invalida a tag GCM e falha fechado como 503 sanitizado.
+- regressões de roundtrip, swap/tamper e key rotation permanecem verdes.
+
+**R6-F2 — wire contract e limite total — RED→GREEN**
+- RED 1: `scope_id="   "` retornou **500**.
+- RED 2: cookie `name="   "` era aceito.
+- RED 3: payload com 64 cookies × 4096 chars retornou **200** e persistiu.
+- RED 4: `limit+1` no payload canônico não gerava erro.
+- RED 5: probe do service mostrou `session_payload_fingerprint()` sendo chamado antes de qualquer limite.
+- GREEN:
+  - `ProviderScopeRequest.scope_id` é strip/validado no request model; whitespace-only → 422;
+  - `SessionCookieIn.name` é strip/validado no request model; vazio/whitespace-only → 422;
+  - limite total explícito: **262.144 bytes (256 KiB)** sobre a representação canônica UTF-8 exata;
+  - `limit-1` e `limit` são aceitos; `limit+1` é rejeitado;
+  - `canonical_session_payload()` rejeita excesso antes de retornar bytes ao fingerprint;
+  - service converte excesso em `422 session_lease_payload_too_large`;
+  - probe confirma **zero chamada ao fingerprint** e nenhuma persistência quando excede o limite; encrypt fica inalcançável pela mesma ordem;
+  - responses 422 não ecoam cookie secret.
+
+**R6-F3 — Base64URL estrito/canônico — RED→GREEN**
+- RED adversarial reproduziu aceitações de `!`, newline, padding `=` e pad bits não-canônicos em nonce/ciphertext e material de configuração.
+- GREEN:
+  - somente alfabeto `A-Z a-z 0-9 _ -`;
+  - input vazio, whitespace/newline, caracteres externos e `=` são rejeitados;
+  - comprimento impossível (`len % 4 == 1`) é rejeitado;
+  - decode usa `base64.b64decode(..., altchars=b"-_", validate=True)`;
+  - após decode, re-encode sem padding precisa ser **idêntico** ao input, rejeitando encoding não-canônico/pad bits;
+  - formato produzido pelo encoder continua URL-safe **sem padding**;
+  - fingerprint key não é mais sanitizada com `.strip()`, portanto newline/whitespace não é silenciosamente removido.
+- testes strict Base64URL: **14/14 passed** para nonce/ciphertext + fingerprint/keyring config.
+
+**R6-F4 — paridade de `publisher_id` — RED→GREEN**
+- RED Memory:
+  - create → revoke → ensure do mesmo `publisher_id` não levantava conflito;
+  - owner/realm collision retornava `None`.
+- GREEN:
+  - `MemoryDeviceRepository.ensure_session_publisher()` agora levanta `SessionPublisherConflictError` para publisher revogado e para colisão de device/realm, igual ao SQL/Supabase;
+  - publisher ativo do mesmo owner/realm continua idempotente/atualizável conforme contrato existente.
+- cobertura de paridade adicionada:
+  - Memory: revoked + owner/realm collision;
+  - PostgreSQL real: revoked + owner/realm collision;
+  - Supabase MockTransport: `session_publisher_conflict` → `SessionPublisherConflictError`;
+  - API/Memory: reuso após revoke → **409 `session_publisher_conflict`**.
+
+**Gates finais repetidos**
+- C2-A direcionados locais: **61/61 passed**.
+- crypto/config/API: **40/40 passed**.
+- Supabase MockTransport: **8/8 passed**.
+- PostgreSQL 16 real: **7/7 passed, 0 skipped, 0 failed**.
+- `make test-all`: **643 passed / 0 skipped / 0 failed**.
+- `make migrate-list`: migrations **001→020**, incluindo `020_webpilot_session_broker.sql`.
+- `git diff --check`: PASS.
+- arquivos novos/untracked também validados com `git diff --no-index --check`: zero diagnósticos.
+
+**Security/redaction**
+- scan de produção não encontrou os secrets sintéticos usados pelos testes;
+- scan de escopo não encontrou `source=cloud`, failover/failback, Selenium/WebDriver ou publicação de snapshot nos arquivos C2-A;
+- `Settings.__repr__` não expõe fingerprint key nem keyring;
+- `SessionLeaseConsumeResponse.__repr__` não expõe plaintext do cookie;
+- probes de payload oversized/422 não ecoam secrets;
+- malformed crypto/config continua fail-closed e sanitizado.
+
+**Fronteiras preservadas**
+- migration 020 continua apenas local/efêmera; nenhuma aplicação em produção;
+- C2-B não iniciado;
+- branch Desktop `feat/spec027-cloud`: não criada;
+- `cloud/`: sem alterações;
+- nenhum push/deploy/prod-migrate;
+- nenhum WebPilot real no Cloud;
+- nenhum snapshot/`source=cloud`;
+- nenhum failover/failback;
+- Shadow não foi manipulado; permaneceu ativo nos PIDs observados **14865/14873**.
+
+**PARECER SOLICITADO:** **R6.1 independente** sobre R6-F1..F4 e o working tree C2-A corrigido. Não iniciar C2-B.
+
+### R6.1 independente — encerramento do C2-A (2026-10-08)
+
+**Resultado:** APROVADO. R6-F1..F4 encerrados; C2-A aprovado para commit consolidado único nesta revisão.
+
+**Evidência independente**
+- HEAD/base de revisão permaneceu `7c9f19516673c80860b144b9f421aaea0810e423`; nenhum commit/stage C2-A existia antes da aprovação.
+- probes independentes reproduzindo exatamente R6-F1..F4 agora falham/retornam conforme contrato esperado.
+- C2-A direcionados completos: **61/61 passed**.
+- conjunto focal crypto/config/memory/service/API/Supabase: **58/58 passed**.
+- PostgreSQL 16 real `test_session_broker_postgres.py`: **7/7 passed / 0 skipped**.
+- `make test-all` independente: **643 passed / 0 skipped / 0 failed**.
+- `make migrate-list`: migrations **001→020**.
+- `git diff --check` e checks dos arquivos untracked: PASS.
+- auditoria de escopo: nenhuma alteração em `cloud/` ou frontend, nenhuma branch Desktop SPEC027, nenhum `source=cloud`, failover/failback, Selenium/WebDriver ou snapshot Cloud antecipado.
+- Shadow permaneceu ativo nos PIDs observados 14865/14873.
+
+**R6-F1 — ENCERRADO**
+- `payload_schema_version` agora é argumento explícito de encrypt/decrypt e participa da AAD;
+- publish usa `SESSION_PAYLOAD_SCHEMA_VERSION=1` para AAD e persistência;
+- consume usa `record.payload_schema_version` persistido;
+- adulterar somente a versão persistida agora produz falha GCM e `PersistenceUnavailableApiError` fail-closed.
+
+**R6-F2 — ENCERRADO**
+- `scope_id` e cookie name whitespace-only são rejeitados como 422 na camada de request;
+- payload canônico possui limite total explícito de **262144 bytes (256 KiB)**;
+- payload acima do limite é rejeitado antes de fingerprint/encrypt/persistência com `session_lease_payload_too_large`, sem eco de secret;
+- testes de fronteira abaixo/no/acima do limite estão presentes.
+
+**R6-F3 — ENCERRADO**
+- Base64URL agora exige alfabeto URL-safe sem padding, tamanho possível e roundtrip canônico;
+- `!`, newline, whitespace, `=` e pad bits/representações não-canônicas são rejeitados;
+- nonce/ciphertext e material de configuração usam o mesmo decoder estrito; malformed input falha fechado.
+
+**R6-F4 — ENCERRADO**
+- Memory agora levanta `SessionPublisherConflictError` para publisher revogado e colisão de owner/realm, alinhado a PostgreSQL/Supabase e HTTP 409;
+- paridade foi coberta em Memory, PostgreSQL real, Supabase MockTransport e API.
+
+**Parecer R6.1**
+- C2-A: **APROVADO**.
+- R6-F1..F4: **ENCERRADOS**.
+- conforme autorização do usuário para reduzir commits, todo o ciclo C2-A (implementação + correções R6 + testes + documentação) deve entrar em **um único commit consolidado** feito após esta aprovação.
+- C2-B: **LIBERADO somente após** confirmação desse commit e working tree limpo.
+- C2-B deve permanecer o checkpoint seguinte já aprovado pelo plano C2-P; C2-C continua bloqueado até R7.
+- push/deploy/prod-migrate, migration 020 em produção, WebPilot real no Cloud, snapshot/`source=cloud`, failover/failback e cutover continuam proibidos.
+
+**Próximo passo após o commit consolidado:** executar somente C2-B conforme plano, incluindo integração publisher Desktop + wheel headless canônico/`--no-deps` e standby Cloud sem source efetivo; ao concluir, deixar o próximo ciclo sem commit/stage e parar para **R7 independente**.

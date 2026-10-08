@@ -216,3 +216,48 @@ class CloudBindingNotFoundError(ApiError):
             code="cloud_binding_not_found",
             message="CloudBinding não encontrado.",
         )
+
+
+class SessionPublisherConflictApiError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=409,
+            code="session_publisher_conflict",
+            message="Publisher de sessão conflita com o estado atual.",
+        )
+
+
+class SessionLeaseGenerationConflictApiError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=409,
+            code="session_lease_generation_conflict",
+            message="Generation reutilizada com conteúdo diferente.",
+        )
+
+
+class SessionLeaseReplayApiError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=409,
+            code="session_lease_replay",
+            message="Generation de sessão rejeitada por anti-replay.",
+        )
+
+
+class SessionLeaseNotAvailableError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=404,
+            code="session_lease_not_available",
+            message="SessionLease não disponível.",
+        )
+
+
+class SessionLeasePayloadTooLargeApiError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=422,
+            code="session_lease_payload_too_large",
+            message="SessionLease excede o limite total permitido.",
+        )

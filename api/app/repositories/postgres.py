@@ -44,6 +44,18 @@ from app.repositories.events import (
     PushPreferences,
     StoredManeuverEvent,
 )
+from app.repositories.session_broker import (
+    EncryptedSessionLeaseRecord,
+    ProviderScopeProfile,
+    RequiredProviderScopeRecord,
+    ScopeStatus,
+    SessionLeaseGenerationConflictError,
+    SessionLeaseReplayError,
+    SessionLeaseStatus,
+    SessionPublisherConflictError,
+    SessionPublisherRecord,
+    SessionPublisherStatus,
+)
 from app.repositories.tracking import (
     AcceptTrackingEventResult,
     AcceptTrackingEventStatus,
@@ -437,6 +449,378 @@ class PostgresDeviceRepository:
                 created_at=cls._aware_datetime(row[6]),
                 updated_at=cls._aware_datetime(row[7]),
                 revoked_at=None if row[8] is None else cls._aware_datetime(row[8]),
+            )
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def set_required_provider_scope(
+        self,
+        realm_id: str,
+        profile: ProviderScopeProfile,
+    ) -> RequiredProviderScopeRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select realm_id, scope_id, schema_version,
+                           capabilities, updated_at
+                    from public.set_required_provider_scope(%s, %s, %s, %s)
+                    """,
+                    (
+                        realm_id,
+                        profile.scope_id,
+                        profile.schema_version,
+                        list(profile.capabilities),
+                    ),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._required_provider_scope_from_row(row)
+
+    def get_required_provider_scope(
+        self,
+        realm_id: str,
+    ) -> RequiredProviderScopeRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select realm_id, scope_id, schema_version,
+                           capabilities, updated_at
+                    from public.webpilot_provider_scope_requirements
+                    where realm_id = %s
+                    """,
+                    (realm_id,),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._required_provider_scope_from_row(row)
+
+    def ensure_session_publisher(
+        self,
+        *,
+        device_id: str,
+        realm_id: str,
+        publisher_id: UUID,
+        provider_scope: ProviderScopeProfile,
+    ) -> SessionPublisherRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select publisher_id, realm_id, device_id,
+                           provider_scope_id,
+                           provider_scope_schema_version,
+                           provider_scope_capabilities,
+                           scope_status, scope_verified_at,
+                           last_generation, status,
+                           created_at, updated_at, revoked_at
+                    from public.ensure_session_publisher(
+                        %s, %s, %s, %s, %s, %s
+                    )
+                    """,
+                    (
+                        device_id,
+                        realm_id,
+                        publisher_id,
+                        provider_scope.scope_id,
+                        provider_scope.schema_version,
+                        list(provider_scope.capabilities),
+                    ),
+                ).fetchone()
+        except psycopg.errors.RaiseException as exc:
+            if "session_publisher_conflict" in str(exc):
+                raise SessionPublisherConflictError() from exc
+            raise PersistenceUnavailableError() from exc
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._session_publisher_from_row(row)
+
+    def get_session_publisher(
+        self,
+        publisher_id: UUID,
+    ) -> SessionPublisherRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select publisher_id, realm_id, device_id,
+                           provider_scope_id,
+                           provider_scope_schema_version,
+                           provider_scope_capabilities,
+                           scope_status, scope_verified_at,
+                           last_generation, status,
+                           created_at, updated_at, revoked_at
+                    from public.webpilot_session_publishers
+                    where publisher_id = %s
+                    """,
+                    (publisher_id,),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._session_publisher_from_row(row)
+
+    def verify_session_publisher_scope(
+        self,
+        publisher_id: UUID,
+    ) -> SessionPublisherRecord | None:
+        return self._session_publisher_rpc(
+            "verify_session_publisher_scope",
+            (publisher_id,),
+        )
+
+    def revoke_session_publisher(
+        self,
+        publisher_id: UUID,
+    ) -> SessionPublisherRecord | None:
+        return self._session_publisher_rpc(
+            "revoke_session_publisher",
+            (publisher_id,),
+        )
+
+    def _session_publisher_rpc(
+        self,
+        name: str,
+        params: tuple[Any, ...],
+    ) -> SessionPublisherRecord | None:
+        placeholders = ", ".join(["%s"] * len(params))
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    f"""
+                    select publisher_id, realm_id, device_id,
+                           provider_scope_id,
+                           provider_scope_schema_version,
+                           provider_scope_capabilities,
+                           scope_status, scope_verified_at,
+                           last_generation, status,
+                           created_at, updated_at, revoked_at
+                    from public.{name}({placeholders})
+                    """,
+                    params,
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._session_publisher_from_row(row)
+
+    def accept_session_lease_atomic(
+        self,
+        *,
+        device_id: str,
+        realm_id: str,
+        publisher_id: UUID,
+        lease_id: UUID,
+        local_generation: int,
+        payload_fingerprint: str,
+        ciphertext: str,
+        nonce: str,
+        key_version: int,
+        payload_schema_version: int,
+        expires_at: datetime | None,
+    ) -> EncryptedSessionLeaseRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select lease_id, realm_id, publisher_id,
+                           local_generation, realm_epoch,
+                           payload_fingerprint, ciphertext, nonce,
+                           key_version, payload_schema_version,
+                           received_at, expires_at, status,
+                           revoked_at, invalidated_at
+                    from public.accept_session_lease(
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    )
+                    """,
+                    (
+                        device_id,
+                        realm_id,
+                        publisher_id,
+                        lease_id,
+                        local_generation,
+                        payload_fingerprint,
+                        ciphertext,
+                        nonce,
+                        key_version,
+                        payload_schema_version,
+                        expires_at,
+                    ),
+                ).fetchone()
+        except psycopg.errors.RaiseException as exc:
+            message = str(exc)
+            if "session_lease_generation_conflict" in message:
+                raise SessionLeaseGenerationConflictError() from exc
+            if "session_lease_replay" in message:
+                raise SessionLeaseReplayError() from exc
+            raise PersistenceUnavailableError() from exc
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._session_lease_from_row(row)
+
+    def get_session_lease(
+        self,
+        lease_id: UUID,
+    ) -> EncryptedSessionLeaseRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select lease_id, realm_id, publisher_id,
+                           local_generation, realm_epoch,
+                           payload_fingerprint, ciphertext, nonce,
+                           key_version, payload_schema_version,
+                           received_at, expires_at, status,
+                           revoked_at, invalidated_at
+                    from public.webpilot_session_leases
+                    where lease_id = %s
+                    """,
+                    (lease_id,),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._session_lease_from_row(row)
+
+    def get_current_session_lease(
+        self,
+        realm_id: str,
+        *,
+        now: datetime,
+    ) -> EncryptedSessionLeaseRecord | None:
+        return self._session_lease_rpc(
+            "get_current_session_lease",
+            (realm_id, now),
+        )
+
+    def revoke_session_lease(
+        self,
+        *,
+        device_id: str,
+        realm_id: str,
+        lease_id: UUID,
+    ) -> EncryptedSessionLeaseRecord | None:
+        return self._session_lease_rpc(
+            "revoke_session_lease",
+            (device_id, realm_id, lease_id),
+        )
+
+    def invalidate_session_lease(
+        self,
+        *,
+        realm_id: str,
+        lease_id: UUID,
+        realm_epoch: int,
+    ) -> EncryptedSessionLeaseRecord | None:
+        return self._session_lease_rpc(
+            "invalidate_session_lease",
+            (realm_id, lease_id, realm_epoch),
+        )
+
+    def _session_lease_rpc(
+        self,
+        name: str,
+        params: tuple[Any, ...],
+    ) -> EncryptedSessionLeaseRecord | None:
+        placeholders = ", ".join(["%s"] * len(params))
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    f"""
+                    select lease_id, realm_id, publisher_id,
+                           local_generation, realm_epoch,
+                           payload_fingerprint, ciphertext, nonce,
+                           key_version, payload_schema_version,
+                           received_at, expires_at, status,
+                           revoked_at, invalidated_at
+                    from public.{name}({placeholders})
+                    """,
+                    params,
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._session_lease_from_row(row)
+
+    @classmethod
+    def _required_provider_scope_from_row(
+        cls,
+        row: Any,
+    ) -> RequiredProviderScopeRecord | None:
+        if row is None:
+            return None
+        try:
+            return RequiredProviderScopeRecord(
+                realm_id=str(row[0]),
+                profile=ProviderScopeProfile(
+                    scope_id=str(row[1]),
+                    schema_version=int(row[2]),
+                    capabilities=tuple(str(item) for item in row[3]),
+                ),
+                updated_at=cls._aware_datetime(row[4]),
+            )
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    @classmethod
+    def _session_publisher_from_row(
+        cls,
+        row: Any,
+    ) -> SessionPublisherRecord | None:
+        if row is None:
+            return None
+        try:
+            return SessionPublisherRecord(
+                publisher_id=UUID(str(row[0])),
+                realm_id=str(row[1]),
+                device_id=str(row[2]),
+                provider_scope=ProviderScopeProfile(
+                    scope_id=str(row[3]),
+                    schema_version=int(row[4]),
+                    capabilities=tuple(str(item) for item in row[5]),
+                ),
+                scope_status=ScopeStatus(str(row[6])),
+                scope_verified_at=(
+                    None if row[7] is None else cls._aware_datetime(row[7])
+                ),
+                last_generation=int(row[8]),
+                status=SessionPublisherStatus(str(row[9])),
+                created_at=cls._aware_datetime(row[10]),
+                updated_at=cls._aware_datetime(row[11]),
+                revoked_at=(
+                    None if row[12] is None else cls._aware_datetime(row[12])
+                ),
+            )
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    @classmethod
+    def _session_lease_from_row(
+        cls,
+        row: Any,
+    ) -> EncryptedSessionLeaseRecord | None:
+        if row is None:
+            return None
+        try:
+            return EncryptedSessionLeaseRecord(
+                lease_id=UUID(str(row[0])),
+                realm_id=str(row[1]),
+                publisher_id=UUID(str(row[2])),
+                local_generation=int(row[3]),
+                realm_epoch=int(row[4]),
+                payload_fingerprint=str(row[5]),
+                ciphertext=str(row[6]),
+                nonce=str(row[7]),
+                key_version=int(row[8]),
+                payload_schema_version=int(row[9]),
+                received_at=cls._aware_datetime(row[10]),
+                expires_at=(
+                    None if row[11] is None else cls._aware_datetime(row[11])
+                ),
+                status=SessionLeaseStatus(str(row[12])),
+                revoked_at=(
+                    None if row[13] is None else cls._aware_datetime(row[13])
+                ),
+                invalidated_at=(
+                    None if row[14] is None else cls._aware_datetime(row[14])
+                ),
             )
         except (TypeError, ValueError) as exc:
             raise PersistenceUnavailableError() from exc

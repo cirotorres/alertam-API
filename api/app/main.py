@@ -19,6 +19,10 @@ from app.core.logging import (
 from app.repositories.events import AlertaRepository, StoredManeuverEvent
 from app.repositories.tracking import StoredVesselTrackingEvent
 from app.repositories.factory import create_devices_repository
+from app.security.session_crypto import (
+    SessionCryptoKeyring,
+    load_session_broker_security,
+)
 from app.services.anchorage_entry import AnchorageEntryEvent
 from app.services.push_dispatch_service import (
     AnchoragePushDispatchService,
@@ -49,6 +53,8 @@ def create_app(
         [AnchorageEntryEvent], None
     ] | None = None,
     web_push_gateway: PushGateway | None = None,
+    session_broker_crypto: SessionCryptoKeyring | None = None,
+    session_broker_fingerprint_key: bytes | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings()
     resolved_stale_after = (
@@ -58,6 +64,25 @@ def create_app(
     )
 
     configure_logging(resolved_settings.log_level)
+
+    resolved_session_crypto = session_broker_crypto
+    resolved_session_fingerprint = session_broker_fingerprint_key
+    if (
+        resolved_session_crypto is None
+        and resolved_session_fingerprint is None
+    ):
+        (
+            resolved_session_crypto,
+            resolved_session_fingerprint,
+        ) = load_session_broker_security(
+            fingerprint_key_encoded=(
+                resolved_settings.session_broker_fingerprint_key
+            ),
+            keyring_json=resolved_settings.session_broker_keyring,
+            active_key_version=(
+                resolved_settings.session_broker_active_key_version
+            ),
+        )
 
     application = FastAPI(
         title="AlertaM Mobile API",
@@ -129,6 +154,8 @@ def create_app(
             vessel_photo_service=resolved_photo_service,
             web_push_enabled=resolved_settings.web_push_enabled,
             vapid_public_key=resolved_settings.vapid_public_key,
+            session_broker_crypto=resolved_session_crypto,
+            session_broker_fingerprint_key=resolved_session_fingerprint,
             clock=clock,
             dispatch_event=resolved_dispatch_event,
             dispatch_tracking_event=resolved_dispatch_tracking_event,

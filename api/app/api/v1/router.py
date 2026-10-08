@@ -18,6 +18,7 @@ from app.api.v1.mobile_pairing_codes import create_mobile_pairing_code_router
 from app.api.v1.mobile_session import create_mobile_session_router
 from app.api.v1.push import create_push_router
 from app.api.v1.snapshots import create_snapshot_router
+from app.api.v1.session_broker import create_session_broker_router
 from app.api.v1.vessel_photos import create_vessel_photo_router
 from app.api.v1.vessel_tracking_events import create_vessel_tracking_event_router
 from app.api.v1.tracked_vessels import create_tracked_vessels_router
@@ -38,6 +39,8 @@ def create_v1_router(
     vessel_photo_service: VesselPhotoLookup,
     web_push_enabled: bool,
     vapid_public_key: str,
+    session_broker_crypto: SessionCryptoKeyring | None = None,
+    session_broker_fingerprint_key: bytes | None = None,
     clock: Callable[[], datetime] | None = None,
     dispatch_event: Callable[[StoredManeuverEvent], None] | None = None,
     dispatch_tracking_event: Callable[
@@ -52,6 +55,14 @@ def create_v1_router(
     router.include_router(create_health_router())
     router.include_router(create_device_status_router(repository))
     router.include_router(create_cloud_binding_router(repository))
+    router.include_router(
+        create_session_broker_router(
+            repository,
+            crypto=session_broker_crypto,
+            fingerprint_key=session_broker_fingerprint_key,
+            clock=clock,
+        )
+    )
     router.include_router(
         create_maneuver_event_router(
             repository,

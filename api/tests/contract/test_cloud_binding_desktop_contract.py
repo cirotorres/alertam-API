@@ -74,12 +74,13 @@ def test_cloud_binding_openapi_is_desktop_scoped_and_credential_write_only():
         "usable",
     }
 
-    cloud_paths = {
+    desktop_cloud_paths = {
         path
         for path in schema["paths"]
-        if "cloud-binding" in path
+        if path.startswith("/api/v1/devices/")
+        and "cloud-binding" in path
     }
-    assert cloud_paths == {
+    assert desktop_cloud_paths == {
         "/api/v1/devices/{device_id}/cloud-binding",
         "/api/v1/devices/{device_id}/cloud-binding/rotate",
     }
