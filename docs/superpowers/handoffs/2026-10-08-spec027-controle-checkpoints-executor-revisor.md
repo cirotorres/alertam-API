@@ -1,9 +1,9 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** P0 APROVADO EM R0.2 — reconciliação Git autorizada; C1-A só após base reconciliada, regressões verdes e criação da `feat/spec027-cloud`
+**Status:** C1-A CONCLUÍDO — PRONTO PARA R1 INDEPENDENTE; C1-B permanece bloqueado
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
-**Base API/PWA de reconciliação:** não congelar SHA. Usar o **HEAD corrente de `feat/api-bootstrap` imediatamente antes do merge**, contendo `8eeeffc`, `6eab67b` e quaisquer commits documentais posteriores aprovados; registrar esse SHA e repetir `merge-base/merge-tree` nesse instante. **Base Desktop auditada:** `develop@abe386f`, com Plan 5 pendente em `9e5b5e1`. A futura `feat/spec027-cloud` só pode nascer após R0.2 e reconciliação aprovada.
+**Base reconciliada:** API/PWA `feat/api-bootstrap@23a78bebdf46062eef937966101246567cd963de`; Desktop `develop@9e5b5e1a33cb7d61db200866aea683a6334de922`. **Feature:** `feat/spec027-cloud`, criada a partir de `23a78be` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`. **C1-A code HEAD:** `36b3c9b96ecfe8e88b6471f57ce0564a9e87850f`; o commit documental deste checkpoint será seu sucessor local.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
 **Objetivo:** um protocolo auditável de entregas incrementais, com parada obrigatória após cada checkpoint, para SPEC 027 sem efeitos operacionais prematuros.
 
@@ -54,8 +54,8 @@
 | Ordem | Checkpoint | Entrega sob controle | Gate independente | Situação |
 |---|---|---|---|---|
 | 0 | P0 — Reconciliação e plano | Verificar estado cross-repo; preparar proposta de integração sem alterar produção; planejar C1 com tasks TDD e contratos | R0/R0.1/R0.2 aprovam base e plano antes de programar | **APROVADO EM R0.2** |
-| 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1 revisa identidade, constraints, isolamento e contrato | LIBERADO após reconciliação + regressões + branch feature |
-| 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2 revisa autorização, secrets e idempotência | BLOQUEADO |
+| 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1 revisa identidade, constraints, isolamento e contrato | **PRONTO PARA R1** |
+| 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2 revisa autorização, secrets e idempotência | **BLOQUEADO por R1** |
 | 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | BLOQUEADO |
 | 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | BLOQUEADO |
 | 5 | C2-P — Plano Auth Broker | Desenhar reuso do coletor validado, contrato SessionLease, epoch, segurança, standby | R5 (plano); **não** copiar parser/coletor | BLOQUEADO |
@@ -181,18 +181,76 @@ A SPEC 027 usa **uma branch longa de feature por repositório**, e não uma bran
 - `feat/spec027-cloud` inexistente nos dois repos.
 - Nenhuma suíte funcional foi rerodada no P0 porque o único diff produzido é documental/plano; regressões funcionais são gate da base reconciliada pós-R0 antes de criar a feature.
 
-**Pendências para depois de R0.2**
-- imediatamente antes da integração, registrar o HEAD corrente de `feat/api-bootstrap` e repetir `merge-base/merge-tree` contra `dc23003`;
-- executar as integrações aprovadas e registrar os novos SHAs reconciliados;
-- rodar regressões da base reconciliada;
-- criar `feat/spec027-cloud` somente então;
-- iniciar apenas C1-A.
+**Reconciliação pós-R0.2 — executada localmente**
+- **Desktop:** o checkout principal permaneceu em `feat/spec025-plan5-shadow-evidence-gate@9e5b5e1`. Em worktree temporário separado, `develop@abe386f` recebeu fast-forward `--ff-only` para **`9e5b5e1`**; o worktree temporário foi removido depois. Nenhum checkout/reset no diretório onde o AlertaM real roda.
+- **Shadow:** processos observados antes e depois da reconciliação/C1-A continuam ativos no checkout principal: PID 45750 (`uv run python -m alertam`) e PID 45758 (Python do `.venv` do Desktop). Não foram interrompidos.
+- **API/PWA — SHA real pré-merge:** `081aeca114e022800da28e470032c876f8152a48`.
+- Spike: `dc230037a4da22f5fc11ac4fedbaebc0c95c21f8`.
+- `git merge-base 081aeca dc23003` = `af5e81f4bb7c10ac7f0c07712f84f107c4a41aa4`.
+- `git merge-tree --write-tree 081aeca dc23003` = `19f3678a008ffd7e0f1b97c43d7b28ec895a3afa`, **PASS sem conflito**.
+- Integração local do spike concluída por merge commit **`23a78bebdf46062eef937966101246567cd963de`** em `feat/api-bootstrap`; nenhum push/deploy.
+- Limpeza: worktree/branch local do spike removidos após prova de ancestralidade; `docs/pre-plan4-gate-alignment@ecb7b37` removida como superseded já aprovado em R0/R0.2. Remoto não foi alterado.
+- Preservados integralmente: API SPEC029 com handoff modificado; Desktop updater com handoff modificado; worktrees HFI elm/oak com mudanças locais; `spec028-plan1-desktop`; branch/check-out Plan 5 do Shadow.
 
-**Confirmação de escopo P0:** nenhum merge, push, deploy, migration, branch de implementação, WebPilot Cloud, cookie/SessionLease, `source=cloud`, failover/failback ou cutover foi executado.
+**Regressões da base reconciliada — GREEN**
+- API `make test`: **472 passed / 34 skipped / 0 failed** (contagem extraída do progresso do pytest, pois o modo quiet não imprimiu resumo).
+- Cloud `make cloud-test`: **9 passed / 0 failed**.
+- Cloud `make cloud-smoke`: `/healthz=200`, `/readyz=200`, UID 10001, mounts vazios, restart healthy, filesystem diff vazio, logs sanitizados.
+- PWA `npm test -- --run`: **50/50 arquivos, 290/290 testes passed**.
+- Desktop `make check`: **1073 passed / 84 skipped / 0 failed**; `imports OK`.
+- Nenhuma regressão relevante encontrada; gate para criação da feature satisfeito.
 
-### C1-A / C1-B / C1-C / C1-D
+**Feature branch/worktree**
+- Criada uma única branch **`feat/spec027-cloud`** a partir de `feat/api-bootstrap@23a78be`.
+- Worktree: `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`.
+- Nenhuma branch separada C1-A/B/C/D foi criada.
 
-**Status:** BLOQUEADO até aprovação de R0.2; abrir seção específica em cada entrega.
+### C1-A — Domínio, interfaces e invariantes
+
+**Status:** PRONTO PARA R1 INDEPENDENTE.
+**Base:** `23a78bebdf46062eef937966101246567cd963de`.
+**C1-A code HEAD:** `36b3c9b96ecfe8e88b6471f57ce0564a9e87850f`.
+**Commit:** `36b3c9b feat(cloud): define binding and realm domain contracts`.
+
+**Arquivos**
+- criado `api/app/repositories/cloud_bindings.py`;
+- modificado `api/app/repositories/memory.py`;
+- criado `api/tests/unit/test_cloud_binding_contract.py`;
+- criado `api/tests/unit/test_cloud_binding_memory_repository.py`;
+- `api/app/repositories/events.py` permaneceu intocado: composição no protocolo agregado não foi necessária para o contrato C1-A e não foi antecipada.
+
+**TDD RED**
+1. Contrato: `test_cloud_binding_contract.py` falhou na coleta com `ModuleNotFoundError: app.repositories.cloud_bindings`, exatamente porque o módulo ainda não existia.
+2. MemoryRepository: primeiro RED mostrou ausência de `CloudBindingConflictError`; após adicionar apenas o erro tipado, novo RED apresentou **6 falhas** por ausência dos métodos de realm/binding no repository de memória.
+3. Hardening de invariantes ainda dentro de C1-A: novo RED apresentou **4 falhas** — três estados inválidos de `CloudBindingRecord` não levantavam erro e `revoke_cloud_binding` ainda mutava com device desabilitado.
+
+**GREEN**
+- contrato inicial: **4/4 passed**;
+- invariantes iniciais MemoryRepository: **6/6 passed**;
+- conjunto final de testes novos C1-A: **14/14 passed**;
+- regressões focadas existentes `test_memory_repository.py + test_devices_repository_contract.py`: **7/7 passed**;
+- suíte API completa após a última correção: **486 passed / 34 skipped / 0 failed**;
+- `git diff --check`: limpo antes do commit funcional.
+
+**Contrato/invariantes entregues**
+- `WebPilotAuthRealmRecord`, `RealmDeviceAuthorizationRecord`, `CloudBindingRecord`, `CloudBindingStatus` e `CloudBindingsRepository`;
+- `credential_hash` excluído de `repr`;
+- `credential_version >= 1` e coerência `status ↔ revoked_at` validadas no record;
+- autorização realm↔device em memória;
+- no máximo um binding ativo por device, com conflito tipado para segunda configuração diferente;
+- ensure/rotate/revoke idempotentes conforme o escopo C1-A, histórico preservado após revoke e rebind;
+- create/rotate/revoke fail-closed quando a autoridade corrente do device/realm/membership não está válida;
+- operações isoladas por `device_id`;
+- nenhum SessionLease, cookie, `source=cloud`, WebPilot real, snapshot Cloud ou failover introduzido.
+
+**Fora do escopo / pendências**
+- C1-B **não iniciado**.
+- Migration 019 **não criada e não aplicada**.
+- Nenhum Postgres/Supabase, endpoint, serviço de credencial, admin script ou runtime Cloud operacional foi implementado.
+- Push/deploy continuam inexistentes.
+- Próximo ato permitido: **R1 independente sobre C1-A**. Nenhuma etapa C1-B pode começar antes do parecer.
+
+**PARECER SOLICITADO:** **R1 independente** — revisar `23a78be..36b3c9b` e este registro.
 
 ### C2-P / C2 / C3-P / C3 / C4 / C5
 
