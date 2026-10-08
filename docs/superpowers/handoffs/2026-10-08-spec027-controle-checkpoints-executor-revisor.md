@@ -1,7 +1,7 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** C1-D APROVADO EM R4 — C1 tecnicamente encerrado; commit exato do C1-D autorizado; C2-P liberado somente após esse commit e working tree limpo
+**Status:** C1 FINAL COMMITADO — `61342b2ac47ffa48bfe90787b8aa2afb4bb4cda8`; C2-P **APROVADO EM R5.1** — commit documental exato autorizado; C2-A liberado somente após esse commit e working tree limpo
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
 **Base reconciliada:** API/PWA `feat/api-bootstrap@23a78bebdf46062eef937966101246567cd963de`; Desktop `develop@9e5b5e1a33cb7d61db200866aea683a6334de922`. **Feature:** `feat/spec027-cloud`, criada a partir de `23a78be` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`. **C1-A functional HEAD após correções R1:** `17afb4e19e21ce93e8eb1b8b0c8bfe47ebcf3364`; o commit documental deste registro será seu sucessor local.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
@@ -16,7 +16,8 @@
 5. specs/025-webpilot-http-observed-weather-shadow-migration.md e specs/030-device-operational-gate.md, **se presente**; se não existir nesse repo, localizar fonte canônica antes de projetar.
 6. docs/superpowers/strategy/2026-10-02-alertam-cloud-evolution-roadmap.md.
 7. docs/superpowers/plans/2026-10-06-pre-spec027-cloud-infra-spike.md e handoff correspondente.
-8. `docs/superpowers/plans/2026-10-08-spec027-c1-binding-realm-authority.md` — criado no P0, corrigido por R0-F1..F5 e R0.1-F1/F2; execução depende de aprovação R0.2.
+8. `docs/superpowers/plans/2026-10-08-spec027-c1-binding-realm-authority.md` — plano executado e C1 tecnicamente encerrado em R4.
+9. `docs/superpowers/plans/2026-10-08-spec027-c2-auth-broker-session-lease.md` — C2-P corrigido após R5-F1..F4; execução bloqueada até R5.1.
 
 ## 2. Estado de entrada verificado (2026-10-08)
 
@@ -59,9 +60,9 @@
 | 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1/R1.1 revisam identidade, constraints, isolamento e contrato | **APROVADO EM R1.1** |
 | 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2/R2.1 revisam autorização, secrets e idempotência | **APROVADO EM R2.1 — commit a4e1af85872308a907afb85d53f8cebac3dae6b5** |
 | 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | **APROVADO EM R3 — commit 25485bba0143fd0c1659a88df89743db629951c2** |
-| 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | **APROVADO EM R4 — AGUARDA COMMIT** |
-| 5 | C2-P — Plano Auth Broker | Desenhar reuso do coletor validado, contrato SessionLease, epoch, segurança, standby | R5 (plano); **não** copiar parser/coletor | **LIBERADO após commit C1-D + working tree limpo** |
-| 6 | C2 — Execução em checkpoints próprios | Broker federado, anti-replay e core HTTP em standby headless sem source efetivo | Revisões por subtask e gate sandbox | BLOQUEADO |
+| 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | **APROVADO EM R4 — commit final C1 `61342b2ac47ffa48bfe90787b8aa2afb4bb4cda8`** |
+| 5 | C2-P — Plano Auth Broker | Desenhar reuso do coletor validado, contrato SessionLease, epoch, segurança, standby | R5/R5.1 (plano); **não** copiar parser/coletor | **APROVADO EM R5.1 — AGUARDA COMMIT** |
+| 6 | C2 — Execução em checkpoints próprios | Broker federado, anti-replay e core HTTP em standby headless sem source efetivo | R6/R7/R8; commit somente após cada aprovação | **C2-A LIBERADO após commit C2-P + working tree limpo** |
 | 7 | C3-P / C3 — Autoridade e snapshots | Plano aprovado; lease/fencing, hysteresis, failover/failback, anti-split-brain; primeira versão só snapshots | Revisões por subtask, gate operacional explícito | BLOQUEADO |
 | 8 | C4 — Observabilidade | Status, logs sanitizados, smoke prolongado, degradação e reconciliação | Revisão operacional humana | BLOQUEADO |
 | 9 | C5 — Eventos/Push | Plano próprio de idempotência cross-source, sem duplicação | **Somente se autorizado separadamente** | FORA DA LIBERAÇÃO ATUAL |
@@ -1112,3 +1113,231 @@ Resultado observado:
 - Não fazer merge da feature, push, deploy, migration produção, WebPilot real no Cloud, SessionLease real, `source=cloud`, failover/failback ou cutover por implicação desta aprovação.
 
 **Próximo passo autorizado:** Executor deve (1) fazer um único commit local do C1-D exatamente aprovado; (2) confirmar working tree limpo e registrar SHA final do C1; (3) preparar **somente C2-P — plano executável do Auth Broker/SessionLease**, sem implementar C2; (4) desenhar reuso do coletor HTTP já validado, contrato SessionLease, publisher identity/local generation, `realm_epoch`, anti-replay, expiração/revogação, standby headless e testes/gates; (5) estruturar C2 em poucos checkpoints maiores onde seguro; (6) atualizar o handoff e parar para **R5 independente**, sem commit do C2-P até aprovação. C2 funcional não começa antes de R5.
+
+### C1 final + C2-P — Executor (2026-10-08)
+
+**C1 final**
+- R4 aprovou o C1-D exatamente como revisado.
+- commit local único do C1-D: **`61342b2ac47ffa48bfe90787b8aa2afb4bb4cda8`** — `test(cloud): finalize c1 desktop contract and closure`.
+- `git status` imediatamente após o commit: **limpo**.
+- esse SHA é o encerramento técnico local do C1 e a base documental do C2-P.
+- nenhum merge/push/deploy/prod-migrate foi executado.
+
+**C2-P preparado**
+- plano: `docs/superpowers/plans/2026-10-08-spec027-c2-auth-broker-session-lease.md`;
+- nenhum código C2 foi implementado;
+- nenhum arquivo staged;
+- plano organizado em **3 checkpoints maiores**, conforme orientação R4:
+  1. **C2-A → R6:** broker/persistência/crypto/anti-replay/endpoints;
+  2. **C2-B → R7:** publisher Desktop + reuso do collector + Cloud standby;
+  3. **C2-C → R8:** multi-provider, sandbox sintético, restart/observabilidade e fechamento.
+
+**Decisões centrais do plano**
+- broker autoritativo na API/Postgres;
+- publisher Desktop = `realm_id + device_id + publisher_id`;
+- `local_generation` monotônica somente dentro do mesmo `publisher_id`;
+- perda do estado local exige rotação explícita do publisher, não rollback de generation;
+- `realm_epoch` monotônico é atribuído exclusivamente pelo broker e ordena sessões entre publishers;
+- material de sessão é cifrado em repouso; cookies nunca ficam plaintext no banco/logs/responses;
+- publisher Desktop usa Device auth + membership ativa;
+- Cloud consumer usa CloudBinding e `authenticate_cloud_binding()`;
+- expiração nominal, revogação e invalidação semântica são fail-closed;
+- login WebPilot invalida imediatamente o epoch usado e permite no máximo um retry após mudança efetiva da lease.
+
+**Reuso do collector**
+- C2 não copia parser/HTTP/auth para `cloud/`;
+- fonte canônica permanece no repo Desktop;
+- estratégia proposta: buildar wheel do SHA Desktop revisado e injetá-lo no build/test local do Cloud;
+- Cloud importa o núcleo headless existente;
+- testes de import closure devem provar ausência de inicialização Selenium/Tk/browser;
+- se o wheel completo inviabilizar o container, Executor deve **parar e pedir decisão de arquitetura**, em vez de criar fork silencioso.
+
+**Standby / fronteira C2 × C3**
+- Cloud C2 pode consumir lease e executar fetch/parse em standby com fake WebPilot/transport sintético;
+- nenhum snapshot Cloud é publicado;
+- nenhum `source=cloud`;
+- nenhum failover/failback;
+- nenhum source arbitration/fencing/hysteresis;
+- nenhum evento/push Cloud;
+- WebPilot real no Cloud permanece proibido por default;
+- C3 só começa depois de C2 concluído e de um **C3-P** separado.
+
+**Persistência proposta**
+- próxima migration prevista: `020_webpilot_session_broker.sql`, inicialmente somente local/efêmera;
+- publishers, leases cifradas e contador de realm_epoch separados;
+- PostgreSQL real sem skip obrigatório em R6/R8;
+- migration 020 em produção continua proibida.
+
+**Git/worktrees**
+- API/PWA/Cloud continua em `feat/spec027-cloud`, base C1 final `61342b2...`;
+- Desktop `feat/spec027-cloud` só deve ser criado após R6, quando C2-B exigir publisher, em worktree separada a partir do `develop` corrente;
+- checkout do Shadow nunca deve ser usado para implementação C2.
+
+**Estado para revisão**
+- C2-P contém somente documentação;
+- C2 funcional permanece **BLOQUEADO até R5**;
+- commit do C2-P também fica bloqueado até R5;
+- merge/push/deploy/migration produção/WebPilot real/SessionLease operacional/`source=cloud`/failover/failback permanecem proibidos;
+- Shadow não foi manipulado.
+
+**PARECER SOLICITADO:** **R5 independente** sobre o C2-P e os checkpoints C2-A/B/C. Não implementar C2 antes do parecer.
+
+### R5 independente — revisão do C2-P (2026-10-08)
+
+**Resultado:** CORREÇÕES DOCUMENTAIS OBRIGATÓRIAS. A arquitetura macro do C2-P está aprovada em direção, incluindo os três checkpoints maiores C2-A/B/C, mas quatro contratos precisam ser fechados no plano antes de liberar implementação.
+
+**Evidência independente**
+- Base C1 final confirmada: `61342b2ac47ffa48bfe90787b8aa2afb4bb4cda8`.
+- Working tree C2-P contém apenas documentação: handoff central + novo plano C2; nenhum código C2, stage, migration 020 ou alteração Desktop/Cloud foi iniciada.
+- Estratégia de 3 checkpoints maiores é aceitável e preserva revisão por risco.
+- Cruzamento feito com `specs/027-alertam-cloud-continuity.md` e roadmap Cloud, em especial federação multi-provider, anti-replay, `realm_epoch` e compatibilidade operacional de providers.
+
+**R5-F1 — idempotência de `publisher_id + local_generation` não define mismatch de payload**
+O plano diz que retry da mesma generation é idempotente e não incrementa `realm_epoch`, mas não define o que ocorre quando o mesmo `publisher_id + local_generation` chega novamente com cookies/`expires_at` diferentes. Apenas a unique constraint não distingue retry legítimo de reutilização conflitante.
+
+**Critério de aceite R5-F1:** definir no contrato e nos testes de C2-A que:
+- mesma publisher/generation + mesmo payload semanticamente normalizado => retorna exatamente a lease/epoch já aceita, sem nova escrita/epoch;
+- mesma publisher/generation + payload diferente => conflito tipado/fail-closed, sem overwrite e sem incremento de epoch;
+- concorrência de requests iguais e diferentes deve ser exercitada em PostgreSQL real;
+- a equivalência deve ser comprovada server-side; se usar fingerprint persistido, não armazenar hash simples reutilizável de material secreto — usar comparação segura/decrypt ou fingerprint keyed/HMAC equivalente.
+
+**R5-F2 — envelope criptográfico não vincula ciphertext à identidade/metadata e rotação de chave está ambígua**
+O plano escolhe AEAD 'preferencialmente AES-GCM', mas ainda não fixa algoritmo, AAD nem keyring. Sem AAD, um ciphertext/nonce válido poderia ser associado por erro de persistência a outra linha/realm/publisher e ainda autenticar criptograficamente. Além disso, `key_version` não é suficiente para rotação se o runtime possuir apenas uma chave corrente.
+
+**Critério de aceite R5-F2:** escolher explicitamente um AEAD (ex.: AES-256-GCM) e definir:
+- AAD canônica que vincule ao menos versão de schema + `realm_id` + `publisher_id` + `local_generation` + metadata imutável relevante (`expires_at` normalizado e/ou lease id quando aplicável);
+- troca/swap de ciphertext entre leases/realms deve falhar decrypt;
+- configuração de keyring por `key_version` com uma versão ativa para encrypt e versões anteriores permitidas somente para decrypt durante rotação, ou remover a alegação de rotação compatível e declarar explicitamente a limitação;
+- chave/version/AAD inválida => fail-closed; nenhum material criptográfico em log/error.
+
+**R5-F3 — requisito obrigatório de compatibilidade entre contas/providers do mesmo realm está ausente**
+A SPEC 027 exige validar ou registrar que o escopo operacional é compatível antes de permitir federação entre contas/providers diferentes. O C2-P já planeja dois publishers no mesmo realm, mas não modela esse gate.
+
+**Critério de aceite R5-F3:** incluir um contrato explícito de compatibilidade de provider/conta antes do multi-provider:
+- registrar/validar um `provider_scope`/capability profile ou mecanismo equivalente por publisher/realm, sem armazenar credencial WebPilot;
+- publisher incompatível não pode tornar sua lease selecionável para o realm;
+- C2-A deve definir persistência/contrato mínimo; C2-C deve testar provider compatível vs incompatível com publishers sintéticos;
+- não confiar apenas na premissa verbal de que hoje todas as contas possuem a mesma permissão.
+
+**R5-F4 — estratégia do wheel canônico ainda puxaria dependências Desktop desnecessárias para o Cloud**
+O `pyproject.toml` Desktop atual declara no pacote principal `selenium`, `webdriver-manager`, `pillow` e `pyttsx3`. Instalar o wheel normalmente no Cloud traria essas dependências, embora o núcleo headless auditado (`webpilot_auth`, `webpilot_http`, parser e weather WebPilot) tenha closure majoritariamente stdlib.
+
+**Critério de aceite R5-F4:** tornar o plano de empacotamento executável antes do C2-B:
+- preferir instalar o wheel canônico **sem dependências transitivas Desktop** (`--no-deps` ou mecanismo equivalente) e declarar somente dependências realmente necessárias ao import closure headless;
+- testes devem provar não apenas que Selenium/Tk/browser não inicializam, mas também que dependências operacionais de Selenium/browser não são requisito do runtime Cloud;
+- se o closure headless exigir dependência não prevista, parar no checkpoint e pedir decisão; não copiar módulos nem instalar o stack Desktop inteiro silenciosamente.
+
+**Higiene documental obrigatória antes da R5.1**
+`git diff --no-index --check` no novo plano encontrou trailing whitespace nas linhas iniciais do cabeçalho Markdown. Remover esses espaços e repetir `git diff --check` cobrindo também o arquivo untracked.
+
+**Demais pontos R5**
+- fronteira C2 × C3: **APROVADA**;
+- três checkpoints C2-A/R6, C2-B/R7, C2-C/R8: **APROVADOS em estrutura**;
+- publisher identity + generation persistente + `realm_epoch` server-side: **APROVADOS em princípio**, condicionado a R5-F1;
+- fail-closed, semantic invalidation e no máximo um retry após mudança efetiva de lease: **APROVADOS**;
+- C2 sem snapshot/`source=cloud`/failover/failback: **APROVADO**;
+- migration 020 somente local/efêmera: **APROVADO**;
+- C2 funcional permanece **BLOQUEADO**.
+
+**Próximo passo autorizado:** Executor corrige somente R5-F1..F4 e a higiene `diff --check` no C2-P/handoff, sem implementar C2 e sem commit/stage; atualizar este documento e parar para **R5.1 independente**. Não criar migration 020, não criar branch Desktop, não alterar `cloud/`, não push/deploy/prod-migrate e não tocar no Shadow.
+
+### Correções R5-F1..F4 — Executor (2026-10-08)
+
+**Status:** **PRONTO PARA R5.1 INDEPENDENTE**. Somente documentação C2-P foi alterada; C2 funcional permanece bloqueado.
+
+**R5-F1 — idempotência completa de publisher/generation**
+- chave de idempotência fixada em `publisher_id + local_generation`;
+- payload é normalizado server-side antes de fingerprint/encrypt;
+- cookies duplicados por nome são rejeitados e a representação é canônica;
+- broker calcula `payload_fingerprint` com **HMAC-SHA-256 keyed**, usando secret dedicado distinto das chaves AEAD;
+- mesmo publisher/generation + mesmo fingerprint retorna exatamente lease/epoch já aceitos, sem overwrite e sem incremento de epoch;
+- mesmo publisher/generation + fingerprint diferente produz conflito tipado, sem overwrite e sem incremento de epoch;
+- PostgreSQL deve lockar publisher e resolver idempotência/conflito antes de tocar no contador de `realm_epoch`;
+- C2-A exige concorrência PostgreSQL real tanto para payloads iguais quanto diferentes.
+
+**R5-F2 — envelope criptográfico fixado**
+- AEAD escolhido explicitamente: **AES-256-GCM**;
+- nonce aleatório de 96 bits; reuso proibido;
+- AAD canônica vincula `schema_version + lease_id + realm_id + publisher_id + local_generation + expires_at_normalized + key_version`;
+- ciphertext swap entre leases/realms/publishers/generations deve falhar;
+- keyring definido como `key_version -> chave 32 bytes`, com exatamente uma active version para encrypt e versões anteriores decrypt-only;
+- versão/chave/AAD/nonce/tag inválidos falham fechado;
+- C2-A inclui testes de swap, wrong key/version/AAD e rotação decrypt-only.
+
+**R5-F3 — compatibilidade obrigatória de provider**
+- introduzido `ProviderScopeProfile` com `scope_id/schema_version/capabilities`;
+- realm possui `required_provider_scope` administrativamente configurado;
+- publisher apenas propõe o profile e nasce `scope_unverified`; somente operação backend/admin autenticada pode marcá-lo `verified`, sem armazenar credencial WebPilot;
+- profile incompatível ou `scope_unverified` nunca torna lease selecionável/consumível;
+- mudança de required scope torna publishers divergentes inelegíveis fail-closed;
+- persistência mínima de scope/verification pertence ao C2-A;
+- C2-C agora testa compatível×compatível e compatível×incompatível **antes** da matriz multi-provider.
+
+**R5-F4 — wheel canônico headless sem dependências Desktop**
+- mantido wheel do SHA Desktop revisado como fonte canônica;
+- instalação no Cloud deve usar **`--no-deps` ou equivalente comprovado**;
+- `cloud/pyproject.toml` só poderá declarar dependências realmente necessárias ao closure headless;
+- ambiente de contract test deve permanecer sem Selenium, webdriver-manager, Pillow e pyttsx3, salvo dependência tecnicamente comprovada;
+- testes verificam ausência do stack via inventário/import closure e ausência de inicialização Selenium/Tk/browser/UI;
+- se closure headless exigir dependência imprevista, checkpoint para para decisão arquitetural; proibidos fork silencioso e instalação do stack Desktop inteiro como atalho.
+
+**Higiene e fronteiras**
+- trailing whitespace do cabeçalho do plano removido;
+- nenhum código C2 implementado;
+- migration 020 não criada;
+- branch Desktop SPEC027 não criada;
+- `cloud/` não alterado;
+- nenhum commit/stage;
+- push/deploy/prod-migrate/WebPilot real/SessionLease operacional/`source=cloud`/failover/failback continuam proibidos;
+- Shadow não foi manipulado.
+
+**PARECER SOLICITADO:** **R5.1 independente** sobre R5-F1..F4 e o C2-P corrigido. Não implementar C2 antes do parecer.
+
+### R5.1 independente — encerramento do C2-P (2026-10-08)
+
+**Resultado:** APROVADO. R5-F1..F4 encerrados; o C2-P está apto a virar commit documental e liberar somente o C2-A.
+
+**Evidência independente**
+- Base C1 permaneceu `61342b2ac47ffa48bfe90787b8aa2afb4bb4cda8` durante a revisão.
+- Working tree permaneceu exclusivamente documental: handoff central + plano C2; nenhum código C2, migration 020, branch Desktop SPEC027, alteração em `cloud/` ou stage.
+- `git diff --check` do conteúdo rastreado e `git diff --no-index --check` do plano untracked: PASS.
+- migration `020_webpilot_session_broker.sql`: ausente, como exigido antes de R6.
+- Shadow permaneceu ativo nos PIDs observados 14865/14873.
+
+**R5-F1 — ENCERRADO**
+- idempotência definida por `publisher_id + local_generation` com payload canônico server-side;
+- fingerprint HMAC-SHA-256 keyed usa secret próprio, distinto do AEAD;
+- mesmo payload retorna a mesma lease/epoch sem overwrite; payload diferente gera conflito tipado sem novo epoch;
+- PostgreSQL real deve cobrir concorrência igual × diferente e resolver fingerprint antes de tocar no contador de `realm_epoch`;
+- chave HMAC ausente/inválida é fail-closed; rotação não é implícita em C2 e exige planejamento/versionamento próprio para preservar retries históricos.
+
+**R5-F2 — ENCERRADO**
+- AEAD fixado em AES-256-GCM com nonce aleatório de 96 bits;
+- AAD canônica vincula schema, lease, realm, publisher, generation, expiry normalizado e key version;
+- keyring versionado possui uma active key para encrypt e versões antigas decrypt-only;
+- swap de ciphertext/AAD/key/version inválida deve falhar fechado; nenhum secret/material crypto pode vazar.
+
+**R5-F3 — ENCERRADO**
+- `ProviderScopeProfile` e `required_provider_scope` tornam compatibilidade multi-provider um gate explícito;
+- publisher nasce unverified e não pode autoaprovar o próprio scope;
+- incompatível/unverified é inelegível para consumo;
+- persistência e revalidação sob lock entram no C2-A; matriz compatível/incompatível entra no C2-C.
+
+**Condição explícita de R6:** C2-A deve materializar uma operação backend/admin autenticada para configurar/versionar o `required_provider_scope` do realm e verificar/reclassificar publisher scope. O nome concreto pode ser endpoint, RPC+admin script ou mecanismo equivalente, mas não pode existir apenas como mutação direta de fixture/repository nos testes.
+
+**R5-F4 — ENCERRADO**
+- wheel do Desktop permanece fonte canônica, mas instalação Cloud deve usar `--no-deps` ou equivalente comprovado;
+- runtime/import closure deve funcionar sem Selenium, webdriver-manager, Pillow e pyttsx3 salvo dependência tecnicamente justificada;
+- se o closure headless não for executável sem o stack Desktop, C2-B para para decisão arquitetural; fork/cópia silenciosa continuam proibidos.
+
+**Parecer R5.1**
+- C2-P: **APROVADO**.
+- R5-F1..F4: **ENCERRADOS**.
+- estrutura de três checkpoints C2-A/R6, C2-B/R7 e C2-C/R8: **APROVADA**.
+- commit documental do C2-P: **AUTORIZADO agora**, contendo exatamente o plano/handoff revisados.
+- após o commit, confirmar working tree limpo e registrar SHA como base de entrada do C2-A.
+- C2-A: **LIBERADO somente após** esse commit; executar apenas broker/persistência/crypto/anti-replay/endpoints do checkpoint A e parar para R6 independente, novamente sem commit.
+- C2-B/C2-C permanecem bloqueados até seus gates.
+- merge/push/deploy, migration 020 em produção, WebPilot real no Cloud, SessionLease operacional real, `source=cloud`, snapshot Cloud, failover/failback e cutover continuam proibidos.
+
+**Próximo passo autorizado:** Executor deve (1) fazer um único commit local documental do C2-P exatamente aprovado; (2) confirmar working tree limpo e registrar SHA; (3) executar somente C2-A/A1→A7 com TDD; (4) criar migration 020 apenas local/efêmera; (5) cumprir PostgreSQL real sem skip, Supabase MockTransport, crypto/idempotência/provider-scope e endpoints; (6) deixar todo o C2-A sem commit/stage e parar para **R6 independente**. Não iniciar C2-B.
