@@ -451,6 +451,50 @@ begin
 end;
 $$;
 
+create or replace function public.get_cloud_binding_authority(
+    p_cloud_binding_id uuid
+)
+returns table (
+    cloud_binding_id uuid,
+    device_id text,
+    realm_id text,
+    credential_hash text,
+    status text,
+    device_enabled boolean,
+    realm_active boolean,
+    membership_active boolean
+)
+language sql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+    select
+        b.cloud_binding_id,
+        b.device_id,
+        b.realm_id,
+        b.credential_hash,
+        b.status,
+        d.enabled,
+        r.active,
+        (
+            a.device_id is not null
+            and a.revoked_at is null
+        ) as membership_active
+    from public.cloud_bindings b
+    join public.devices d
+      on d.device_id = b.device_id
+    join public.webpilot_auth_realms r
+      on r.realm_id = b.realm_id
+    left join public.webpilot_auth_realm_devices a
+      on a.realm_id = b.realm_id
+     and a.device_id = b.device_id
+    where b.cloud_binding_id = p_cloud_binding_id;
+$$;
+
+revoke all on function public.get_cloud_binding_authority(uuid)
+    from public, anon, authenticated;
+
 revoke all on function public.authorize_realm_device(text, text)
     from public, anon, authenticated;
 revoke all on function public.revoke_realm_device(text, text)
@@ -464,6 +508,8 @@ revoke all on function public.rotate_cloud_binding(text, text)
 revoke all on function public.revoke_cloud_binding(text)
     from public, anon, authenticated;
 
+grant execute on function public.get_cloud_binding_authority(uuid)
+    to service_role;
 grant execute on function public.authorize_realm_device(text, text)
     to service_role;
 grant execute on function public.revoke_realm_device(text, text)

@@ -1,7 +1,7 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** C1-B APROVADO EM R2.1 — commit exato do diff revisado autorizado; C1-C liberado somente após esse commit e working tree limpo
+**Status:** C1-C APROVADO EM R3 — commit exato do diff revisado autorizado; C1-D liberado somente após esse commit e working tree limpo
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
 **Base reconciliada:** API/PWA `feat/api-bootstrap@23a78bebdf46062eef937966101246567cd963de`; Desktop `develop@9e5b5e1a33cb7d61db200866aea683a6334de922`. **Feature:** `feat/spec027-cloud`, criada a partir de `23a78be` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`. **C1-A functional HEAD após correções R1:** `17afb4e19e21ce93e8eb1b8b0c8bfe47ebcf3364`; o commit documental deste registro será seu sucessor local.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
@@ -57,9 +57,9 @@
 |---|---|---|---|---|
 | 0 | P0 — Reconciliação e plano | Verificar estado cross-repo; preparar proposta de integração sem alterar produção; planejar C1 com tasks TDD e contratos | R0/R0.1/R0.2 aprovam base e plano antes de programar | **APROVADO EM R0.2** |
 | 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1/R1.1 revisam identidade, constraints, isolamento e contrato | **APROVADO EM R1.1** |
-| 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2/R2.1 revisam autorização, secrets e idempotência | **APROVADO EM R2.1 — AGUARDA COMMIT** |
-| 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | **LIBERADO após commit C1-B aprovado + working tree limpo** |
-| 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | BLOQUEADO |
+| 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2/R2.1 revisam autorização, secrets e idempotência | **APROVADO EM R2.1 — commit a4e1af85872308a907afb85d53f8cebac3dae6b5** |
+| 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | **APROVADO EM R3 — AGUARDA COMMIT** |
+| 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | **LIBERADO após commit C1-C aprovado + working tree limpo** |
 | 5 | C2-P — Plano Auth Broker | Desenhar reuso do coletor validado, contrato SessionLease, epoch, segurança, standby | R5 (plano); **não** copiar parser/coletor | BLOQUEADO |
 | 6 | C2 — Execução em checkpoints próprios | Broker federado, anti-replay e core HTTP em standby headless sem source efetivo | Revisões por subtask e gate sandbox | BLOQUEADO |
 | 7 | C3-P / C3 — Autoridade e snapshots | Plano aprovado; lease/fencing, hysteresis, failover/failback, anti-split-brain; primeira versão só snapshots | Revisões por subtask, gate operacional explícito | BLOQUEADO |
@@ -828,3 +828,141 @@ Resultado observado:
 - Migration 019 em produção, push, deploy, WebPilot real no Cloud, SessionLease real, `source=cloud`, failover/failback e cutover continuam proibidos.
 
 **Próximo passo autorizado:** Executor deve (1) fazer um único commit local do diff C1-B exatamente aprovado; (2) confirmar `git status` limpo e registrar SHA; (3) executar somente C1-C com TDD no mesmo branch/worktree; (4) deixar o C1-C sem commit/stage e parar para **R3 independente**. Não iniciar C1-D.
+
+### C1-C — Base de entrada após commit C1-B (2026-10-08)
+
+- C1-B aprovado em R2.1 foi commitado exatamente como revisado em **`a4e1af85872308a907afb85d53f8cebac3dae6b5`** — `feat(cloud): add binding persistence and desktop admin API`.
+- `git status` imediatamente após o commit: **limpo**.
+- Este SHA é a **base aprovada de entrada do C1-C**.
+- C1-C será entregue novamente sem commit/stage e deve parar em R3 independente.
+
+### C1-C — Executor; working tree sem commit (2026-10-08)
+
+**Status:** **PRONTO PARA R3 INDEPENDENTE**. Steps C1→C6 concluídos; C1-D não iniciado.
+
+**Base de entrada**
+- C1-B aprovado em R2.1 foi commitado exatamente em `a4e1af85872308a907afb85d53f8cebac3dae6b5` — `feat(cloud): add binding persistence and desktop admin API`.
+- `git status` estava limpo imediatamente após o commit.
+- Esse SHA é a base aprovada do C1-C e continua sendo o HEAD; todo o C1-C permanece somente no working tree.
+- nenhum commit e nenhum stage C1-C.
+
+**C1 — RED: autoridade da Cloud credential**
+- criado `tests/unit/test_cloud_binding_authorization.py`.
+- RED inicial: **8/8 falhas**, todas porque `CloudBindingService.authenticate_cloud_binding()` não existia.
+- casos cobertos: sucesso; hash errado; binding revogado; device disabled; realm inactive; membership revoked; persistence unavailable; deactivate/activate idempotente.
+- retorno autorizado exigido sem secret/hash, somente `cloud_binding_id`, `device_id` e `realm_id`.
+
+**C2 — GREEN: verificador central fail-closed**
+- criado `AuthorizedCloudBinding`, contendo somente IDs/realm.
+- criado `CloudBindingAuthorityRecord`; `credential_hash` usa `repr=False`.
+- `authenticate_cloud_binding(cloud_binding_id, credential)` agora:
+  - obtém uma projeção coerente de autoridade do repository;
+  - exige binding `active`;
+  - exige `device.enabled=true`;
+  - exige realm `active=true`;
+  - exige membership ativa;
+  - valida credential com `verify_secret()`;
+  - qualquer condição inválida nega com o mesmo erro genérico, sem revelar qual autoridade falhou;
+  - `PersistenceUnavailableError` vira `PersistenceUnavailableApiError` fail-closed/503-equivalente.
+- GREEN do arquivo de autorização: **8/8 passed**.
+- prova B9 movida corretamente para C1-C: deactivate realm bloqueia imediatamente; activate restaura somente quando binding/device/membership continuam válidos.
+
+**Projection de autoridade nos repositories**
+- novo contrato `get_cloud_binding_authority(cloud_binding_id)`.
+- Memory: projeção produzida sob o mesmo lock.
+- PostgreSQL/Supabase: nova RPC backend-only `public.get_cloud_binding_authority(uuid)`, com uma única leitura de binding/device/realm/membership.
+- RPC `SECURITY DEFINER`, `SET search_path = pg_catalog, public`, EXECUTE revogado de `PUBLIC/anon/authenticated` e concedido somente a `service_role`.
+- nenhuma rota HTTP/PWA/Mobile foi criada para essa RPC/projeção.
+- mapper Supabase ganhou RED adicional: string `"false"` não pode ser convertida implicitamente para truthy. RED falhou como esperado; GREEN exige `bool` real para `device_enabled`, `realm_active` e `membership_active`.
+
+**C3 — isolamento cross-device**
+- criado `tests/integration/test_cloud_binding_adversarial.py`.
+- secret do device A contra path B retorna 401 antes de leitura/mutação;
+- PUT/GET de B com secret A não revela se B possui binding: mesma resposta de autenticação inválida usada para device inexistente;
+- rotate/delete de B com secret A não alteram B;
+- credential A contra `binding_id` B, e vice-versa, são negadas;
+- binding/version/status do outro device permanecem intactos.
+
+**C4 — cross-realm e revogações**
+- device sem membership ativa não binda outro realm;
+- deactivate realm invalida autenticação sem apagar binding/membership;
+- deactivate/activate repetidos permanecem idempotentes;
+- reactivate restaura uso somente com demais autoridades válidas;
+- revoke membership invalida imediatamente e revoke repetido preserva timestamp;
+- reauthorize restaura a mesma associação e torna binding ainda ativo utilizável;
+- `enabled=false` invalida imediatamente; re-enable restaura apenas quando realm/membership/binding permanecem válidos;
+- binding explicitamente revogado permanece inutilizável após re-enable e realm deactivate/reactivate.
+
+**C5 — logs/serialization**
+- testes provam ausência de plaintext Cloud credential, `credential_hash`, DEVICE_SECRET e Supabase server key em reprs/exceptions/logs exercitados;
+- `AuthorizedCloudBinding` não contém campo de credential/hash;
+- `CloudBindingAuthorityRecord` oculta hash no repr;
+- payload RPC Supabase malformado continua sanitizado como `PersistenceUnavailableError`.
+
+**C6 — GREEN/refactor**
+- implementação limitada ao serviço/repositories/migration 019 local e testes C1-C;
+- nenhuma alteração em `cloud/`, WebPilot, SessionLease, snapshot, source arbitration, failover/failback ou cutover;
+- contrato C1 do repository foi atualizado somente para reconhecer `get_cloud_binding_authority`.
+
+**Gates C1-C**
+- autorização unitária: **8 passed / 0 skipped / 0 failed**;
+- adversarial cross-device/cross-realm/logs: **3 passed / 0 skipped / 0 failed**;
+- conjunto direcionado C1-C/C1-B relacionado após hardening final: **58 passed / 0 skipped / 0 failed**;
+- PostgreSQL 16 real `test_cloud_binding_postgres.py`: **7 passed / 0 skipped / 0 failed**, incluindo projection/grants e as corridas administrativas já aprovadas no C1-B;
+- `make test-all` final, após o último hardening Supabase: **571 passed / 0 skipped / 0 failed**;
+- migration 019 exercitada somente em PostgreSQL efêmero/local; **não aplicada em produção**.
+
+**Fronteiras preservadas**
+- C1-D não iniciado;
+- nenhum commit/stage C1-C;
+- nenhum push/deploy/prod-migrate;
+- nenhum WebPilot real no Cloud;
+- nenhum SessionLease real;
+- nenhum `source=cloud`;
+- nenhum failover/failback;
+- Shadow não foi manipulado e permaneceu ativo durante as observações.
+
+**PARECER SOLICITADO:** **R3 independente** sobre o working tree C1-C baseado em `a4e1af85872308a907afb85d53f8cebac3dae6b5`. Não iniciar C1-D antes do parecer.
+
+### R3 independente — encerramento do C1-C (2026-10-08)
+
+**Resultado:** APROVADO. O working tree C1-C baseado em `a4e1af85872308a907afb85d53f8cebac3dae6b5` atende ao plano, aos gates de isolamento/fail-closed e às fronteiras de escopo.
+
+**Evidência independente**
+- Working tree revisado sem commit/stage; HEAD permaneceu `a4e1af85872308a907afb85d53f8cebac3dae6b5` durante a revisão.
+- Diff C1-C restrito a service/repositories, migration 019 local, testes de autoridade/adversariais e documentação; nenhuma alteração em `cloud/`, frontend, rotas operacionais, WebPilot, SessionLease, snapshots ou source arbitration.
+- Testes dirigidos C1-C independentes: **32/32 passed**.
+- PostgreSQL 16 real `test_cloud_binding_postgres.py`: **7/7 passed**.
+- `make test-all` independente: **571 passed / 0 skipped / 0 failed**.
+- `git diff --check`: PASS; staged files: 0.
+- Shadow permaneceu ativo nos PIDs observados 14865/14873.
+
+**Autoridade e fail-closed**
+- `authenticate_cloud_binding()` usa uma projeção única de autoridade e só autoriza binding ACTIVE com device enabled, realm active, membership ativa e credential válida.
+- persistence unavailable é convertido para erro 503-equivalente fail-closed.
+- `AuthorizedCloudBinding` retorna somente binding/device/realm; hash não é exposto.
+- `CloudBindingAuthorityRecord.credential_hash` está oculto de `repr`.
+- Supabase rejeita flags de autoridade que não sejam booleanas reais; payload malformado continua sanitizado.
+
+**Isolamento e revogações**
+- cross-device por path/secret e por binding_id/credential: aprovado.
+- cross-realm sem membership: bloqueado.
+- deactivate/activate de realm, revoke/reauthorize membership e enabled=false/re-enable respeitam imediatamente a autoridade corrente.
+- binding explicitamente revogado não volta a ser utilizável por re-enable ou reactivate.
+- nenhuma evidência de bypass por conflito ou existência de outro device foi encontrada.
+
+**Persistência/SQL**
+- `get_cloud_binding_authority(uuid)` está backend-only, `SECURITY DEFINER`, com `search_path` fixo, EXECUTE revogado de PUBLIC/anon/authenticated e concedido a `service_role`.
+- PostgreSQL mapper e Supabase mapper convertem status para `CloudBindingStatus`; projection real foi exercitada no banco efêmero.
+- migration 019 continua sem aplicação em produção.
+
+**Parecer R3**
+- C1-C: **APROVADO**.
+- Commit do checkpoint: **AUTORIZADO agora**, contendo exatamente o diff C1-C revisado.
+- Mensagem sugerida: `test(cloud): enforce binding authority and isolation`.
+- Após o commit, confirmar working tree limpo e registrar o novo SHA como base de entrada do C1-D.
+- C1-D: **LIBERADO somente após** esse commit, conforme Steps D1→D5 do plano.
+- Desktop runtime continua sem alteração por default; só criar cliente Desktop se surgir necessidade explícita durante R4.
+- Push, deploy, migration produção, WebPilot real no Cloud, SessionLease real, `source=cloud`, failover/failback, cutover e C2 continuam proibidos.
+
+**Próximo passo autorizado:** Executor deve (1) fazer um único commit local do diff C1-C exatamente aprovado; (2) confirmar `git status` limpo e registrar SHA; (3) executar somente C1-D; (4) manter todo o C1-D sem commit/stage; (5) rodar contract tests, `make cloud-test`, `make cloud-smoke` se Docker disponível, `make test`, frontend tests, `make test-all`, `make migrate-list`, security audit e `git diff --check`; (6) atualizar este documento e parar para **R4 independente**. Não iniciar C2-P/C2.

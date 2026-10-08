@@ -164,6 +164,16 @@ def test_postgres_binding_conflict_and_fail_closed_authority():
 
     first = repo.ensure_cloud_binding("pecem-01", "webpilot-pecem", "hash-v1")
     assert first is not None
+    authority = repo.get_cloud_binding_authority(first.cloud_binding_id)
+    assert authority is not None
+    assert authority.device_id == "pecem-01"
+    assert authority.realm_id == "webpilot-pecem"
+    assert authority.device_enabled
+    assert authority.realm_active
+    assert authority.membership_active
+    assert authority.status is CloudBindingStatus.ACTIVE
+    assert "hash-v1" not in repr(authority)
+
     with pytest.raises(CloudBindingConflictError):
         repo.ensure_cloud_binding("pecem-01", "webpilot-pecem", "different")
 
@@ -320,19 +330,22 @@ def test_postgres_migration_enforces_rls_privileges_and_binding_constraints():
         ).fetchone()
         assert policies is not None and policies[0] == 0
 
-        signature = "public.ensure_cloud_binding(text,text,text)"
-        assert conn.execute(
-            "select has_function_privilege('anon', %s, 'EXECUTE')",
-            (signature,),
-        ).fetchone()[0] is False
-        assert conn.execute(
-            "select has_function_privilege('authenticated', %s, 'EXECUTE')",
-            (signature,),
-        ).fetchone()[0] is False
-        assert conn.execute(
-            "select has_function_privilege('service_role', %s, 'EXECUTE')",
-            (signature,),
-        ).fetchone()[0] is True
+        for signature in (
+            "public.ensure_cloud_binding(text,text,text)",
+            "public.get_cloud_binding_authority(uuid)",
+        ):
+            assert conn.execute(
+                "select has_function_privilege('anon', %s, 'EXECUTE')",
+                (signature,),
+            ).fetchone()[0] is False
+            assert conn.execute(
+                "select has_function_privilege('authenticated', %s, 'EXECUTE')",
+                (signature,),
+            ).fetchone()[0] is False
+            assert conn.execute(
+                "select has_function_privilege('service_role', %s, 'EXECUTE')",
+                (signature,),
+            ).fetchone()[0] is True
 
         with pytest.raises(psycopg.errors.CheckViolation):
             conn.execute(

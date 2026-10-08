@@ -11,6 +11,7 @@ from psycopg.types.json import Jsonb
 from app.models.maneuver_event import ManeuverEventIn
 from app.models.vessel_tracking_event import VesselTrackingEventIn
 from app.repositories.cloud_bindings import (
+    CloudBindingAuthorityRecord,
     CloudBindingConflictError,
     CloudBindingRecord,
     CloudBindingStatus,
@@ -222,6 +223,25 @@ class PostgresDeviceRepository:
             raise PersistenceUnavailableError() from exc
         return self._realm_device_authorization_from_row(row)
 
+    def get_cloud_binding_authority(
+        self,
+        cloud_binding_id: UUID,
+    ) -> CloudBindingAuthorityRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select cloud_binding_id, device_id, realm_id,
+                           credential_hash, status, device_enabled,
+                           realm_active, membership_active
+                    from public.get_cloud_binding_authority(%s)
+                    """,
+                    (cloud_binding_id,),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._cloud_binding_authority_from_row(row)
+
     def get_active_cloud_binding(
         self,
         device_id: str,
@@ -374,6 +394,27 @@ class PostgresDeviceRepository:
                 device_id=str(row[1]),
                 authorized_at=cls._aware_datetime(row[2]),
                 revoked_at=None if row[3] is None else cls._aware_datetime(row[3]),
+            )
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    @classmethod
+    def _cloud_binding_authority_from_row(
+        cls,
+        row: Any,
+    ) -> CloudBindingAuthorityRecord | None:
+        if row is None:
+            return None
+        try:
+            return CloudBindingAuthorityRecord(
+                cloud_binding_id=UUID(str(row[0])),
+                device_id=str(row[1]),
+                realm_id=str(row[2]),
+                credential_hash=str(row[3]),
+                status=CloudBindingStatus(str(row[4])),
+                device_enabled=bool(row[5]),
+                realm_active=bool(row[6]),
+                membership_active=bool(row[7]),
             )
         except (TypeError, ValueError) as exc:
             raise PersistenceUnavailableError() from exc

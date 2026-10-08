@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 from app.models.maneuver_event import ManeuverEventIn
 from app.models.vessel_tracking_event import VesselTrackingEventIn
 from app.repositories.cloud_bindings import (
+    CloudBindingAuthorityRecord,
     CloudBindingConflictError,
     CloudBindingRecord,
     CloudBindingStatus,
@@ -230,6 +231,30 @@ class MemoryDeviceRepository:
             ):
                 return binding
         return None
+
+    def get_cloud_binding_authority(
+        self,
+        cloud_binding_id: UUID,
+    ) -> CloudBindingAuthorityRecord | None:
+        with self._lock:
+            binding = self._cloud_bindings.get(cloud_binding_id)
+            if binding is None:
+                return None
+            device = self._devices.get(binding.device_id)
+            realm = self._webpilot_auth_realms.get(binding.realm_id)
+            membership = self._realm_device_authorizations.get(
+                (binding.realm_id, binding.device_id)
+            )
+            return CloudBindingAuthorityRecord(
+                cloud_binding_id=binding.cloud_binding_id,
+                device_id=binding.device_id,
+                realm_id=binding.realm_id,
+                credential_hash=binding.credential_hash,
+                status=binding.status,
+                device_enabled=bool(device and device.enabled),
+                realm_active=bool(realm and realm.active),
+                membership_active=bool(membership and membership.active),
+            )
 
     def get_active_cloud_binding(
         self,

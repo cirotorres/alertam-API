@@ -9,6 +9,7 @@ import httpx
 from app.models.maneuver_event import ManeuverEventIn
 from app.models.vessel_tracking_event import VesselTrackingEventIn
 from app.repositories.cloud_bindings import (
+    CloudBindingAuthorityRecord,
     CloudBindingConflictError,
     CloudBindingRecord,
     CloudBindingStatus,
@@ -248,6 +249,16 @@ class SupabaseDeviceRepository:
         ) as exc:
             raise PersistenceUnavailableError() from exc
 
+    def get_cloud_binding_authority(
+        self,
+        cloud_binding_id: UUID,
+    ) -> CloudBindingAuthorityRecord | None:
+        return self._mapped_cloud_rpc(
+            "get_cloud_binding_authority",
+            {"p_cloud_binding_id": str(cloud_binding_id)},
+            self._cloud_binding_authority_from_mapping,
+        )
+
     def get_active_cloud_binding(
         self,
         device_id: str,
@@ -416,6 +427,31 @@ class SupabaseDeviceRepository:
             device_id=str(row["device_id"]),
             authorized_at=authorized_at,
             revoked_at=cls._parse_datetime(row.get("revoked_at")),
+        )
+
+    @classmethod
+    def _cloud_binding_authority_from_mapping(
+        cls,
+        row: Any,
+    ) -> CloudBindingAuthorityRecord:
+        if not isinstance(row, dict):
+            raise TypeError("Autoridade persistida inválida.")
+        for flag in (
+            "device_enabled",
+            "realm_active",
+            "membership_active",
+        ):
+            if not isinstance(row.get(flag), bool):
+                raise TypeError("Flag de autoridade persistida inválida.")
+        return CloudBindingAuthorityRecord(
+            cloud_binding_id=UUID(str(row["cloud_binding_id"])),
+            device_id=str(row["device_id"]),
+            realm_id=str(row["realm_id"]),
+            credential_hash=str(row["credential_hash"]),
+            status=CloudBindingStatus(str(row["status"])),
+            device_enabled=row["device_enabled"],
+            realm_active=row["realm_active"],
+            membership_active=row["membership_active"],
         )
 
     @classmethod

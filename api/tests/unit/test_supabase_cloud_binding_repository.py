@@ -35,6 +35,16 @@ BINDING_ROW = {
     "updated_at": "2026-10-08T12:00:00Z",
     "revoked_at": None,
 }
+AUTHORITY_ROW = {
+    "cloud_binding_id": str(BINDING_ID),
+    "device_id": "pecem-01",
+    "realm_id": "webpilot-pecem",
+    "credential_hash": "hash-v1",
+    "status": "active",
+    "device_enabled": True,
+    "realm_active": True,
+    "membership_active": True,
+}
 
 
 def test_supabase_cloud_binding_repository_uses_scoped_rest_and_rpc_payloads():
@@ -51,6 +61,8 @@ def test_supabase_cloud_binding_repository_uses_scoped_rest_and_rpc_payloads():
             return httpx.Response(200, json=[AUTH_ROW])
         if path.endswith("/cloud_bindings"):
             return httpx.Response(200, json=[BINDING_ROW])
+        if path.endswith("/rpc/get_cloud_binding_authority"):
+            return httpx.Response(200, json=[AUTHORITY_ROW])
         if path.endswith("/rpc/authorize_realm_device"):
             return httpx.Response(200, json=[AUTH_ROW])
         if path.endswith("/rpc/revoke_realm_device"):
@@ -74,6 +86,13 @@ def test_supabase_cloud_binding_repository_uses_scoped_rest_and_rpc_payloads():
 
     assert repo.ensure_webpilot_auth_realm("webpilot-pecem").active
     assert repo.get_webpilot_auth_realm("webpilot-pecem").active
+    authority = repo.get_cloud_binding_authority(BINDING_ID)
+    assert authority is not None
+    assert authority.cloud_binding_id == BINDING_ID
+    assert authority.device_enabled
+    assert authority.realm_active
+    assert authority.membership_active
+    assert "hash-v1" not in repr(authority)
     assert repo.authorize_realm_device("webpilot-pecem", "pecem-01").active
     assert repo.get_realm_device_authorization("webpilot-pecem", "pecem-01").active
     assert not repo.revoke_realm_device("webpilot-pecem", "pecem-01").active
@@ -97,6 +116,10 @@ def test_supabase_cloud_binding_repository_uses_scoped_rest_and_rpc_payloads():
 @pytest.mark.parametrize(
     ("operation", "suffix"),
     [
+        (
+            lambda repo: repo.get_cloud_binding_authority(BINDING_ID),
+            "/rpc/get_cloud_binding_authority",
+        ),
         (
             lambda repo: repo.set_webpilot_auth_realm_active(
                 "webpilot-pecem",
@@ -162,6 +185,25 @@ def test_supabase_cloud_rpc_malformed_200_is_sanitized(
         operation(repo)
 
     assert backend_detail not in str(exc.value)
+    assert "sb_secret_backend" not in str(exc.value)
+
+
+def test_supabase_cloud_authority_rejects_non_boolean_flags():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/rpc/get_cloud_binding_authority")
+        return httpx.Response(
+            200,
+            json=[{**AUTHORITY_ROW, "device_enabled": "false"}],
+        )
+
+    repo = SupabaseDeviceRepository(
+        "https://example.supabase.co",
+        "sb_secret_backend",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(PersistenceUnavailableError):
+        repo.get_cloud_binding_authority(BINDING_ID)
 
 
 def test_supabase_cloud_binding_maps_conflict_and_sanitizes_persistence_errors():

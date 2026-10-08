@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import UUID
+
 from app.core.errors import (
     CloudBindingNotFoundError,
     CloudRealmUnauthorizedError,
@@ -11,11 +13,13 @@ from app.models.cloud_binding import (
     CloudBindingResponse,
 )
 from app.repositories.cloud_bindings import (
+    AuthorizedCloudBinding,
     CloudBindingRecord,
+    CloudBindingStatus,
     CloudBindingsRepository,
 )
 from app.repositories.devices import DevicesRepository, PersistenceUnavailableError
-from app.security.credentials import hash_secret
+from app.security.credentials import hash_secret, verify_secret
 
 
 class CloudBindingService:
@@ -24,6 +28,37 @@ class CloudBindingService:
         repository: DevicesRepository & CloudBindingsRepository,
     ) -> None:
         self._repository = repository
+
+    def authenticate_cloud_binding(
+        self,
+        cloud_binding_id: UUID,
+        credential: str,
+    ) -> AuthorizedCloudBinding:
+        try:
+            authority = self._repository.get_cloud_binding_authority(
+                cloud_binding_id,
+            )
+        except PersistenceUnavailableError as exc:
+            raise PersistenceUnavailableApiError() from exc
+
+        if (
+            authority is None
+            or authority.status is not CloudBindingStatus.ACTIVE
+            or not authority.device_enabled
+            or not authority.realm_active
+            or not authority.membership_active
+            or not verify_secret(
+                credential,
+                authority.credential_hash,
+            )
+        ):
+            raise CloudRealmUnauthorizedError()
+
+        return AuthorizedCloudBinding(
+            cloud_binding_id=authority.cloud_binding_id,
+            device_id=authority.device_id,
+            realm_id=authority.realm_id,
+        )
 
     def get(self, device_id: str) -> CloudBindingResponse:
         try:

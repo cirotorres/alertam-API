@@ -31,6 +31,7 @@ def test_cloud_binding_migration_has_tables_constraints_rls_and_hardened_rpcs():
         "authorize_realm_device",
         "revoke_realm_device",
         "set_webpilot_auth_realm_active",
+        "get_cloud_binding_authority",
     ):
         assert f"function public.{fn}" in sql
 
@@ -51,5 +52,7 @@ def test_cloud_binding_migration_has_tables_constraints_rls_and_hardened_rpcs():
     assert "from public, anon, authenticated" in sql
     assert "to service_role" in sql
     assert "create policy" not in sql
+    assert "revoke all on function public.get_cloud_binding_authority(uuid)" in sql
+    assert "grant execute on function public.get_cloud_binding_authority(uuid)" in sql
     assert "exception when unique_violation" in sql
     assert sql.count("cloud_binding_conflict") >= 2

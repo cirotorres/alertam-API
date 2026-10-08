@@ -59,6 +59,25 @@ class CloudBindingRecord:
             raise ValueError("revoked binding requires revoked_at")
 
 
+@dataclass(frozen=True)
+class CloudBindingAuthorityRecord:
+    cloud_binding_id: UUID
+    device_id: str
+    realm_id: str
+    credential_hash: str = field(repr=False)
+    status: CloudBindingStatus
+    device_enabled: bool
+    realm_active: bool
+    membership_active: bool
+
+
+@dataclass(frozen=True)
+class AuthorizedCloudBinding:
+    cloud_binding_id: UUID
+    device_id: str
+    realm_id: str
+
+
 class CloudBindingsRepository(Protocol):
     def ensure_webpilot_auth_realm(
         self,
@@ -93,6 +112,11 @@ class CloudBindingsRepository(Protocol):
         realm_id: str,
         device_id: str,
     ) -> RealmDeviceAuthorizationRecord | None: ...
+
+    def get_cloud_binding_authority(
+        self,
+        cloud_binding_id: UUID,
+    ) -> CloudBindingAuthorityRecord | None: ...
 
     def get_active_cloud_binding(
         self,

@@ -148,6 +148,7 @@ def test_cloud_binding_repository_protocol_is_limited_to_c1_contract():
         "revoke_realm_device",
         "set_webpilot_auth_realm_active",
         "get_realm_device_authorization",
+        "get_cloud_binding_authority",
         "get_active_cloud_binding",
         "list_cloud_bindings",
         "ensure_cloud_binding",
