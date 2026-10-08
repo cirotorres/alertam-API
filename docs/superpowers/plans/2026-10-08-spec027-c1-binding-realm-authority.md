@@ -29,7 +29,7 @@
 R0 deve revisar e autorizar esta sequência; P0 não a executa:
 
 1. **Desktop:** integrar `feat/spec025-plan5-shadow-evidence-gate@9e5b5e1` em `develop@abe386f` por fast-forward, usando checkout/worktree separado para não trocar nem interromper o processo Shadow em execução.
-2. **API/PWA:** integrar `feat/pre-spec027-cloud-infra-spike@dc23003` em `feat/api-bootstrap@8177332`. `git merge-tree --write-tree` foi limpo; será merge real porque as branches divergiram em `af5e81f`.
+2. **API/PWA:** integrar `feat/pre-spec027-cloud-infra-spike@dc23003` na base real pós-R0 `feat/api-bootstrap@20c8576` (sucessora documental de `3b7c932`). Auditoria R0.1: `git merge-base 20c8576 dc23003` = `af5e81f4bb7c10ac7f0c07712f84f107c4a41aa4`; `git merge-tree --write-tree 20c8576 dc23003` = `f6d55bd52048d183895f72be70fcb32ce8819617`, PASS sem conflito. Será merge real porque as branches divergiram em `af5e81f`.
 3. **Documentação antiga:** não mergear `docs/pre-plan4-gate-alignment@ecb7b37`; seu conteúdo útil já está incorporado e superseded na base atual. Remover branch/worktree somente após R0 e nova verificação de conteúdo.
 4. Rodar regressões da base reconciliada e registrar o novo SHA.
 5. Só então criar `feat/spec027-cloud` a partir do novo SHA de `feat/api-bootstrap`.
@@ -38,7 +38,7 @@ R0 deve revisar e autorizar esta sequência; P0 não a executa:
 
 ### Identidades persistentes
 
-`WebPilotAuthRealmRecord`: `realm_id`, `active`, timestamps administrativos.
+`WebPilotAuthRealmRecord`: `realm_id`, `active`, `created_at`, `updated_at`. Realm nasce `active=true`; `deactivate` e `activate` são operações administrativas explícitas e idempotentes. Desativar realm não apaga memberships nem bindings, mas torna imediatamente qualquer binding daquele realm não utilizável; reativar só restaura uso quando device, membership e binding continuam válidos.
 
 `RealmDeviceAuthorizationRecord`: `realm_id`, `device_id`, `authorized_at`, `revoked_at | None`. Autorização ativa exige realm ativo e `revoked_at is None`.
 
@@ -66,12 +66,19 @@ Não criar endpoint PWA/Bearer nem endpoint de SessionLease em C1.
 
 ### Credencial
 
-- Cliente gera segredo com CSPRNG; referência futura: `secrets.token_urlsafe(32)`.
-- API recebe plaintext apenas sobre HTTPS, modelado como Pydantic `SecretStr`.
-- Persistência usa somente `hash_secret()`; token é de alta entropia, não senha humana.
-- Response nunca devolve plaintext nem hash.
-- Middleware HTTP atual não loga body/headers.
-- Verificação usa `verify_secret()`/`hmac.compare_digest`.
+Contrato oficial C1:
+- o cliente **deve** gerar a credencial com CSPRNG usando `secrets.token_urlsafe(32)` ou implementação criptograficamente equivalente com pelo menos 32 bytes aleatórios (256 bits) antes da codificação;
+- o formato aceito pelo servidor é base64url/url-safe **sem padding**: regex `^[A-Za-z0-9_-]{43,86}$`;
+- comprimento mínimo: **43 caracteres**; máximo: **86 caracteres**;
+- a API rejeita vazio, segredo curto, whitespace em qualquer posição, padding `=`, caracteres fora do alfabeto permitido e payload acima do máximo; não faz `strip()`/normalização silenciosa;
+- o servidor não tenta inferir entropia do texto recebido: o CSPRNG é obrigação explícita do cliente, enquanto tamanho/formato são enforcement server-side;
+- API recebe plaintext apenas sobre HTTPS, modelado como Pydantic `SecretStr` + validação de formato/tamanho antes do hash;
+- persistência usa somente `hash_secret()`; plaintext nunca chega ao repository;
+- response nunca devolve plaintext nem hash;
+- middleware HTTP atual não loga body/headers;
+- verificação usa `verify_secret()`/`hmac.compare_digest`.
+
+Testes obrigatórios em C1-B: credencial oficial de 43 chars aceita; limites válidos; vazio/curto rejeitados; whitespace inicial/interno/final rejeitado; `=`/caractere inválido rejeitado; >86 chars rejeitado; `SecretStr` permanece redigido em repr/error.
 
 ### Persistência proposta — migration 019
 
@@ -85,12 +92,16 @@ Tabelas:
 Proteções:
 - FKs para devices/realms;
 - partial unique index garantindo um binding ativo por device;
-- checks para status e versão positiva;
+- `cloud_bindings`: check relacional obrigatório — `status='active'` implica `revoked_at IS NULL`; `status='revoked'` implica `revoked_at IS NOT NULL`; `credential_version > 0`;
+- `webpilot_auth_realm_devices`: chave primária/unique determinística em `(realm_id, device_id)`, portanto existe no máximo uma linha por associação e nunca duas memberships ativas duplicadas;
+- lifecycle da membership: authorize inicial cria/ativa; authorize repetido quando já ativo é idempotente e não duplica linha; revoke ativo preenche `revoked_at`; revoke repetido preserva o timestamp existente; reauthorize após revoke limpa `revoked_at` e atualiza `authorized_at` de forma coerente;
+- check temporal da membership: quando `revoked_at` existir, deve ser `>= authorized_at`;
 - RLS habilitado; revoke de anon/authenticated; nenhuma policy pública;
-- funções/RPCs mutantes usadas somente pelo backend/server role; revogar `EXECUTE` também de `PUBLIC`, além de `anon`/`authenticated`, e conceder somente ao papel backend apropriado;
+- qualquer função mutante `SECURITY DEFINER` deve declarar `SET search_path = pg_catalog, public` (ou equivalente fixo explicitamente testado) e referenciar objetos da aplicação de forma qualificada, por exemplo `public.devices`, `public.cloud_bindings`, `public.webpilot_auth_realms`;
+- revogar `EXECUTE` das funções de `PUBLIC`, `anon` e `authenticated`; conceder somente ao papel backend estritamente necessário;
 - nenhuma seed de produção embutida.
 
-As mutações ensure/create, rotate e revoke devem ser atômicas e idempotentes no banco e espelhadas pelo MemoryRepository. A mesma operação transacional/RPC deve revalidar `devices.enabled`, realm ativo e membership ativa imediatamente antes da mutação; o check do endpoint é defesa inicial, não autoridade suficiente contra corrida administrativa.
+As mutações ensure/create, rotate, revoke, authorize/revoke membership e activate/deactivate realm devem ser atômicas e idempotentes no banco e espelhadas pelo MemoryRepository. A mesma operação transacional/RPC deve revalidar `devices.enabled`, realm ativo e membership ativa imediatamente antes de mutação de binding; o check do endpoint é defesa inicial, não autoridade suficiente contra corrida administrativa.
 
 ## Review Focus
 
@@ -186,11 +197,12 @@ Atualizar controle central e **STOP R1**.
 Create `api/tests/unit/test_cloud_binding_sql.py` e testar:
 - três tabelas e FKs;
 - partial unique active per device;
-- status/version checks;
-- RLS/revokes;
-- nenhuma public policy;
-- RPC/SQL para ensure/rotate/revoke atômicos;
-- funções não concedidas a anon/authenticated.
+- `status/revoked_at` coerentes e `credential_version > 0`;
+- membership com PK/unique `(realm_id, device_id)`, sem duplicatas, e check temporal de timestamps;
+- RLS/revokes e nenhuma public policy;
+- RPC/SQL para ensure/rotate/revoke binding, authorize/revoke membership e activate/deactivate realm atômicos/idempotentes;
+- toda função `SECURITY DEFINER` com `search_path` fixo e objetos `public.*` qualificados;
+- `EXECUTE` revogado de `PUBLIC`, `anon` e `authenticated`, concedido somente ao papel backend necessário.
 
 Run expected RED porque migration 019 não existe.
 
@@ -204,9 +216,9 @@ Create:
 - `api/tests/integration/test_cloud_binding_postgres.py`
 - `api/tests/unit/test_supabase_cloud_binding_repository.py`
 
-Cobrir mapping seguro, RPC names/payloads, idempotência, conflitos tipados, persistence error sanitizado, autorização de realm e projection de autorização do binding.
+Cobrir mapping seguro, RPC names/payloads, idempotência, conflitos tipados, persistence error sanitizado, autorização de realm, lifecycle `active` do realm, lifecycle da membership e projection de autorização do binding.
 
-Postgres pode skip sem `TEST_POSTGRES_DSN`; Supabase MockTransport precisa RED/GREEN sempre.
+**PostgreSQL real é obrigatório para liberar C1-B/R2.** Os testes de `test_cloud_binding_postgres.py` devem executar contra PostgreSQL efêmero/local real com a migration 019 aplicada. `TEST_POSTGRES_DSN` ausente, Docker/Postgres indisponível ou qualquer skip desses testes deixa **C1-B BLOQUEADO**; skip não pode ser contado como gate aprovado. Supabase MockTransport continua obrigatório, mas não substitui a prova SQL real.
 
 ### Step B4 — GREEN: repositories
 
@@ -216,6 +228,9 @@ Postgres usa as funções transacionais da migration; Supabase usa RPC com serve
 
 Create `api/tests/unit/test_cloud_binding_service.py` e cobrir:
 - `SecretStr` redaction;
+- credencial oficial `token_urlsafe(32)`/43 chars válida;
+- mínimo 43 e máximo 86 aceitos somente com alfabeto base64url sem padding;
+- vazio, <43, >86, whitespace, `=` e caracteres fora de `[A-Za-z0-9_-]` rejeitados antes do hash/repository;
 - create faz hash antes do repository;
 - same secret/realm idempotente;
 - conflito não altera binding;
@@ -248,12 +263,17 @@ Criar router e incluir no v1 router. Não adicionar rota/front-end PWA.
 Create `api/tests/unit/test_admin_cloud_realm.py`.
 
 `api/scripts/admin_cloud_realm.py` terá somente operações administrativas:
-- ensure/create realm;
-- authorize device;
-- revoke device authorization;
+- ensure/create realm ativo por default;
+- `activate realm` idempotente;
+- `deactivate realm` idempotente;
+- authorize device idempotente;
+- revoke device authorization idempotente;
+- reauthorize após revoke sem duplicar a associação;
 - usa credencial administrativa já existente do backend;
 - imprime somente IDs/status não secretos;
 - nunca cria CloudBinding/Cloud credential.
+
+Testes do script/service devem provar que deactivate bloqueia imediatamente `authenticate_cloud_binding`, activate restaura somente quando binding/device/membership continuam válidos e chamadas repetidas não alteram timestamps indevidamente nem criam duplicatas.
 
 Modificar `_DEPENDENCY_PROBES` em `admin_device.py` para impedir compensação/deleção de device com realm authorization ou binding existente.
 
@@ -264,7 +284,9 @@ Nenhum comando administrativo é executado contra produção neste checkpoint.
 Run:
 - testes C1-B;
 - `cd api && uv run pytest tests/unit tests/integration/test_cloud_binding_api.py -q -W error`;
-- se Docker local disponível, `make test-all` para migration em Postgres efêmero;
+- **obrigatório:** subir/usar PostgreSQL efêmero/local real, aplicar migrations até `019_cloud_binding_realm.sql` e executar `tests/integration/test_cloud_binding_postgres.py` sem skip;
+- **obrigatório:** `make test-all` (ou comando equivalente documentado que exercite a migration 019/RPCs no Postgres real). Se Docker/Postgres/DSN não estiver disponível, registrar **BLOQUEADO PARA R2** e parar;
+- registrar explicitamente contagem `passed/skipped/failed`; qualquer skip no conjunto PostgreSQL C1-B bloqueia aprovação;
 - `git diff --check`.
 
 **Nunca** `prod-migrate`, deploy ou push.
@@ -319,11 +341,15 @@ Testes adversariais:
 ### Step C4 — RED: cross-realm e revogações
 
 - device só binda realm com membership ativa;
+- `deactivate realm` invalida credential auth imediatamente sem apagar membership/binding;
+- `deactivate realm` repetido é idempotente;
+- `activate realm` repetido é idempotente e só restaura uso se device enabled, membership ativa e binding ativo;
 - revogar membership invalida credential auth imediatamente;
-- reautorizar membership pode tornar binding ativo utilizável se o binding não foi revogado;
+- revoke repetido preserva timestamp; reauthorize restaura a mesma associação sem duplicata e com timestamps coerentes;
+- reautorizar membership pode tornar binding ativo utilizável se o binding não foi revogado e o realm está ativo;
 - `enabled=false` torna binding não utilizável imediatamente;
 - re-enable restaura apenas se realm authorization e binding continuam ativos;
-- binding explicitamente revogado continua revogado após re-enable.
+- binding explicitamente revogado continua revogado após re-enable/realm reactivate.
 
 ### Step C5 — RED: logs/serialization
 
@@ -383,8 +409,9 @@ API/PWA:
 - `git diff --check <C1_BASE>..HEAD`.
 
 Banco local:
-- `make test-all` em Postgres efêmero, se disponível;
+- repetir `make test-all`/prova equivalente em PostgreSQL efêmero/local real; o gate SQL não se torna opcional depois de C1-B;
 - `make migrate-list` mostra 019;
+- qualquer skip/falha dos testes PostgreSQL C1 continua bloqueante;
 - registrar explicitamente que migration de produção **NÃO foi aplicada**.
 
 Desktop:

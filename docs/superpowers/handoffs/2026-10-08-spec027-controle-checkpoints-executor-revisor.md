@@ -1,9 +1,9 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** P0 CONCLUÍDO — aguardando R0 independente; nenhuma integração ou implementação C1 executada
+**Status:** R0-F1..F5 CORRIGIDOS DOCUMENTALMENTE — aguardando R0.1 independente; nenhuma integração ou implementação C1 executada
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
-**Base P0 API/PWA auditada:** feat/api-bootstrap @ 8177332; **base Desktop auditada:** develop @ abe386f, com Plan 5 pendente em 9e5b5e1. A futura implementação da SPEC 027 usará **uma única branch de feature**, `feat/spec027-cloud`, criada somente após R0 e reconciliação aprovada.
+**Base API/PWA para R0.1:** `feat/api-bootstrap@20c8576` antes deste commit de correção (sucessora documental de `3b7c932`); o HEAD após a correção será apenas seu sucessor documental. **Base Desktop auditada:** `develop@abe386f`, com Plan 5 pendente em `9e5b5e1`. A futura implementação da SPEC 027 usará uma única `feat/spec027-cloud`, criada somente após R0.1 e reconciliação aprovada.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
 **Objetivo:** um protocolo auditável de entregas incrementais, com parada obrigatória após cada checkpoint, para SPEC 027 sem efeitos operacionais prematuros.
 
@@ -16,15 +16,15 @@
 5. specs/025-webpilot-http-observed-weather-shadow-migration.md e specs/030-device-operational-gate.md, **se presente**; se não existir nesse repo, localizar fonte canônica antes de projetar.
 6. docs/superpowers/strategy/2026-10-02-alertam-cloud-evolution-roadmap.md.
 7. docs/superpowers/plans/2026-10-06-pre-spec027-cloud-infra-spike.md e handoff correspondente.
-8. `docs/superpowers/plans/2026-10-08-spec027-c1-binding-realm-authority.md` — criado no P0; execução depende de aprovação R0.
+8. `docs/superpowers/plans/2026-10-08-spec027-c1-binding-realm-authority.md` — criado no P0, corrigido por R0-F1..F5; execução depende de aprovação R0.1.
 
 ## 2. Estado de entrada verificado (2026-10-08)
 
 - SPEC 025 Plan 5: gate técnico MET; 25h53m, 1501 comparáveis, 1499 equivalentes, 109 limpos, nenhuma falha; 4 registros explicados de 2 episódios, hipótese forte de diferença temporal Selenium/HTTP, **não comprovada como causa-raiz**.
 - Usuário aceitou a hipótese documentada e autorizou avançar o **desenvolvimento** da SPEC 027; **não** autorizou migrações de produção, WebPilot real no Cloud, publicação source=cloud, cutover ou failover real.
 - Desktop: feat/spec025-plan5-shadow-evidence-gate, HEAD após organização 9e5b5e1 (documentação R2/Task 5 commitada); develop abe386f; checkout limpo, branch Plan 5 não integrada, Shadow real não deve ser interrompido.
-- API/PWA: `feat/api-bootstrap` local **8177332**, `origin/feat/api-bootstrap` observado **3d85578**; checkout limpo, local 6 commits à frente, **nenhum push**.
-- API/PWA checkout principal auditado em `feat/api-bootstrap@8177332`; documentação de gate/checkpoints e auditoria Git já está preservada nessa base.
+- API/PWA: correção R0.1 iniciada em `feat/api-bootstrap@20c8576`, `origin/feat/api-bootstrap@3d85578`; checkout limpo, sem push. `20c8576` contém apenas a revisão R0 sobre o P0 documental `3b7c932`.
+- API/PWA checkout principal auditado novamente em `20c8576`; merge-base com o spike = `af5e81f4bb7c10ac7f0c07712f84f107c4a41aa4`; `git merge-tree --write-tree 20c8576 dc23003` = `f6d55bd52048d183895f72be70fcb32ce8819617`, PASS sem conflito.
 - Spike Northflank em worktree .worktrees/pre-spec027-cloud-infra-spike, branch feat/pre-spec027-cloud-infra-spike, HEAD documental local dc23003 (à frente do remoto), núcleo infra já no remoto no commit 9508af3; aprovado só como sandbox infra.
 - Achado residual Shadow: assinatura explicada reincidente pode incrementar occurrences/last_seen sem reabrir status. Tratar como hotfix TDD Desktop separado, sem modificar aplicação em coleta por conta própria. Reexaminar reincidências.
 
@@ -53,8 +53,8 @@
 
 | Ordem | Checkpoint | Entrega sob controle | Gate independente | Situação |
 |---|---|---|---|---|
-| 0 | P0 — Reconciliação e plano | Verificar estado cross-repo; preparar proposta de integração sem alterar produção; planejar C1 com tasks TDD e contratos | R0 aprova base e plano antes de programar | **R0-FIX — correções documentais obrigatórias** |
-| 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1 revisa identidade, constraints, isolamento e contrato | BLOQUEADO por R0 |
+| 0 | P0 — Reconciliação e plano | Verificar estado cross-repo; preparar proposta de integração sem alterar produção; planejar C1 com tasks TDD e contratos | R0/R0.1 aprovam base e plano antes de programar | **PRONTO PARA R0.1 — R0-F1..F5 corrigidos** |
+| 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1 revisa identidade, constraints, isolamento e contrato | BLOQUEADO por R0.1 |
 | 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2 revisa autorização, secrets e idempotência | BLOQUEADO |
 | 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | BLOQUEADO |
 | 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | BLOQUEADO |
@@ -64,19 +64,19 @@
 | 8 | C4 — Observabilidade | Status, logs sanitizados, smoke prolongado, degradação e reconciliação | Revisão operacional humana | BLOQUEADO |
 | 9 | C5 — Eventos/Push | Plano próprio de idempotência cross-source, sem duplicação | **Somente se autorizado separadamente** | FORA DA LIBERAÇÃO ATUAL |
 
-O detalhamento e subdivisão de C1-A a C1-D podem ser aperfeiçoados pelo plano P0, **mas exigem aprovação de R0 antes da execução**. Para C2/C3, criar planos e checkpoints detalhados antes de iniciar; a aprovação de C1 não é aprovação operacional dessas fases.
+O detalhamento e subdivisão de C1-A a C1-D podem ser aperfeiçoados pelo plano P0, **mas agora exigem aprovação de R0.1 antes da execução**. Para C2/C3, criar planos e checkpoints detalhados antes de iniciar; a aprovação de C1 não é aprovação operacional dessas fases.
 
 ### Estratégia simplificada de branch/worktree
 
 A SPEC 027 usa **uma branch longa de feature por repositório**, e não uma branch por fase/checkpoint:
 
-- API/PWA/Cloud: `feat/spec027-cloud`, criada após P0/R0 a partir de `feat/api-bootstrap` já reconciliada com o spike Northflank.
+- API/PWA/Cloud: `feat/spec027-cloud`, criada somente após aprovação R0.1 e reconciliação efetiva de `feat/api-bootstrap` com o spike Northflank.
 - Desktop: usar também `feat/spec027-cloud` **somente quando surgir a primeira alteração Desktop da SPEC 027**, criada a partir de `develop` já contendo o fechamento da SPEC 025.
 - C1, C2, C3 e C4 avançam na mesma branch, separados por commits e checkpoints independentes R1...Rn.
 - Preferir uma única worktree `.worktrees/spec027-cloud` por repo quando necessário; não criar worktree por subetapa.
 - Ao final de cada checkpoint: commit local + testes + handoff + STOP para revisor. **A revisão é o isolamento; a branch não precisa mudar.**
 - Sincronizações com a branch-base acontecem apenas em pontos planejados, com working tree limpa e revisão de conflito; não fazer rebase/merge oportunista no meio de um checkpoint.
-- A branch antiga `feat/pre-spec027-cloud-infra-spike` deve ser integrada e removida quando P0/R0 aprovar a reconciliação.
+- A branch antiga `feat/pre-spec027-cloud-infra-spike` só pode ser integrada/removida após aprovação R0.1 e execução explícita da reconciliação.
 - C5 Eventos/Push permanece fora desta branch inicial por ser evolução opcional com plano/autorização próprios; se for aprovada futuramente, decide-se naquele momento se continua na SPEC 027 ou abre feature separada.
 
 ### P0 — Entrega exata exigida
@@ -125,12 +125,12 @@ A SPEC 027 usa **uma branch longa de feature por repositório**, e não uma bran
 
 ### P0 — Reconciliação + plano C1
 
-**Status:** R0-FIX — CORREÇÕES DOCUMENTAIS OBRIGATÓRIAS.
-**Executor:** P0 concluído em 2026-10-08. **Revisor R0:** revisão independente concluída; achados R0-F1..R0-F5 abaixo.
-**Próximo ato permitido:** corrigir somente o plano/checkpoint conforme R0-F1..F5 e retornar para R0. Nenhuma integração, criação de `feat/spec027-cloud` ou implementação C1 antes do encerramento R0.
+**Status:** PRONTO PARA R0.1 INDEPENDENTE — R0-F1..F5 corrigidos documentalmente.
+**Executor:** P0 concluído em 2026-10-08; correções R0 concluídas nesta rodada. **Revisor R0.1:** pendente.
+**Próximo ato permitido:** somente R0.1. Nenhuma integração, criação de `feat/spec027-cloud` ou implementação C1-A antes da aprovação.
 
 **Estado Git auditado**
-- API/PWA checkout principal: `feat/api-bootstrap@8177332`, limpo; `origin/feat/api-bootstrap@3d85578`; local 6 commits à frente, sem push.
+- API/PWA base executável para a correção: `feat/api-bootstrap@20c8576`, limpa antes dos edits; `origin/feat/api-bootstrap@3d85578`; sem push. O commit desta correção será somente documental e sucessor de `20c8576`.
 - Spike: `feat/pre-spec027-cloud-infra-spike@dc23003`, worktree limpa; remoto da branch em `9508af3`. O commit `dc23003` fecha documentalmente o spike homologado Northflank.
 - Desktop checkout principal: `feat/spec025-plan5-shadow-evidence-gate@9e5b5e1`, limpo; `develop@abe386f` e `origin/develop@abe386f`.
 - Worktrees sujas não relacionadas foram identificadas e preservadas: API `/home/ciro/dev/prog/.worktrees/alertamaritimoAPI-spec029`; Desktop `/home/ciro/dev/prog/.worktrees/alertamaritimo-win-updater-provisioning`; externos `~/.cache/claude-hfi/.../elm` e `.../oak`. `/home/ciro/dev/prog/alertamaritimo/.worktrees/spec028-plan1` está limpo porém não integrado e também foi preservado.
@@ -181,7 +181,7 @@ A SPEC 027 usa **uma branch longa de feature por repositório**, e não uma bran
 - `feat/spec027-cloud` inexistente nos dois repos.
 - Nenhuma suíte funcional foi rerodada no P0 porque o único diff produzido é documental/plano; regressões funcionais são gate da base reconciliada pós-R0 antes de criar a feature.
 
-**Pendências para depois de R0**
+**Pendências para depois de R0.1**
 - executar as integrações aprovadas e registrar os novos SHAs reconciliados;
 - rodar regressões da base reconciliada;
 - criar `feat/spec027-cloud` somente então;
@@ -191,7 +191,7 @@ A SPEC 027 usa **uma branch longa de feature por repositório**, e não uma bran
 
 ### C1-A / C1-B / C1-C / C1-D
 
-**Status:** BLOQUEADO até aprovação de R0; abrir seção específica em cada entrega.
+**Status:** BLOQUEADO até aprovação de R0.1; abrir seção específica em cada entrega.
 
 ### C2-P / C2 / C3-P / C3 / C4 / C5
 
@@ -285,3 +285,42 @@ A migration proposta prevê RPCs mutantes e RLS, mas o plano não exige explicit
 - C1-A permanece **BLOQUEADO**.
 
 **Próximo passo autorizado:** Executor corrige somente R0-F1..R0-F5 no plano/checkpoint, faz `git diff --check`, commit documental local e para para **R0.1 independente**. Não integrar branches, não criar `feat/spec027-cloud`, não implementar C1-A, não push/deploy/migration.
+
+### Correções R0-F1..R0-F5 — Executor (2026-10-08)
+
+**Status:** PRONTO PARA R0.1 INDEPENDENTE. Escopo limitado ao plano C1 e a este checkpoint; nenhuma integração/implementação foi executada.
+
+**R0-F1 — base API real e simulação do spike — CORRIGIDA**
+- Base limpa observada ao iniciar a correção: `feat/api-bootstrap@20c85768faa18221c4e97611b96d91fef0aecc91`, sucessora documental de `3b7c932`.
+- Spike: `dc230037a4da22f5fc11ac4fedbaebc0c95c21f8`.
+- `git merge-base 20c8576 dc23003` = `af5e81f4bb7c10ac7f0c07712f84f107c4a41aa4`.
+- `git merge-tree --write-tree 20c8576 dc23003` = `f6d55bd52048d183895f72be70fcb32ce8819617`, PASS sem conflito.
+- Plano atualizado para essa base real. Nenhum merge foi executado.
+
+**R0-F2 — força/formato da Cloud credential — CORRIGIDA**
+- Geração oficial obrigatória no cliente: CSPRNG `secrets.token_urlsafe(32)` ou equivalente com >=32 bytes aleatórios.
+- Enforcement server-side: regex `^[A-Za-z0-9_-]{43,86}$`, sem padding/whitespace/normalização silenciosa.
+- Plano exige rejeição de vazio, curto, >86, whitespace, `=`, caractere inválido e payload abusivo antes de hash/repository.
+- `SecretStr`, hash-only e não exposição em response/log continuam obrigatórios.
+
+**R0-F3 — lifecycle WebPilotAuthRealm.active — CORRIGIDA**
+- Realm nasce ativo; `activate`/`deactivate` são operações administrativas explícitas e idempotentes.
+- Deactivate preserva binding/membership, mas bloqueia imediatamente `authenticate_cloud_binding`.
+- Reactivate só restaura uso se device, membership e binding continuam válidos.
+- Plano inclui testes de chamadas repetidas e efeitos imediatos.
+
+**R0-F4 — PostgreSQL real no C1-B — CORRIGIDA**
+- PostgreSQL efêmero/local real com migration 019 aplicada tornou-se gate obrigatório antes de R2.
+- `TEST_POSTGRES_DSN` ausente, Docker/Postgres indisponível ou skip dos testes SQL C1-B => checkpoint BLOQUEADO.
+- Supabase MockTransport permanece complementar; não substitui prova real de FKs/index/RLS/grants/RPCs.
+
+**R0-F5 — hardening SQL e invariantes — CORRIGIDA**
+- `SECURITY DEFINER` exige `search_path` fixo e objetos `public.*` qualificados.
+- `EXECUTE` deve ser revogado de `PUBLIC`, `anon`, `authenticated` e concedido somente ao backend necessário.
+- Binding: `active => revoked_at IS NULL`; `revoked => revoked_at IS NOT NULL`; versão positiva.
+- Membership: PK/unique `(realm_id, device_id)`, sem duplicatas; authorize/revoke/reauthorize idempotentes e timestamps coerentes.
+- Plano exige RPCs atômicas também para membership e activate/deactivate realm.
+
+**Escopo preservado:** C1-A continua BLOQUEADO. Não integrar branches, não criar `feat/spec027-cloud`, não fazer push/deploy/migration e não tocar no Shadow.
+
+**PARECER SOLICITADO:** **R0.1 independente** sobre R0-F1..R0-F5; nenhuma etapa seguinte iniciada.
