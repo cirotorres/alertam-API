@@ -3,7 +3,7 @@
 **Data de abertura:** 2026-10-08
 **Status:** PREPARAÇÃO — P0 aguardando execução e R0 independente
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
-**Branch de documentação atual:** prep/spec027-cloud-infra-spike (não é a branch de implementação C1)
+**Branch atual após organização Git:** feat/api-bootstrap (HEAD local 3253e44; documentos de gate/checkpoints commitados e incorporados por fast-forward, sem push). Não confundir com a branch de implementação C1, ainda não criada.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
 **Objetivo:** um protocolo auditável de entregas incrementais, com parada obrigatória após cada checkpoint, para SPEC 027 sem efeitos operacionais prematuros.
 
@@ -22,9 +22,9 @@
 
 - SPEC 025 Plan 5: gate técnico MET; 25h53m, 1501 comparáveis, 1499 equivalentes, 109 limpos, nenhuma falha; 4 registros explicados de 2 episódios, hipótese forte de diferença temporal Selenium/HTTP, **não comprovada como causa-raiz**.
 - Usuário aceitou a hipótese documentada e autorizou avançar o **desenvolvimento** da SPEC 027; **não** autorizou migrações de produção, WebPilot real no Cloud, publicação source=cloud, cutover ou failover real.
-- Desktop: feat/spec025-plan5-shadow-evidence-gate, HEAD observado 8fa5962; develop abe386f; handoff do Desktop ainda tinha modificações não commitadas; Shadow real não deve ser interrompido.
-- API/PWA: feat/api-bootstrap local 2545d37, remoto observado 3d85578 (validar na abertura; não assumir origem atualizada).
-- API/PWA checkout principal: prep/spec027-cloud-infra-spike, HEAD af5e81f; há documentação SPEC025/027 e handoffs locais **não commitados**.
+- Desktop: feat/spec025-plan5-shadow-evidence-gate, HEAD após organização 9e5b5e1 (documentação R2/Task 5 commitada); develop abe386f; checkout limpo, branch Plan 5 não integrada, Shadow real não deve ser interrompido.
+- API/PWA: feat/api-bootstrap local 3253e44, remoto observado 3d85578 (4 commits locais à frente, **nenhum push**; validar na abertura).
+- API/PWA checkout principal: feat/api-bootstrap, HEAD 3253e44, limpo; a antiga prep/spec027-cloud-infra-spike foi removida após integração documental fast-forward. Specs 025/027 e três handoffs novos estão no commit 3253e44.
 - Spike Northflank em worktree .worktrees/pre-spec027-cloud-infra-spike, branch feat/pre-spec027-cloud-infra-spike, HEAD documental local dc23003 (à frente do remoto), núcleo infra já no remoto no commit 9508af3; aprovado só como sandbox infra.
 - Achado residual Shadow: assinatura explicada reincidente pode incrementar occurrences/last_seen sem reabrir status. Tratar como hotfix TDD Desktop separado, sem modificar aplicação em coleta por conta própria. Reexaminar reincidências.
 
@@ -69,7 +69,7 @@ O detalhamento e subdivisão de C1-A a C1-D podem ser aperfeiçoados pelo plano 
 ### P0 — Entrega exata exigida
 
 - Inventário verificável de branch/SHA/working tree/worktrees/estado remoto dos dois repos; não modificar o Desktop enquanto Shadow real coleta.
-- Tratar integrações pendentes como **proposta de sequência**: fechamento documental/commit Plan 5; revisão e merge Desktop develop; revisão e integração spike Northflank na base feat/api-bootstrap; conciliar documentação local sem perdê-la.
+- Tratar integrações pendentes como **proposta de sequência**: o commit documental Plan 5 (9e5b5e1) já existe; revisar e integrar Plan 5 em Desktop develop sem interromper Shadow; revisar e integrar spike Northflank (dc23003) em feat/api-bootstrap; reconciliar a branch documental divergente docs/pre-plan4-gate-alignment (ecb7b37) sem perda.
 - Criar plano executável docs/superpowers/plans/2026-10-08-spec027-c1-binding-realm-authority.md (nome sugerido), incluindo RED/GREEN, interfaces, testes, riscos, estratégia de migrations **sem aplicar**, impacto cross-repo, checkpoints C1-A..D e rollback.
 - Justificar segurança dos endpoints e credencial; DeviceOperationalGate fail-closed e revogação; persistência por device_id, vínculo realm e controle de autorização.
 - Entregar plano/diff e **PARAR para R0**. P0 não faz merge, push, deploy, migrations, WebPilot Cloud, nem implementa C1.
@@ -141,3 +141,20 @@ git worktree list
 ```
 
 Não executar comandos destrutivos/que alterem branch durante o preflight. Criar branch/worktree de implementação apenas **depois** de R0 e reconciliação aprovada, preservando mudanças locais.
+
+## 8. Organização Git pré-P0 (2026-10-08)
+
+**Ação de manutenção autorizada pelo usuário antes de iniciar P0; não equivale a aprovação R0.**
+
+- API/PWA: documentos SPEC 025/027 e handoffs de checkpoints antes soltos foram commitados em **3253e44** (docs: registra aceite shadow e checkpoints para spec027), na branch documental prep/spec027-cloud-infra-spike.
+- A documentação completa dessa branch (incluindo commits 4084279 e af5e81f) foi incorporada por **fast-forward local** em feat/api-bootstrap, agora **3253e44**, working tree limpa, 4 commits à frente do remoto; prep/spec027-cloud-infra-spike foi apagada após integração comprovada.
+- Desktop: handoff de R2/Task 5 previamente modificado foi preservado e commitado em **9e5b5e1**, branch feat/spec025-plan5-shadow-evidence-gate; checkout limpo. **Plan 5 permanece fora do develop e processo Shadow segue em execução.**
+- Desktop, branches locais comprovadamente ancestrais de develop excluídas: feat/spec025-plan4-maneuver-shadow; hotfix/pre-plan4-device-operational-gate; hotfix/ship-photo-wikidata-priority; hotfix/version-test-alignment; ui/pre-plan4-desktop-adjustments; feat/spec029-tabua-mare-dhn (após remover worktree limpo).
+- API/PWA, branch local comprovadamente ancestral de feat/api-bootstrap excluída: feat/spec030-device-operational-gate (após remover worktree limpo).
+- Total da manutenção: **8 branches locais excluídas**, sendo 2 worktrees limpos removidos e nenhuma branch remota excluída.
+- **Preservar por não estar integrado:** Desktop feat/spec025-plan5-shadow-evidence-gate, spec028-plan1-desktop (worktree limpo, commits não integrados).
+- **Preservar por mudanças não commitadas:** Desktop fix/windows-updater-provisioning (handoff modificado); worktrees externos hfi/.../elm e hfi/.../oak (múltiplos arquivos modificados); API/PWA feat/spec029-tabua-mare-dhn (handoff modificado).
+- **Preservar até reconciliação P0:** API/PWA docs/pre-plan4-gate-alignment em ecb7b37 (commit documental próprio não integrado) e feat/pre-spec027-cloud-infra-spike em dc23003 (shell Northflank pronto, commit documental local adiante do remoto).
+- Nenhum push, fetch forçado, reset, stash, deploy, migration, Cloud operacional ou cutover. Limpeza foi feita somente com merge fast-forward para documentos, git branch -d e git worktree remove sem force.
+
+**P0 ainda precisa** revisar o diff da documentação ecb7b37 e a integração do spike dc23003, definir base do plano C1 e obter R0 independente. Não apagar branch/worktree cujo HEAD ou mudanças locais não estejam integrados.

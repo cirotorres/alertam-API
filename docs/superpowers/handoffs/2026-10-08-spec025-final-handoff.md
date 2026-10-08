@@ -1,7 +1,7 @@
 # SPEC 025 — Gate Shadow concluído; handoff de encerramento documental (2026-10-08)
 
 **Status:** gate técnico MET; aceite humano contextual para iniciar trilha de desenvolvimento SPEC 027. Finalização documental/integracao de branch pendentes. Sem cutover.
-**Desktop:** /home/ciro/dev/prog/alertamaritimo — feat/spec025-plan5-shadow-evidence-gate, HEAD observado 8fa5962; develop abe386f.
+**Desktop:** /home/ciro/dev/prog/alertamaritimo — feat/spec025-plan5-shadow-evidence-gate, HEAD atualizado 9e5b5e1 (documentos R2 e gate commitados); develop abe386f, integração pendente.
 **API/PWA:** /home/ciro/dev/prog/alertamaritimoAPI.
 **Handoff de evidência detalhado:** /home/ciro/dev/prog/alertamaritimo/docs/superpowers/handoffs/2026-10-06-spec025-plan5-shadow-evidence-gate-handoff.md
 
@@ -35,7 +35,7 @@ ShadowMetricsStore._record_divergence, quando encontra uma assinatura já classi
 - Plan 4: integrado em Desktop/develop.
 - Plan 5 Tasks 1–4: implementação revisada R2, suite previamente verde; branch ainda não integrada a develop.
 - Plan 5 Task 5: janela real >24h e thresholds completos; duas ocorrências isoladas explicadas sob hipótese temporal, evidência retida.
-- Plan 5 Task 6: status/roadmap atualizados localmente; **ainda requer revisão documental, checkpoint/commit e integração explícitos**.
+- Plan 5 Task 6: status/roadmap já commitados no API/PWA (3253e44) e Desktop (9e5b5e1), **revisão de fechamento e integração Desktop/develop ainda pendentes**.
 
 ## Autorizações e proibições
 

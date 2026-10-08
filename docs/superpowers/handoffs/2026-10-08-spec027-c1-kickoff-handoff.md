@@ -19,7 +19,7 @@
 - Commit funcional de infraestrutura no remote: 9508af3; commit documental local não publicado: dc23003.
 - Shell cloud/ com healthz/readyz, Docker não-root, smoke/restart Northflank homologados em sandbox: https://p01--alertam-cloud--x8mfxqmhb4gj.code.run .
 - O spike está aprovado **somente como infraestrutura**: não contém WebPilot real, SessionLease real, CloudBinding operacional, Supabase migration, publicação ou failover.
-- Branch de integração API/PWA: feat/api-bootstrap; HEAD local observado 2545d37, origin/feat/api-bootstrap observado 3d85578 (checar antes de planejar). Não deduzir que o shell cloud/ já foi integrado à base de produção.
+- Branch de integração API/PWA: feat/api-bootstrap; HEAD local após organização 3253e44, origin/feat/api-bootstrap observado 3d85578 (4 commits locais à frente; sem push). Documentação SPEC025/027/checkpoints já commitada em 3253e44; o shell cloud/ **ainda não está integrado** à base canônica (checar antes de planejar).
 
 ## Próxima etapa — C1: plano e executor separados
 
