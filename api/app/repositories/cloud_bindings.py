@@ -49,6 +49,8 @@ class CloudBindingRecord:
     revoked_at: datetime | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.status, CloudBindingStatus):
+            raise ValueError("status must be CloudBindingStatus")
         if self.credential_version < 1:
             raise ValueError("credential_version must be positive")
         if self.status is CloudBindingStatus.ACTIVE and self.revoked_at is not None:

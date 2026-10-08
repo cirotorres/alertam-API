@@ -280,12 +280,6 @@ class MemoryDeviceRepository:
                 ]
                 if not previous:
                     return None
-                previous.sort(
-                    key=lambda item: (
-                        item.created_at,
-                        str(item.cloud_binding_id),
-                    )
-                )
                 latest = previous[-1]
                 if not self._binding_authority_active_unlocked(
                     device_id,

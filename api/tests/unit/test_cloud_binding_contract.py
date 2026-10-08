@@ -90,6 +90,32 @@ def test_cloud_binding_record_rejects_invalid_lifecycle_state(
         )
 
 
+@pytest.mark.parametrize(
+    ("status", "revoked_at"),
+    [
+        ("active", NOW),
+        ("revoked", None),
+        ("garbage", None),
+    ],
+)
+def test_cloud_binding_record_rejects_non_enum_runtime_status(
+    status,
+    revoked_at,
+):
+    with pytest.raises(ValueError):
+        CloudBindingRecord(
+            cloud_binding_id=UUID("33333333-3333-3333-3333-333333333333"),
+            device_id="pecem-01",
+            realm_id="webpilot-pecem",
+            credential_hash="hash",
+            credential_version=1,
+            status=status,
+            created_at=NOW,
+            updated_at=NOW,
+            revoked_at=revoked_at,
+        )
+
+
 def test_realm_device_authorization_active_reflects_revocation_state():
     active = RealmDeviceAuthorizationRecord(
         realm_id="webpilot-pecem",

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 import pytest
+
+import app.repositories.memory as memory_repository
 
 from app.repositories.cloud_bindings import (
     CloudBindingConflictError,
@@ -197,6 +200,50 @@ def test_revoke_is_idempotent_and_preserves_binding_history_for_rebind():
     assert rebound.cloud_binding_id != revoked.cloud_binding_id
     assert rebound.credential_version == 1
     assert repo.list_cloud_bindings("pecem-01") == (revoked, rebound)
+
+
+def test_revoke_retry_returns_latest_lifecycle_when_timestamps_tie(
+    monkeypatch,
+):
+    ids = iter(
+        [
+            UUID("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+            UUID("00000000-0000-0000-0000-000000000001"),
+        ]
+    )
+    monkeypatch.setattr(memory_repository, "uuid4", lambda: next(ids))
+
+    repo = MemoryDeviceRepository(clock=lambda: BASE)
+    repo.put_device(_device("pecem-01"))
+    repo.put_webpilot_auth_realm(_realm())
+    assert repo.authorize_realm_device(
+        "webpilot-pecem",
+        "pecem-01",
+    ) is not None
+
+    first = repo.ensure_cloud_binding(
+        "pecem-01",
+        "webpilot-pecem",
+        "cloud-hash-v1",
+    )
+    assert first is not None
+    first_revoked = repo.revoke_cloud_binding("pecem-01")
+    assert first_revoked is not None
+
+    second = repo.ensure_cloud_binding(
+        "pecem-01",
+        "webpilot-pecem",
+        "cloud-hash-v2",
+    )
+    assert second is not None
+    second_revoked = repo.revoke_cloud_binding("pecem-01")
+    assert second_revoked is not None
+
+    retry = repo.revoke_cloud_binding("pecem-01")
+
+    assert first.cloud_binding_id > second.cloud_binding_id
+    assert retry == second_revoked
+    assert retry.cloud_binding_id == second.cloud_binding_id
 
 
 def test_cloud_binding_operations_are_scoped_to_device():
