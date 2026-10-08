@@ -53,7 +53,7 @@
 
 | Ordem | Checkpoint | Entrega sob controle | Gate independente | Situação |
 |---|---|---|---|---|
-| 0 | P0 — Reconciliação e plano | Verificar estado cross-repo; preparar proposta de integração sem alterar produção; planejar C1 com tasks TDD e contratos | R0 aprova base e plano antes de programar | **AGUARDA EXECUTOR** |
+| 0 | P0 — Reconciliação e plano | Verificar estado cross-repo; preparar proposta de integração sem alterar produção; planejar C1 com tasks TDD e contratos | R0 aprova base e plano antes de programar | **R0-FIX — correções documentais obrigatórias** |
 | 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1 revisa identidade, constraints, isolamento e contrato | BLOQUEADO por R0 |
 | 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2 revisa autorização, secrets e idempotência | BLOQUEADO |
 | 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | BLOQUEADO |
@@ -125,9 +125,9 @@ A SPEC 027 usa **uma branch longa de feature por repositório**, e não uma bran
 
 ### P0 — Reconciliação + plano C1
 
-**Status:** PRONTO PARA R0 INDEPENDENTE.
-**Executor:** concluído em 2026-10-08. **Revisor R0:** pendente.
-**Próximo ato permitido:** somente R0. Nenhuma integração, criação de `feat/spec027-cloud` ou implementação C1 antes do parecer.
+**Status:** R0-FIX — CORREÇÕES DOCUMENTAIS OBRIGATÓRIAS.
+**Executor:** P0 concluído em 2026-10-08. **Revisor R0:** revisão independente concluída; achados R0-F1..R0-F5 abaixo.
+**Próximo ato permitido:** corrigir somente o plano/checkpoint conforme R0-F1..F5 e retornar para R0. Nenhuma integração, criação de `feat/spec027-cloud` ou implementação C1 antes do encerramento R0.
 
 **Estado Git auditado**
 - API/PWA checkout principal: `feat/api-bootstrap@8177332`, limpo; `origin/feat/api-bootstrap@3d85578`; local 6 commits à frente, sem push.
@@ -231,3 +231,57 @@ Não executar comandos destrutivos/que alterem branch durante o preflight. Criar
 - Nenhum push, fetch forçado, reset, stash, deploy, migration, Cloud operacional ou cutover. Limpeza foi feita somente com merge fast-forward para documentos, git branch -d e git worktree remove sem force.
 
 **P0 ainda precisa** revisar o diff da documentação ecb7b37 e a integração do spike dc23003, definir base do plano C1 e obter R0 independente. Não apagar branch/worktree cujo HEAD ou mudanças locais não estejam integrados.
+
+
+### R0 independente — revisão do P0 e Plano C1 (2026-10-08)
+
+**Resultado:** CORREÇÕES OBRIGATÓRIAS antes de liberar C1-A. O desenho geral e a reconciliação Git estão aprováveis; os achados abaixo são de endurecimento/consistência do plano, não pedem implementação funcional ainda.
+
+**Evidência independente confirmada pelo Revisor**
+- P0 respeitou o escopo: commit `3b7c932` altera apenas o documento central e cria o plano C1; nenhuma implementação, migration, deploy, branch `feat/spec027-cloud` ou integração foi executada.
+- Desktop Plan 5 continua descendente linear de `develop@abe386f`; fast-forward é tecnicamente possível.
+- `git merge-tree --write-tree feat/api-bootstrap feat/pre-spec027-cloud-infra-spike` também PASS na base atual `feat/api-bootstrap@3b7c932`.
+- Os três planos antigos alterados por `ecb7b37` são byte-identical às versões atuais; não mergear `docs/pre-plan4-gate-alignment` continua a decisão correta, preservando apenas o handoff como histórico até a limpeza aprovada.
+- A próxima migration disponível é realmente `019`; a sequência atual termina em `018_device_admin_metadata.sql`.
+- O contrato proposto de GET de metadata quando `enabled=false` é compatível com a SPEC 030 e com `DeviceAuthService.authenticate_status()`: secret correto pode consultar status, enquanto autenticação operacional continua bloqueada.
+- A estratégia de uma única branch `feat/spec027-cloud` para C1→C4 foi preservada.
+
+**R0-F1 — base API stale no plano/checkpoint**
+O plano ainda manda integrar o spike em `feat/api-bootstrap@8177332`, mas o próprio P0 foi commitado e o HEAD real agora é `3b7c932`. Atualizar todas as referências de base para o HEAD real após o P0 e registrar novamente o `merge-tree` nessa base. O Revisor já repetiu a simulação em `3b7c932` e ela passou sem conflito, mas o documento deve refletir o estado executável real.
+
+**Critério de aceite F1:** plano e checkpoint apontam para `feat/api-bootstrap@3b7c932` (ou para SHA posterior contendo apenas a correção R0), com merge-base/merge-tree registrados novamente; nenhuma integração real ainda.
+
+**R0-F2 — contrato de força/formato da Cloud credential ausente**
+O plano exige credencial de alta entropia e sugere `secrets.token_urlsafe(32)`, porém a API aceitaria qualquer `SecretStr`, inclusive segredo curto/fraco ou payload excessivo. Como o servidor não consegue provar entropia aleatória, ele deve ao menos impor contrato sintático e limites coerentes com a geração oficial.
+
+**Critério de aceite F2:** definir e testar no plano tamanho mínimo/máximo e formato aceito (por exemplo base64url/url-safe compatível com `token_urlsafe(32)`), rejeitando segredo curto, vazio, whitespace/malformado e tamanho abusivo. Manter CSPRNG no cliente como obrigação explícita e hash-only no servidor.
+
+**R0-F3 — lifecycle de WebPilotAuthRealm incompleto**
+O domínio possui `realm.active` e a autorização central nega realm inativo, mas o plano administrativo oferece somente ensure/create, authorize device e revoke device authorization. Não há operação controlada para desativar/reativar o próprio realm.
+
+**Critério de aceite F3:** ou (preferido) adicionar ao contrato/admin script operações explícitas e idempotentes para ativar/desativar realm, com testes e efeito imediato no `authenticate_cloud_binding`; ou remover `active` do escopo C1 e justificar a postergação. Não deixar estado persistente sem caminho administrativo definido.
+
+**R0-F4 — PostgreSQL real não pode ser opcional no gate C1-B**
+C1-B depende de partial unique index, FKs, RLS, grants e RPCs transacionais que revalidam `devices.enabled`, realm e membership imediatamente antes da mutação. MockTransport não prova essas propriedades. O plano atualmente admite que Postgres “pode skip sem TEST_POSTGRES_DSN” e deixa `make test-all` condicionado a Docker disponível.
+
+**Critério de aceite F4:** tornar obrigatório, antes de R2, executar a migration 019 e os testes de integração/RPC em PostgreSQL efêmero/local real. Se o ambiente não puder fornecer Postgres/Docker, C1-B fica BLOQUEADO para R2; skip deve ser registrado como bloqueio, não aprovação.
+
+**R0-F5 — endurecimento SQL/invariantes precisa ficar explícito**
+A migration proposta prevê RPCs mutantes e RLS, mas o plano não exige explicitamente o padrão de segurança já usado nas migrations atuais para funções `SECURITY DEFINER`: `SET search_path = public`/objetos qualificados, além dos revokes. Também faltam checks relacionais explícitos entre `status` e `revoked_at` e unicidade/lifecycle claro da membership realm↔device.
+
+**Critério de aceite F5:** acrescentar testes/DDL exigindo:
+- qualquer função `SECURITY DEFINER` com search_path fixo e objetos qualificados;
+- EXECUTE revogado de PUBLIC/anon/authenticated e concedido somente ao papel backend necessário;
+- `cloud_bindings.status='active'` implica `revoked_at IS NULL`; `status='revoked'` implica `revoked_at IS NOT NULL`;
+- membership realm↔device com chave/unique determinística e sem duplicatas ativas;
+- reautorização/revogação idempotentes com timestamps coerentes.
+
+**Parecer R0**
+- Reconciliação Git proposta: **APROVADA conceitualmente**, condicionada a F1 documental.
+- Não mergear `ecb7b37`: **APROVADO**.
+- Estratégia de branch única `feat/spec027-cloud`: **APROVADA**.
+- Fronteiras C1/C2/C3 e preservação do Shadow/Selenium: **APROVADAS**.
+- Plano C1: **NÃO LIBERADO AINDA** por R0-F1..F5.
+- C1-A permanece **BLOQUEADO**.
+
+**Próximo passo autorizado:** Executor corrige somente R0-F1..R0-F5 no plano/checkpoint, faz `git diff --check`, commit documental local e para para **R0.1 independente**. Não integrar branches, não criar `feat/spec027-cloud`, não implementar C1-A, não push/deploy/migration.
