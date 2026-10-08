@@ -60,6 +60,11 @@ class CloudBindingRecord:
 
 
 class CloudBindingsRepository(Protocol):
+    def ensure_webpilot_auth_realm(
+        self,
+        realm_id: str,
+    ) -> WebPilotAuthRealmRecord | None: ...
+
     def get_webpilot_auth_realm(
         self,
         realm_id: str,
@@ -70,6 +75,18 @@ class CloudBindingsRepository(Protocol):
         realm_id: str,
         device_id: str,
     ) -> RealmDeviceAuthorizationRecord | None: ...
+
+    def revoke_realm_device(
+        self,
+        realm_id: str,
+        device_id: str,
+    ) -> RealmDeviceAuthorizationRecord | None: ...
+
+    def set_webpilot_auth_realm_active(
+        self,
+        realm_id: str,
+        active: bool,
+    ) -> WebPilotAuthRealmRecord | None: ...
 
     def get_realm_device_authorization(
         self,

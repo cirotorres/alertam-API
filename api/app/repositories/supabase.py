@@ -8,6 +8,13 @@ import httpx
 
 from app.models.maneuver_event import ManeuverEventIn
 from app.models.vessel_tracking_event import VesselTrackingEventIn
+from app.repositories.cloud_bindings import (
+    CloudBindingConflictError,
+    CloudBindingRecord,
+    CloudBindingStatus,
+    RealmDeviceAuthorizationRecord,
+    WebPilotAuthRealmRecord,
+)
 from app.repositories.devices import (
     AcceptSnapshotResult,
     AcceptSnapshotStatus,
@@ -115,6 +122,324 @@ class SupabaseDeviceRepository:
             ValueError,
         ) as exc:
             raise PersistenceUnavailableError() from exc
+
+    def ensure_webpilot_auth_realm(
+        self,
+        realm_id: str,
+    ) -> WebPilotAuthRealmRecord | None:
+        try:
+            headers = {
+                **self._headers(),
+                "Prefer": "resolution=ignore-duplicates,return=representation",
+            }
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/webpilot_auth_realms",
+                headers=headers,
+                params={"on_conflict": "realm_id"},
+                json={"realm_id": realm_id, "active": True},
+            )
+            response.raise_for_status()
+            data = response.json()
+            if isinstance(data, list) and data:
+                return self._webpilot_auth_realm_from_mapping(data[0])
+            return self.get_webpilot_auth_realm(realm_id)
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def get_webpilot_auth_realm(
+        self,
+        realm_id: str,
+    ) -> WebPilotAuthRealmRecord | None:
+        try:
+            response = self._client.get(
+                f"{self._base_url}/rest/v1/webpilot_auth_realms",
+                headers=self._headers(),
+                params={
+                    "select": "realm_id,active,created_at,updated_at",
+                    "realm_id": f"eq.{realm_id}",
+                    "limit": "1",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise TypeError("Resposta de realm inválida.")
+            if not data:
+                return None
+            if len(data) != 1:
+                raise ValueError("Resposta de realm inválida.")
+            return self._webpilot_auth_realm_from_mapping(data[0])
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def set_webpilot_auth_realm_active(
+        self,
+        realm_id: str,
+        active: bool,
+    ) -> WebPilotAuthRealmRecord | None:
+        return self._mapped_cloud_rpc(
+            "set_webpilot_auth_realm_active",
+            {"p_realm_id": realm_id, "p_active": active},
+            self._webpilot_auth_realm_from_mapping,
+        )
+
+    def authorize_realm_device(
+        self,
+        realm_id: str,
+        device_id: str,
+    ) -> RealmDeviceAuthorizationRecord | None:
+        return self._mapped_cloud_rpc(
+            "authorize_realm_device",
+            {"p_realm_id": realm_id, "p_device_id": device_id},
+            self._realm_device_authorization_from_mapping,
+        )
+
+    def revoke_realm_device(
+        self,
+        realm_id: str,
+        device_id: str,
+    ) -> RealmDeviceAuthorizationRecord | None:
+        return self._mapped_cloud_rpc(
+            "revoke_realm_device",
+            {"p_realm_id": realm_id, "p_device_id": device_id},
+            self._realm_device_authorization_from_mapping,
+        )
+
+    def get_realm_device_authorization(
+        self,
+        realm_id: str,
+        device_id: str,
+    ) -> RealmDeviceAuthorizationRecord | None:
+        try:
+            response = self._client.get(
+                f"{self._base_url}/rest/v1/webpilot_auth_realm_devices",
+                headers=self._headers(),
+                params={
+                    "select": "realm_id,device_id,authorized_at,revoked_at",
+                    "realm_id": f"eq.{realm_id}",
+                    "device_id": f"eq.{device_id}",
+                    "limit": "1",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise TypeError("Resposta de membership inválida.")
+            if not data:
+                return None
+            if len(data) != 1:
+                raise ValueError("Resposta de membership inválida.")
+            return self._realm_device_authorization_from_mapping(data[0])
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def get_active_cloud_binding(
+        self,
+        device_id: str,
+    ) -> CloudBindingRecord | None:
+        bindings = self._get_cloud_bindings(device_id, active_only=True)
+        return bindings[0] if bindings else None
+
+    def list_cloud_bindings(
+        self,
+        device_id: str,
+    ) -> tuple[CloudBindingRecord, ...]:
+        return self._get_cloud_bindings(device_id, active_only=False)
+
+    def ensure_cloud_binding(
+        self,
+        device_id: str,
+        realm_id: str,
+        credential_hash: str,
+    ) -> CloudBindingRecord | None:
+        return self._mapped_cloud_rpc(
+            "ensure_cloud_binding",
+            {
+                "p_device_id": device_id,
+                "p_realm_id": realm_id,
+                "p_credential_hash": credential_hash,
+            },
+            self._cloud_binding_from_mapping,
+        )
+
+    def rotate_cloud_binding(
+        self,
+        device_id: str,
+        credential_hash: str,
+    ) -> CloudBindingRecord | None:
+        return self._mapped_cloud_rpc(
+            "rotate_cloud_binding",
+            {
+                "p_device_id": device_id,
+                "p_credential_hash": credential_hash,
+            },
+            self._cloud_binding_from_mapping,
+        )
+
+    def revoke_cloud_binding(
+        self,
+        device_id: str,
+    ) -> CloudBindingRecord | None:
+        return self._mapped_cloud_rpc(
+            "revoke_cloud_binding",
+            {"p_device_id": device_id},
+            self._cloud_binding_from_mapping,
+        )
+
+    def _mapped_cloud_rpc(
+        self,
+        name: str,
+        payload: dict[str, Any],
+        mapper,
+    ):
+        row = self._cloud_rpc_row(name, payload)
+        if row is None:
+            return None
+        try:
+            return mapper(row)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def _cloud_rpc_row(
+        self,
+        name: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/rest/v1/rpc/{name}",
+                headers=self._headers(),
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise TypeError("Resposta RPC Cloud inválida.")
+            if not data:
+                return None
+            if len(data) != 1 or not isinstance(data[0], dict):
+                raise ValueError("Resposta RPC Cloud inválida.")
+            return data[0]
+        except httpx.HTTPStatusError as exc:
+            if "cloud_binding_conflict" in exc.response.text:
+                raise CloudBindingConflictError() from exc
+            raise PersistenceUnavailableError() from exc
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def _get_cloud_bindings(
+        self,
+        device_id: str,
+        *,
+        active_only: bool,
+    ) -> tuple[CloudBindingRecord, ...]:
+        try:
+            params = {
+                "select": (
+                    "cloud_binding_id,device_id,realm_id,credential_hash,"
+                    "credential_version,status,created_at,updated_at,revoked_at"
+                ),
+                "device_id": f"eq.{device_id}",
+                "order": "lifecycle_order.asc",
+            }
+            if active_only:
+                params["status"] = "eq.active"
+                params["limit"] = "1"
+            response = self._client.get(
+                f"{self._base_url}/rest/v1/cloud_bindings",
+                headers=self._headers(),
+                params=params,
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise TypeError("Resposta de binding inválida.")
+            return tuple(self._cloud_binding_from_mapping(row) for row in data)
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    @classmethod
+    def _webpilot_auth_realm_from_mapping(
+        cls,
+        row: Any,
+    ) -> WebPilotAuthRealmRecord:
+        if not isinstance(row, dict):
+            raise TypeError("Realm persistido inválido.")
+        created_at = cls._parse_datetime(row.get("created_at"))
+        updated_at = cls._parse_datetime(row.get("updated_at"))
+        if created_at is None or updated_at is None:
+            raise ValueError("Timestamps de realm ausentes.")
+        return WebPilotAuthRealmRecord(
+            realm_id=str(row["realm_id"]),
+            active=bool(row["active"]),
+            created_at=created_at,
+            updated_at=updated_at,
+        )
+
+    @classmethod
+    def _realm_device_authorization_from_mapping(
+        cls,
+        row: Any,
+    ) -> RealmDeviceAuthorizationRecord:
+        if not isinstance(row, dict):
+            raise TypeError("Membership persistida inválida.")
+        authorized_at = cls._parse_datetime(row.get("authorized_at"))
+        if authorized_at is None:
+            raise ValueError("authorized_at ausente.")
+        return RealmDeviceAuthorizationRecord(
+            realm_id=str(row["realm_id"]),
+            device_id=str(row["device_id"]),
+            authorized_at=authorized_at,
+            revoked_at=cls._parse_datetime(row.get("revoked_at")),
+        )
+
+    @classmethod
+    def _cloud_binding_from_mapping(
+        cls,
+        row: Any,
+    ) -> CloudBindingRecord:
+        if not isinstance(row, dict):
+            raise TypeError("Binding persistido inválido.")
+        created_at = cls._parse_datetime(row.get("created_at"))
+        updated_at = cls._parse_datetime(row.get("updated_at"))
+        if created_at is None or updated_at is None:
+            raise ValueError("Timestamps de binding ausentes.")
+        return CloudBindingRecord(
+            cloud_binding_id=UUID(str(row["cloud_binding_id"])),
+            device_id=str(row["device_id"]),
+            realm_id=str(row["realm_id"]),
+            credential_hash=str(row["credential_hash"]),
+            credential_version=int(row["credential_version"]),
+            status=CloudBindingStatus(str(row["status"])),
+            created_at=created_at,
+            updated_at=updated_at,
+            revoked_at=cls._parse_datetime(row.get("revoked_at")),
+        )
 
     def ensure_mobile_installation(
         self,

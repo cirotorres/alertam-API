@@ -39,6 +39,7 @@ def reset_database():
         conn.execute("create schema public")
         for name in (
             "001_devices.sql",
+            "018_device_admin_metadata.sql",
             "004_maneuver_events.sql",
             "007_maneuver_event_detail_index.sql",
         ):

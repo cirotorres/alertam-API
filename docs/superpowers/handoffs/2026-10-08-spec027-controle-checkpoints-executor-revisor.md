@@ -1,7 +1,7 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** C1-A APROVADO EM R1.1 — C1-B LIBERADO para execução conforme plano; C1-C permanece bloqueado
+**Status:** C1-B APROVADO EM R2.1 — commit exato do diff revisado autorizado; C1-C liberado somente após esse commit e working tree limpo
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
 **Base reconciliada:** API/PWA `feat/api-bootstrap@23a78bebdf46062eef937966101246567cd963de`; Desktop `develop@9e5b5e1a33cb7d61db200866aea683a6334de922`. **Feature:** `feat/spec027-cloud`, criada a partir de `23a78be` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`. **C1-A functional HEAD após correções R1:** `17afb4e19e21ce93e8eb1b8b0c8bfe47ebcf3364`; o commit documental deste registro será seu sucessor local.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
@@ -38,7 +38,7 @@
 3. A cada entrega, preencher o registro do checkpoint abaixo, citando base, SHA, arquivos, testes (com números), segurança, migrações preparadas/não aplicadas e pendências.
 4. Parar para revisão independente; **não** iniciar a próxima etapa por iniciativa própria.
 5. Se surgir bloqueio/necessidade de alterar desenho ou invariantes, registrar decisão solicitada e **parar**, sem expandir escopo.
-6. Commits locais por etapa apenas quando a autorização vigente permitir; não fazer push/merge/deploy/migration em produção por implicação.
+6. **Não fazer commit antes da aprovação independente do checkpoint.** O Executor entrega o working tree sem commit para revisão; se houver achados, corrige o mesmo working tree e retorna à re-revisão. Após APROVADO, o Revisor autoriza o commit exato do diff revisado. Push/merge/deploy/migration em produção continuam exigindo autorização própria.
 
 **Revisor:**
 1. Reabrir a versão mais recente deste documento e dos handoffs; confirmar base real e diff do checkpoint.
@@ -47,7 +47,9 @@
 4. Autorizar explicitamente somente a próxima etapa após Rn aprovado; correções retornam ao mesmo checkpoint para Rn+1, nunca avançam automaticamente.
 5. Não confundir testes skipped, revisão de plano, Docker smoke ou gate técnico MET com validação de produção.
 
-**Retorno entre sessões:** o executor cita o mesmo path + checkpoint ID + SHA. O revisor insere parecer na seção do checkpoint; executor relê antes de continuar. O usuário serve como autorização de avanço, integração e operações.
+**Retorno entre sessões:** o executor cita o mesmo path + checkpoint ID + HEAD aprovado de entrada. O revisor insere parecer na seção do checkpoint; executor relê antes de continuar. O usuário serve como autorização de avanço, integração e operações.
+
+**Política de commit revisada em 2026-10-08 pelo usuário:** commits de implementação/checkpoint só são feitos **depois** da aprovação independente. O estado entregue a Rn deve permanecer no working tree, sem commit. Se Rn encontrar falhas, o Executor corrige o mesmo diff e retorna para Rn+1; somente após `APROVADO` o commit exato do conteúdo revisado é autorizado. Commits históricos anteriores a esta regra permanecem como estão; não reescrever histórico.
 
 ## 4. Sequência e gates
 
@@ -55,8 +57,8 @@
 |---|---|---|---|---|
 | 0 | P0 — Reconciliação e plano | Verificar estado cross-repo; preparar proposta de integração sem alterar produção; planejar C1 com tasks TDD e contratos | R0/R0.1/R0.2 aprovam base e plano antes de programar | **APROVADO EM R0.2** |
 | 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1/R1.1 revisam identidade, constraints, isolamento e contrato | **APROVADO EM R1.1** |
-| 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2 revisa autorização, secrets e idempotência | **LIBERADO — parar para R2** |
-| 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | BLOQUEADO |
+| 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2/R2.1 revisam autorização, secrets e idempotência | **APROVADO EM R2.1 — AGUARDA COMMIT** |
+| 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | **LIBERADO após commit C1-B aprovado + working tree limpo** |
 | 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | BLOQUEADO |
 | 5 | C2-P — Plano Auth Broker | Desenhar reuso do coletor validado, contrato SessionLease, epoch, segurança, standby | R5 (plano); **não** copiar parser/coletor | BLOQUEADO |
 | 6 | C2 — Execução em checkpoints próprios | Broker federado, anti-replay e core HTTP em standby headless sem source efetivo | Revisões por subtask e gate sandbox | BLOQUEADO |
@@ -74,7 +76,7 @@ A SPEC 027 usa **uma branch longa de feature por repositório**, e não uma bran
 - Desktop: usar também `feat/spec027-cloud` **somente quando surgir a primeira alteração Desktop da SPEC 027**, criada a partir de `develop` já contendo o fechamento da SPEC 025.
 - C1, C2, C3 e C4 avançam na mesma branch, separados por commits e checkpoints independentes R1...Rn.
 - Preferir uma única worktree `.worktrees/spec027-cloud` por repo quando necessário; não criar worktree por subetapa.
-- Ao final de cada checkpoint: commit local + testes + handoff + STOP para revisor. **A revisão é o isolamento; a branch não precisa mudar.**
+- Ao final de cada checkpoint: testes + handoff/checkpoint atualizado + `git diff --check` + **STOP para revisor, sem commit**. O commit só acontece **depois da aprovação independente** daquele checkpoint. **A revisão é o isolamento; a branch não precisa mudar.**
 - Sincronizações com a branch-base acontecem apenas em pontos planejados, com working tree limpa e revisão de conflito; não fazer rebase/merge oportunista no meio de um checkpoint.
 - A branch antiga `feat/pre-spec027-cloud-infra-spike` só pode ser integrada/removida após aprovação R0.2 e execução explícita da reconciliação.
 - C5 Eventos/Push permanece fora desta branch inicial por ser evolução opcional com plano/autorização próprios; se for aprovada futuramente, decide-se naquele momento se continua na SPEC 027 ou abre feature separada.
@@ -102,7 +104,7 @@ A SPEC 027 usa **uma branch longa de feature por repositório**, e não uma bran
 ### [ID] — [Título]; status: AGUARDA / EM EXECUÇÃO / PRONTO PARA Rn / Rn-FIX / APROVADO
 
 **Executor — evidência**
-- Data/hora, repo, branch/worktree, base SHA, HEAD SHA, commits locais.
+- Data/hora, repo, branch/worktree e **HEAD aprovado de entrada**; durante a entrega, alterações funcionais/documentais do checkpoint permanecem sem commit até o parecer.
 - Escopo entregue e não entregue; arquivos e migrations criadas (aplicação: NÃO).
 - RED: comando, falhas esperadas e causa; GREEN: comando, passed/skipped/failed; regressão.
 - `git status --short --branch`, `git diff --check`, diff da base; observações de segredo/segurança.
@@ -583,4 +585,246 @@ O retry de revoke não ordena mais histórico por `(created_at, UUID)`. O `Memor
 - Migration 019 pode ser criada e aplicada somente em ambiente local/efêmero de teste; **produção continua proibida**.
 - Push, deploy, WebPilot real no Cloud, SessionLease real, `source=cloud`, failover/failback e cutover continuam proibidos.
 
-**Próximo passo autorizado:** Executor executa somente C1-B com TDD, incluindo migration 019 local, repository Postgres/Supabase, service/model de credencial, endpoints Desktop-only e autoridade administrativa de realm conforme plano; roda obrigatoriamente Postgres real efêmero/local + MockTransport + regressões; registra RED/GREEN e para para **R2 independente**. Não iniciar C1-C.
+**Próximo passo autorizado:** Executor executa somente C1-B com TDD, incluindo migration 019 local, repository Postgres/Supabase, service/model de credencial, endpoints Desktop-only e autoridade administrativa de realm conforme plano; roda obrigatoriamente Postgres real efêmero/local + MockTransport + regressões; registra RED/GREEN e para para **R2 independente com o working tree sem commit**. Não iniciar C1-C. **Somente após R2 APROVADO** será autorizado o commit do diff exatamente revisado.
+
+### C1-B — Executor; working tree sem commit (2026-10-08)
+
+**Status:** **PRONTO PARA R2 INDEPENDENTE**. B1→B10 concluídos; todos os gates obrigatórios estão verdes. C1-C não foi iniciado.
+
+**Entrada e política de checkpoint**
+- branch/worktree: `feat/spec027-cloud` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`;
+- HEAD aprovado de entrada permanece **`570ba3513b2dc34513f80dcab48e722405588f00`** (`docs: aprova c1-a em r1.1`);
+- duas alterações documentais já existiam no working tree ao iniciar C1-B: handoff + plano atualizando a política para **revisão antes de commit**; foram preservadas;
+- nenhum `git add`, nenhum commit C1-B, nenhum push e nenhum deploy;
+- todo o C1-B funcional, testes, migration 019 e este registro permanecem no working tree para revisão exata em R2.
+
+**B1→B2 — migration 019 RED→GREEN**
+- RED inicial: `test_cloud_binding_sql.py` falhou com `FileNotFoundError` porque `019_cloud_binding_realm.sql` não existia.
+- GREEN: criada **somente localmente/efêmera** `api/supabase/migrations/019_cloud_binding_realm.sql`.
+- três tabelas: `webpilot_auth_realms`, `webpilot_auth_realm_devices`, `cloud_bindings`;
+- FKs para device/realm, PK membership `(realm_id, device_id)`, check temporal, `credential_version > 0`, coerência `status ↔ revoked_at` e unique parcial de binding ativo/device;
+- `lifecycle_order` persistente evita usar UUID/timestamp como ordenação de lifecycle;
+- RLS habilitado, sem policy pública;
+- funções `SECURITY DEFINER` com `SET search_path = pg_catalog, public`, objetos `public.*` qualificados;
+- EXECUTE revogado de `PUBLIC`, `anon`, `authenticated` e concedido somente a `service_role`;
+- RPCs atômicas/idempotentes para authorize/revoke membership, activate/deactivate realm e ensure/rotate/revoke binding;
+- hardening concorrente adicional: RED estrutural exigiu tratamento explícito de `unique_violation` no `ensure_cloud_binding`; GREEN converte corrida para idempotência quando realm/hash coincidem ou `cloud_binding_conflict` quando divergem;
+- migration **não aplicada em produção**; executada somente no PostgreSQL Docker efêmero de teste.
+
+**B3→B4 — repositories Postgres/Supabase RED→GREEN**
+- Supabase RED: **2 falhas** por ausência dos métodos Cloud/realm.
+- PostgreSQL RED real: migration 019 aplicou com sucesso e houve **3 falhas** por métodos de repository ausentes.
+- implementados `PostgresDeviceRepository`, `SupabaseDeviceRepository` e contrato agregado `AlertaRepository` para realm, membership e CloudBinding.
+- Postgres usa RPCs SQL transacionais; Supabase usa REST/RPC com server key e `MockTransport` nos testes.
+- conflitos são tipados; falhas de persistência são sanitizadas e não propagam detalhes do backend.
+- repositories recebem/persistem somente `credential_hash`; plaintext da Cloud credential não entra nos backends.
+- `MemoryDeviceRepository` recebeu as mesmas operações administrativas e preserva ordem de lifecycle por inserção, sem UUID como desempate temporal.
+
+**B5→B6 — Cloud credential/service RED→GREEN**
+- RED inicial: modelo/service CloudBinding ausentes; RED subsequente identificou vazamento do input inválido no `ValidationError` do Pydantic.
+- GREEN: `SecretStr` + `ConfigDict(hide_input_in_errors=True)`, regex estrita `^[A-Za-z0-9_-]{43,86}$`, sem trim/coerção silenciosa.
+- `secrets.token_urlsafe(32)`/43 chars validado como formato canônico; máximo 86 permitido.
+- vazio, `<43`, `>86`, whitespace, padding `=` e caracteres fora de base64url são rejeitados antes do hash/repository.
+- service faz `hash_secret()` antes da persistência; ensure same realm+secret é idempotente; ensure diferente conflita sem mutação; rotate same secret não incrementa; rotate new incrementa uma vez; revoke é idempotente.
+- responses não contêm `credential` nem `credential_hash`.
+
+**B7→B8 — endpoints Desktop-only RED→GREEN**
+- RED inicial: rotas retornavam 404 porque ainda não existiam.
+- implementados somente `GET/PUT /api/v1/devices/{device_id}/cloud-binding`, `POST .../rotate` e `DELETE /api/v1/devices/{device_id}/cloud-binding`.
+- somente esquema `Device` autentica; Bearer/view token e secret incorreto retornam 401.
+- GET usa `authenticate_status()`: com secret correto e `enabled=false`, metadata segue disponível com `device_enabled=false` e `usable=false`.
+- mutações usam `authenticate()`: `enabled=false` é fail-closed.
+- realm/membership sem autoridade: 403; binding ausente: 404; conflito: 409; credential inválida: 422.
+- persistence failure: 503, inclusive falha durante mutação, sem estado parcial.
+- testes capturam logs HTTP e confirmam ausência de DEVICE_SECRET/Cloud credential; responses e reprs também não expõem plaintext/hash.
+- nenhuma rota PWA/Mobile foi criada.
+
+**B9 — autoridade administrativa de realm**
+- RED inicial: `scripts.admin_cloud_realm` ausente.
+- GREEN: ensure/create realm ativo por default, activate/deactivate idempotentes, authorize/revoke/reauthorize membership idempotentes, sem duplicação e com timestamps coerentes.
+- usa credencial administrativa/backend já existente; imprime somente IDs/status; nunca cria CloudBinding nem Cloud credential.
+- `_DEPENDENCY_PROBES` de `admin_device.py` agora protege `webpilot_auth_realm_devices.device_id` e `cloud_bindings.device_id` contra compensação/deleção indevida.
+- **`authenticate_cloud_binding()` não existe nem é chamado**; continua reservado exclusivamente ao C1-C.
+
+**B10 — gates finais**
+- testes C1-A/C1-B direcionados locais: **39 passed / 0 skipped / 0 failed**.
+- `tests/unit + tests/integration/test_cloud_binding_api.py`: **382 passed / 0 skipped / 0 failed**.
+- PostgreSQL C1-B real efêmero (`test_cloud_binding_postgres.py`): **4 passed / 0 skipped / 0 failed**.
+- no PostgreSQL real: migration 019 aplicada; lifecycle realm/membership/binding; fail-closed; RLS ativo; nenhuma policy pública; EXECUTE negado a `anon/authenticated` e permitido a `service_role`; constraints exercitadas.
+- `make test` local: **511 passed / 38 skipped / 0 failed**; skips são integrações PostgreSQL fora do container sem `TEST_POSTGRES_DSN`.
+- `make test-all` final no Docker/PostgreSQL 16 real: **549 passed / 0 skipped / 0 failed**.
+- `git diff --check`: **PASS**.
+- staged changes: **nenhuma** (`git diff --cached --stat` vazio).
+- branch remota `origin/feat/spec027-cloud`: inexistente.
+
+**Dívida pré-existente do harness descoberta e corrigida apenas para viabilizar B10**
+- primeira execução de `make test-all` no C1-B: **524 passed / 25 failed**.
+- uma worktree temporária detached no HEAD limpo de entrada `570ba35` reproduziu os **mesmos 25 failures / 499 passes**, provando que não eram regressão do C1-B.
+- causa: fixtures PostgreSQL legadas montavam schemas parciais incompatíveis com o repository já existente no HEAD.
+- alinhamento mínimo de oito fixtures: migration 018 em 8 fixtures, migration 017 em 4, migration 013 em 2 e `display_code` explícito válido no helper antigo de `tracked_vessels`.
+- esses ajustes alteram somente o harness de testes; nenhum runtime/contrato produtivo foi modificado por esse saneamento.
+- após o alinhamento, `make test-all` passou integralmente em **549/549**.
+- worktree temporária de baseline removida; nenhum branch foi criado para essa prova.
+
+**Arquivos C1-B no working tree**
+- migration local `019_cloud_binding_realm.sql`;
+- repositories `cloud_bindings.py`, `postgres.py`, `supabase.py`, `memory.py`, composição `events.py`;
+- modelos/service/errors CloudBinding;
+- router/endpoint Desktop-only;
+- `admin_cloud_realm.py` e guard de compensação em `admin_device.py`;
+- testes SQL, PostgreSQL real, Supabase MockTransport, credential/service, API e admin;
+- ajustes mínimos das oito fixtures PostgreSQL legadas descritos acima;
+- documentação do checkpoint/política de commit ainda sem commit.
+
+**Segurança e fronteiras**
+- secrets fora de response/log/repr/error;
+- nenhum secret/cookie real usado;
+- `enabled=false` preservado fail-closed para mutações;
+- migration 019 aplicada **somente** em PostgreSQL local/efêmero de teste;
+- nenhuma migration de produção, `prod-migrate`, push ou deploy;
+- nenhum WebPilot real no Cloud, SessionLease real, `source=cloud`, failover/failback ou cutover;
+- C1-C não iniciado e `authenticate_cloud_binding()` não antecipado;
+- processo Shadow não foi manipulado; última observação mostrou `uv run python -m alertam`/Python ativos nos PIDs 14865/14873.
+
+**Estado para revisão**
+- HEAD continua `570ba3513b2dc34513f80dcab48e722405588f00`;
+- working tree contém todo o diff funcional/testes/documentação C1-B;
+- **nenhum arquivo staged e nenhum commit C1-B foi criado**, conforme política vigente;
+- se R2 encontrar achados, corrigir o mesmo working tree e retornar para re-revisão ainda sem commit;
+- somente após **R2 APROVADO** poderá ser feito o commit exato do diff revisado;
+- C1-C permanece bloqueado.
+
+**PARECER SOLICITADO:** **R2 independente** sobre o working tree C1-B completo. Nenhuma etapa C1-C iniciada.
+
+### R2 independente — revisão C1-B (2026-10-08)
+
+**Resultado:** CORREÇÕES OBRIGATÓRIAS. O C1-B está amplamente aderente ao plano, com gates e regressões verdes, mas dois defeitos de robustez/atomicidade precisam ser corrigidos antes de liberar C1-C ou autorizar commit.
+
+**Evidência independente**
+- Working tree revisado diretamente sobre HEAD aprovado de entrada `570ba3513b2dc34513f80dcab48e722405588f00`; nenhum commit/stage C1-B foi criado.
+- `git diff --check`: PASS.
+- testes C1-B direcionados independentes: **21/21 passed**.
+- `make test-all` independente com PostgreSQL 16 real: **549 passed / 0 skipped / 0 failed**.
+- ajustes das oito fixtures PostgreSQL legadas foram revisados: apenas completam migrations já exigidas pelo repository atual e, em `tracked_vessels`, fornecem `display_code` válido; não foi identificado enfraquecimento de assertion/expectativa funcional.
+- Migration 019 permanece somente local; nenhum push/deploy/prod-migrate/WebPilot real/SessionLease/source=cloud/failover/cutover.
+
+**R2-F1 — mapping de RPC Supabase malformado escapa sem sanitização**
+`_cloud_rpc_row()` valida apenas que o HTTP 200 contenha uma lista com um dict; a conversão do dict para `WebPilotAuthRealmRecord`, `RealmDeviceAuthorizationRecord` ou `CloudBindingRecord` acontece fora do bloco que traduz falhas de persistência. Assim, um payload 200 estruturalmente incompleto pode vazar `ValueError`/`KeyError` cru para service/API/admin em vez de `PersistenceUnavailableError` sanitizado.
+
+**Reprodução independente:** MockTransport retornando `[{'unexpected':'shape'}]` produziu:
+- `rotate_cloud_binding` → `ValueError('Timestamps de binding ausentes.')`;
+- `revoke_cloud_binding` → `ValueError('Timestamps de binding ausentes.')`;
+- `authorize_realm_device` → `ValueError('authorized_at ausente.')`;
+- `set_webpilot_auth_realm_active` → `ValueError('Timestamps de realm ausentes.')`.
+
+Isso contradiz o requisito B3/B4 de mapping seguro e persistence error sanitizado.
+
+**Critério de aceite R2-F1:** TDD RED cobrindo HTTP 200/RPC malformado para binding, realm e membership; todos os erros de mapping/parsing de respostas persistidas devem sair do repository como `PersistenceUnavailableError`, sem detalhes do backend/payload. Não esconder `CloudBindingConflictError` tipado. Cobrir ensure/rotate/revoke e operações administrativas relevantes.
+
+**R2-F2 — corrida administrativa permite criar binding ativo após a membership já ter sido revogada**
+O plano exige explicitamente que o mesmo RPC revalide `devices.enabled`, realm ativo e membership ativa imediatamente antes da mutação, porque o check HTTP/service não é autoridade suficiente contra corrida administrativa. O `ensure_cloud_binding()` atual faz a checagem de autoridade e depois, em instruções separadas, consulta/insere em `cloud_bindings`; não há lock/revalidação que serialize a autoridade com a mutação.
+
+**Reprodução independente em PostgreSQL 16 real:** foi instalado apenas no banco efêmero um trigger de teste que pausa exatamente o INSERT de `cloud_bindings` por advisory lock. A chamada `ensure_cloud_binding()` passou pelas checagens, ficou pausada no INSERT; em outra transação a membership foi revogada e commitada; ao liberar o INSERT, o RPC retornou linha e persistiu **1 binding ativo**, enquanto `revoked_at` da membership já estava preenchido.
+
+Resultado observado:
+- `ENSURE_PAUSED_AT_INSERT=True`;
+- `MEMBERSHIP_REVOKED=True`;
+- `ENSURE_RESULT_IS_ROW=True`;
+- estado final: membership revogada + `(1, True)` para count/active binding.
+
+**Critério de aceite R2-F2:** criar RED de concorrência real em PostgreSQL efêmero e corrigir a autoridade transacional dos RPCs de binding. A solução deve serializar/revalidar `device enabled`, `realm active` e `membership active` no ponto da mutação, de modo que uma mudança administrativa concorrente tenha ordem linear clara e nunca resulte em mutação autorizada depois da revogação efetiva. Revisar **ensure, rotate e revoke**, não apenas ensure. Preferir row locks/SQL atômico ou mecanismo equivalente; não confiar somente no pre-check do service. Adicionar teste real que reproduza ao menos a corrida membership revoke vs ensure e testes proporcionais para os outros RPCs/autoridades afetados.
+
+**Demais pontos R2**
+- contrato de credencial/SecretStr e redaction: **aceitos**;
+- endpoints Desktop-only, GET status com disabled e mutações fail-closed: **aceitos no escopo atual**;
+- migration 019: constraints, RLS, grants/revokes e lifecycle_order: **aceitos**, condicionados à correção R2-F2 de atomicidade;
+- Postgres real e MockTransport: gates executados e verdes;
+- harness legado: saneamento **aceito**;
+- C1-C permanece **BLOQUEADO**.
+
+**Próximo passo autorizado:** Executor corrige somente R2-F1 e R2-F2 com TDD no mesmo working tree, ainda **sem commit/stage**; reroda testes direcionados, PostgreSQL real (incluindo teste de concorrência), `make test-all` e `git diff --check`; atualiza este checkpoint e para para **R2.1 independente**. Não iniciar C1-C, não push/deploy/prod-migrate e não tocar no Shadow.
+
+### Correções R2-F1/F2 — Executor (2026-10-08)
+
+**Status:** PRONTO PARA R2.1 INDEPENDENTE. Escopo restrito a R2-F1 e R2-F2; C1-C permanece bloqueado. Working tree segue sem commit e sem stage.
+
+**R2-F1 — sanitização Supabase — RED→GREEN**
+- RED adicionado em `test_supabase_cloud_binding_repository.py` para HTTP 200 com payload estruturalmente malformado em:
+  - `set_webpilot_auth_realm_active`;
+  - `authorize_realm_device`;
+  - `revoke_realm_device`;
+  - `ensure_cloud_binding`;
+  - `rotate_cloud_binding`;
+  - `revoke_cloud_binding`.
+- RED observado: **6 falhas**, com `ValueError` cru escapando dos mappers de realm, membership e binding, reproduzindo R2-F1.
+- GREEN mínimo: introduzido `_mapped_cloud_rpc()`; `_cloud_rpc_row()` continua responsável por transporte/HTTP e preserva `CloudBindingConflictError` tipado, enquanto apenas `KeyError/TypeError/ValueError` de mapping/parsing são convertidos em `PersistenceUnavailableError`.
+- MockTransport final: **8 passed / 0 skipped / 0 failed**.
+- payload de backend usado no RED não aparece na mensagem de `PersistenceUnavailableError`.
+
+**R2-F2 — atomicidade administrativa — RED→GREEN**
+- RED real em PostgreSQL 16 efêmero com trigger de teste que pausa a escrita em `cloud_bindings` por advisory lock.
+- Três corridas reproduzidas antes da correção:
+  - `ensure_cloud_binding` × revoke de membership;
+  - `rotate_cloud_binding` × deactivate de realm;
+  - `revoke_cloud_binding` × `devices.enabled=false`.
+- RED observado: **3 falhas**; em todos os casos a alteração administrativa concluía enquanto a mutação do binding permanecia pausada.
+- GREEN: `ensure`, `rotate` e `revoke` agora leem/revalidam sob `FOR UPDATE` e mantêm locks de transação sobre:
+  - linha de `devices` e `enabled`;
+  - linha de `webpilot_auth_realms` e `active`;
+  - linha de `webpilot_auth_realm_devices` e `revoked_at`.
+- A mutação só prossegue após essas três autoridades serem válidas sob lock; mudanças administrativas concorrentes têm ordem linear clara:
+  - se a alteração administrativa vencer antes do lock, a RPC observa o novo estado e falha fechada;
+  - se a RPC adquirir o lock primeiro, a alteração administrativa espera o commit da mutação.
+- `ensure` mantém o tratamento de `unique_violation` para idempotência/conflito concorrente.
+- `rotate` e `revoke` também foram revisados, não apenas `ensure`.
+- PostgreSQL real final: **7 passed / 0 skipped / 0 failed**, incluindo os três novos testes de concorrência.
+
+**Gates após R2-FIX**
+- testes C1-B direcionados locais: **45 passed / 0 skipped / 0 failed**;
+- Supabase MockTransport: **8 passed / 0 skipped / 0 failed**;
+- PostgreSQL real `test_cloud_binding_postgres.py`: **7 passed / 0 skipped / 0 failed**;
+- `make test-all` com PostgreSQL real: **558 passed / 0 skipped / 0 failed**;
+- `git diff --check`: PASS;
+- staged files: **0**;
+- HEAD permanece `570ba3513b2dc34513f80dcab48e722405588f00`.
+
+**Fronteiras preservadas**
+- nenhum commit e nenhum stage;
+- C1-C não iniciado e `authenticate_cloud_binding()` continua ausente;
+- nenhuma migration aplicada em produção;
+- nenhum push/deploy/prod-migrate;
+- nenhum WebPilot real, SessionLease real, `source=cloud`, failover/failback ou cutover;
+- Shadow não foi manipulado; permaneceu ativo durante a observação.
+
+**PARECER SOLICITADO:** **R2.1 independente** sobre R2-F1/R2-F2 e o working tree C1-B completo. Nenhuma etapa C1-C iniciada.
+
+### R2.1 independente — encerramento do C1-B (2026-10-08)
+
+**Resultado:** APROVADO. R2-F1 e R2-F2 encerrados; C1-B aprovado para commit exato do working tree revisado. C1-C só pode começar depois desse commit e com o working tree limpo.
+
+**Evidência independente**
+- Working tree revisado diretamente sobre HEAD aprovado de entrada `570ba3513b2dc34513f80dcab48e722405588f00`; nenhum commit/stage C1-B existia durante a revisão.
+- Probe independente Supabase com HTTP 200 malformado confirmou `PersistenceUnavailableError` sanitizado para set realm, authorize/revoke membership e ensure/rotate/revoke binding; payload sensível não apareceu no erro.
+- `CloudBindingConflictError` permanece tipado em resposta de conflito.
+- Testes dirigidos unit/API independentes após a correção: **27/27 passed**.
+- PostgreSQL 16 real, `test_cloud_binding_postgres.py`: **7/7 passed**, incluindo as três corridas administrativas.
+- `make test-all` independente: **558 passed / 0 skipped / 0 failed**.
+- `git diff --check`: PASS; staged files: 0.
+- Migration 019 permanece somente no working tree/local e foi exercitada apenas em PostgreSQL efêmero; nada foi aplicado em produção.
+
+**R2-F1 — ENCERRADO**
+`SupabaseDeviceRepository._mapped_cloud_rpc()` agora encapsula o mapping/parsing das respostas RPC e converte `KeyError`/`TypeError`/`ValueError` em `PersistenceUnavailableError`, preservando o erro de conflito tipado produzido pela camada de transporte/RPC. A reprodução independente que antes vazava `ValueError` agora retorna apenas erro sanitizado.
+
+**R2-F2 — ENCERRADO**
+`ensure_cloud_binding`, `rotate_cloud_binding` e `revoke_cloud_binding` agora adquirem locks transacionais e revalidam `devices.enabled`, `webpilot_auth_realms.active` e membership ativa antes da mutação. Os testes concorrentes reais demonstram linearização: quando a RPC de binding já adquiriu a autoridade, a mutação administrativa concorrente espera; quando a autoridade já está revogada/inativa antes da RPC, os testes fail-closed existentes continuam bloqueando a mutação.
+
+**Parecer R2.1**
+- C1-B: **APROVADO**.
+- R2-F1/F2: **ENCERRADOS**.
+- Commit do checkpoint: **AUTORIZADO agora**, contendo exatamente o diff revisado neste working tree, inclusive migration/testes/documentação e o saneamento de fixtures já aceito.
+- Mensagem sugerida: `feat(cloud): add binding persistence and desktop admin API`.
+- Após o commit, confirmar working tree limpo e registrar o novo SHA como base de entrada do C1-C.
+- C1-C: **LIBERADO somente após** esse commit; executar conforme Steps C1→C6 do plano e parar para R3 independente, novamente sem commit.
+- Migration 019 em produção, push, deploy, WebPilot real no Cloud, SessionLease real, `source=cloud`, failover/failback e cutover continuam proibidos.
+
+**Próximo passo autorizado:** Executor deve (1) fazer um único commit local do diff C1-B exatamente aprovado; (2) confirmar `git status` limpo e registrar SHA; (3) executar somente C1-C com TDD no mesmo branch/worktree; (4) deixar o C1-C sem commit/stage e parar para **R3 independente**. Não iniciar C1-D.

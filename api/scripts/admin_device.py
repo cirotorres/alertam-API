@@ -253,6 +253,8 @@ _DEPENDENCY_PROBES = (
     ("vessel_tracking_events", "device_id"),
     ("mobile_installations", "device_id"),
     ("tracked_vessels", "device_id"),
+    ("webpilot_auth_realm_devices", "device_id"),
+    ("cloud_bindings", "device_id"),
     ("mobile_session_switches", "from_device_id"),
     ("mobile_session_switches", "to_device_id"),
 )

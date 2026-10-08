@@ -103,6 +103,24 @@ class MemoryDeviceRepository:
     def get_device_auth(self, device_id: str) -> DeviceAuthRecord | None:
         return self._devices.get(device_id)
 
+    def ensure_webpilot_auth_realm(
+        self,
+        realm_id: str,
+    ) -> WebPilotAuthRealmRecord | None:
+        with self._lock:
+            current = self._webpilot_auth_realms.get(realm_id)
+            if current is not None:
+                return current
+            now = self._clock()
+            current = WebPilotAuthRealmRecord(
+                realm_id=realm_id,
+                active=True,
+                created_at=now,
+                updated_at=now,
+            )
+            self._webpilot_auth_realms[realm_id] = current
+            return current
+
     def put_webpilot_auth_realm(
         self,
         record: WebPilotAuthRealmRecord,
@@ -140,6 +158,39 @@ class MemoryDeviceRepository:
             )
             self._realm_device_authorizations[key] = authorized
             return authorized
+
+    def revoke_realm_device(
+        self,
+        realm_id: str,
+        device_id: str,
+    ) -> RealmDeviceAuthorizationRecord | None:
+        with self._lock:
+            key = (realm_id, device_id)
+            current = self._realm_device_authorizations.get(key)
+            if current is None or current.revoked_at is not None:
+                return current
+            revoked = replace(current, revoked_at=self._clock())
+            self._realm_device_authorizations[key] = revoked
+            return revoked
+
+    def set_webpilot_auth_realm_active(
+        self,
+        realm_id: str,
+        active: bool,
+    ) -> WebPilotAuthRealmRecord | None:
+        with self._lock:
+            current = self._webpilot_auth_realms.get(realm_id)
+            if current is None:
+                return None
+            if current.active is active:
+                return current
+            updated = replace(
+                current,
+                active=active,
+                updated_at=self._clock(),
+            )
+            self._webpilot_auth_realms[realm_id] = updated
+            return updated
 
     def get_realm_device_authorization(
         self,
@@ -197,12 +248,6 @@ class MemoryDeviceRepository:
                 for binding in self._cloud_bindings.values()
                 if binding.device_id == device_id
             ]
-            bindings.sort(
-                key=lambda item: (
-                    item.created_at,
-                    str(item.cloud_binding_id),
-                )
-            )
             return tuple(bindings)
 
     def ensure_cloud_binding(

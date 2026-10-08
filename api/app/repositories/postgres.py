@@ -10,6 +10,13 @@ from psycopg.types.json import Jsonb
 
 from app.models.maneuver_event import ManeuverEventIn
 from app.models.vessel_tracking_event import VesselTrackingEventIn
+from app.repositories.cloud_bindings import (
+    CloudBindingConflictError,
+    CloudBindingRecord,
+    CloudBindingStatus,
+    RealmDeviceAuthorizationRecord,
+    WebPilotAuthRealmRecord,
+)
 from app.repositories.devices import (
     AcceptSnapshotResult,
     AcceptSnapshotStatus,
@@ -117,6 +124,281 @@ class PostgresDeviceRepository:
             description=None if row[3] is None else str(row[3]),
             enabled=bool(row[4]),
         )
+
+    def ensure_webpilot_auth_realm(
+        self,
+        realm_id: str,
+    ) -> WebPilotAuthRealmRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    insert into public.webpilot_auth_realms (realm_id, active)
+                    values (%s, true)
+                    on conflict (realm_id) do update
+                    set realm_id = excluded.realm_id
+                    returning realm_id, active, created_at, updated_at
+                    """,
+                    (realm_id,),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._webpilot_auth_realm_from_row(row)
+
+    def get_webpilot_auth_realm(
+        self,
+        realm_id: str,
+    ) -> WebPilotAuthRealmRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select realm_id, active, created_at, updated_at
+                    from public.webpilot_auth_realms
+                    where realm_id = %s
+                    """,
+                    (realm_id,),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._webpilot_auth_realm_from_row(row)
+
+    def set_webpilot_auth_realm_active(
+        self,
+        realm_id: str,
+        active: bool,
+    ) -> WebPilotAuthRealmRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select realm_id, active, created_at, updated_at
+                    from public.set_webpilot_auth_realm_active(%s, %s)
+                    """,
+                    (realm_id, active),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._webpilot_auth_realm_from_row(row)
+
+    def authorize_realm_device(
+        self,
+        realm_id: str,
+        device_id: str,
+    ) -> RealmDeviceAuthorizationRecord | None:
+        return self._realm_device_rpc(
+            "authorize_realm_device",
+            realm_id,
+            device_id,
+        )
+
+    def revoke_realm_device(
+        self,
+        realm_id: str,
+        device_id: str,
+    ) -> RealmDeviceAuthorizationRecord | None:
+        return self._realm_device_rpc(
+            "revoke_realm_device",
+            realm_id,
+            device_id,
+        )
+
+    def get_realm_device_authorization(
+        self,
+        realm_id: str,
+        device_id: str,
+    ) -> RealmDeviceAuthorizationRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select realm_id, device_id, authorized_at, revoked_at
+                    from public.webpilot_auth_realm_devices
+                    where realm_id = %s and device_id = %s
+                    """,
+                    (realm_id, device_id),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._realm_device_authorization_from_row(row)
+
+    def get_active_cloud_binding(
+        self,
+        device_id: str,
+    ) -> CloudBindingRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select cloud_binding_id, device_id, realm_id,
+                           credential_hash, credential_version, status,
+                           created_at, updated_at, revoked_at
+                    from public.cloud_bindings
+                    where device_id = %s and status = 'active'
+                    """,
+                    (device_id,),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._cloud_binding_from_row(row)
+
+    def list_cloud_bindings(
+        self,
+        device_id: str,
+    ) -> tuple[CloudBindingRecord, ...]:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                rows = conn.execute(
+                    """
+                    select cloud_binding_id, device_id, realm_id,
+                           credential_hash, credential_version, status,
+                           created_at, updated_at, revoked_at
+                    from public.cloud_bindings
+                    where device_id = %s
+                    order by lifecycle_order
+                    """,
+                    (device_id,),
+                ).fetchall()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return tuple(
+            item
+            for row in rows
+            if (item := self._cloud_binding_from_row(row)) is not None
+        )
+
+    def ensure_cloud_binding(
+        self,
+        device_id: str,
+        realm_id: str,
+        credential_hash: str,
+    ) -> CloudBindingRecord | None:
+        try:
+            return self._cloud_binding_rpc(
+                "ensure_cloud_binding",
+                (device_id, realm_id, credential_hash),
+            )
+        except psycopg.errors.RaiseException as exc:
+            if "cloud_binding_conflict" in str(exc):
+                raise CloudBindingConflictError(device_id) from exc
+            raise PersistenceUnavailableError() from exc
+
+    def rotate_cloud_binding(
+        self,
+        device_id: str,
+        credential_hash: str,
+    ) -> CloudBindingRecord | None:
+        return self._cloud_binding_rpc(
+            "rotate_cloud_binding",
+            (device_id, credential_hash),
+        )
+
+    def revoke_cloud_binding(
+        self,
+        device_id: str,
+    ) -> CloudBindingRecord | None:
+        return self._cloud_binding_rpc(
+            "revoke_cloud_binding",
+            (device_id,),
+        )
+
+    def _realm_device_rpc(
+        self,
+        name: str,
+        realm_id: str,
+        device_id: str,
+    ) -> RealmDeviceAuthorizationRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    f"""
+                    select realm_id, device_id, authorized_at, revoked_at
+                    from public.{name}(%s, %s)
+                    """,
+                    (realm_id, device_id),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._realm_device_authorization_from_row(row)
+
+    def _cloud_binding_rpc(
+        self,
+        name: str,
+        params: tuple[Any, ...],
+    ) -> CloudBindingRecord | None:
+        placeholders = ", ".join(["%s"] * len(params))
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    f"""
+                    select cloud_binding_id, device_id, realm_id,
+                           credential_hash, credential_version, status,
+                           created_at, updated_at, revoked_at
+                    from public.{name}({placeholders})
+                    """,
+                    params,
+                ).fetchone()
+        except psycopg.errors.RaiseException:
+            raise
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._cloud_binding_from_row(row)
+
+    @classmethod
+    def _webpilot_auth_realm_from_row(
+        cls,
+        row: Any,
+    ) -> WebPilotAuthRealmRecord | None:
+        if row is None:
+            return None
+        try:
+            return WebPilotAuthRealmRecord(
+                realm_id=str(row[0]),
+                active=bool(row[1]),
+                created_at=cls._aware_datetime(row[2]),
+                updated_at=cls._aware_datetime(row[3]),
+            )
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    @classmethod
+    def _realm_device_authorization_from_row(
+        cls,
+        row: Any,
+    ) -> RealmDeviceAuthorizationRecord | None:
+        if row is None:
+            return None
+        try:
+            return RealmDeviceAuthorizationRecord(
+                realm_id=str(row[0]),
+                device_id=str(row[1]),
+                authorized_at=cls._aware_datetime(row[2]),
+                revoked_at=None if row[3] is None else cls._aware_datetime(row[3]),
+            )
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    @classmethod
+    def _cloud_binding_from_row(
+        cls,
+        row: Any,
+    ) -> CloudBindingRecord | None:
+        if row is None:
+            return None
+        try:
+            return CloudBindingRecord(
+                cloud_binding_id=UUID(str(row[0])),
+                device_id=str(row[1]),
+                realm_id=str(row[2]),
+                credential_hash=str(row[3]),
+                credential_version=int(row[4]),
+                status=CloudBindingStatus(str(row[5])),
+                created_at=cls._aware_datetime(row[6]),
+                updated_at=cls._aware_datetime(row[7]),
+                revoked_at=None if row[8] is None else cls._aware_datetime(row[8]),
+            )
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
 
     def ensure_mobile_installation(
         self,

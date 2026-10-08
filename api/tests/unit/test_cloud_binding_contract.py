@@ -142,8 +142,11 @@ def test_cloud_binding_repository_protocol_is_limited_to_c1_contract():
     }
 
     assert public_methods == {
+        "ensure_webpilot_auth_realm",
         "get_webpilot_auth_realm",
         "authorize_realm_device",
+        "revoke_realm_device",
+        "set_webpilot_auth_realm_active",
         "get_realm_device_authorization",
         "get_active_cloud_binding",
         "list_cloud_bindings",

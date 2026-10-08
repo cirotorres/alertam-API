@@ -51,11 +51,14 @@ def reset_database():
         conn.execute("create schema public")
         for name in (
             "001_devices.sql",
+            "018_device_admin_metadata.sql",
             "002_accept_snapshot_rpc.sql",
             "004_maneuver_events.sql",
             "005_push_installations_deliveries.sql",
+            "017_anchorage_notifications.sql",
             "008_vessel_tracking_events.sql",
             "010_mobile_installations.sql",
+            "013_mobile_installation_management.sql",
             "011_tracked_vessels.sql",
         ):
             conn.execute((MIGRATIONS / name).read_text(encoding="utf-8"))

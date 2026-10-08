@@ -42,6 +42,7 @@ def reset_database():
         _apply(
             conn,
             "001_devices.sql",
+            "018_device_admin_metadata.sql",
             "004_maneuver_events.sql",
             "005_push_installations_deliveries.sql",
             "008_vessel_tracking_events.sql",

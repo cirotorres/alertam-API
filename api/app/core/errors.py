@@ -189,3 +189,30 @@ class TrackedVesselNotFoundError(ApiError):
             code="tracked_vessel_not_found",
             message="Acompanhamento não encontrado.",
         )
+
+
+class CloudRealmUnauthorizedError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=403,
+            code="cloud_realm_unauthorized",
+            message="Realm Cloud não autorizado para este dispositivo.",
+        )
+
+
+class CloudBindingConflictApiError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=409,
+            code="cloud_binding_conflict",
+            message="Já existe um CloudBinding ativo diferente.",
+        )
+
+
+class CloudBindingNotFoundError(ApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=404,
+            code="cloud_binding_not_found",
+            message="CloudBinding não encontrado.",
+        )

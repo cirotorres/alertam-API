@@ -40,10 +40,13 @@ def reset_database():
         conn.execute("create schema public")
         for name in (
             "001_devices.sql",
+            "018_device_admin_metadata.sql",
             "004_maneuver_events.sql",
             "005_push_installations_deliveries.sql",
+            "017_anchorage_notifications.sql",
             "008_vessel_tracking_events.sql",
             "010_mobile_installations.sql",
+            "013_mobile_installation_management.sql",
             "011_tracked_vessels.sql",
         ):
             conn.execute((MIGRATIONS / name).read_text(encoding="utf-8"))
@@ -54,8 +57,16 @@ def repo():
     assert DSN is not None
     repository = PostgresDeviceRepository(DSN)
     repository.create_device(DeviceAuthRecord("pecem-01", "hash", "view"))
-    assert repository.ensure_mobile_installation("pecem-01", INSTALL_A)
-    assert repository.ensure_mobile_installation("pecem-01", INSTALL_B)
+    assert repository.ensure_mobile_installation(
+        "pecem-01",
+        INSTALL_A,
+        display_code="AAAAAA",
+    )
+    assert repository.ensure_mobile_installation(
+        "pecem-01",
+        INSTALL_B,
+        display_code="BBBBBB",
+    )
     return repository
 
 

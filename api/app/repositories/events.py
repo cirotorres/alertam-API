@@ -7,6 +7,7 @@ from typing import Protocol
 from uuid import UUID
 
 from app.models.maneuver_event import ManeuverEventIn
+from app.repositories.cloud_bindings import CloudBindingsRepository
 from app.repositories.devices import DevicesRepository
 from app.repositories.tracking import TrackingEventsRepository
 
@@ -179,6 +180,7 @@ class PushRepository(Protocol):
 
 class AlertaRepository(
     DevicesRepository,
+    CloudBindingsRepository,
     ManeuverEventsRepository,
     TrackingEventsRepository,
     PushRepository,

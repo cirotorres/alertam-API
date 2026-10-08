@@ -22,7 +22,7 @@
 - Nenhuma migration de produção. Migration C1 pode ser criada e testada somente em banco local/efêmero.
 - Nenhum push, merge em branch compartilhada, deploy Vercel/Northflank ou operação Supabase de produção sem autorização humana posterior.
 - Nenhum segredo em logs, exceptions, fixtures, URLs, responses ou handoffs.
-- Cada checkpoint termina com commit local, testes, `git diff --check`, atualização do controle central e **STOP** para Rn independente.
+- Cada checkpoint termina com testes, `git diff --check`, atualização do controle central e **STOP** para Rn independente **sem commit**. O commit do checkpoint só é feito após aprovação independente, contendo exatamente o diff revisado/aprovado.
 
 ## Base reconciliada exigida antes de criar a feature branch
 
@@ -167,9 +167,9 @@ Run:
 - `cd api && uv run pytest tests/unit/test_memory_repository.py tests/unit/test_devices_repository_contract.py -q -W error`;
 - `git diff --check`.
 
-Commit local sugerido: `feat(cloud): define binding and realm domain contracts`.
+Após R1 **APROVADO**, commit sugerido: `feat(cloud): define binding and realm domain contracts`.
 
-Atualizar controle central e **STOP R1**.
+Antes da R1: manter mudanças sem commit, atualizar controle central e **STOP R1**.
 
 ---
 
@@ -291,9 +291,9 @@ Run:
 
 **Nunca** `prod-migrate`, deploy ou push.
 
-Commit local sugerido: `feat(cloud): add binding persistence and desktop admin API`.
+Após R2 **APROVADO**, commit sugerido: `feat(cloud): add binding persistence and desktop admin API`.
 
-Atualizar controle central e **STOP R2**.
+Antes da R2: manter mudanças sem commit, atualizar controle central e **STOP R2**.
 
 ---
 
@@ -370,9 +370,9 @@ Run:
 - full API suite;
 - `git diff --check`.
 
-Commit local sugerido: `test(cloud): enforce binding authority and isolation`.
+Após R3 **APROVADO**, commit sugerido: `test(cloud): enforce binding authority and isolation`.
 
-Atualizar controle central e **STOP R3**.
+Antes da R3: manter mudanças sem commit, atualizar controle central e **STOP R3**.
 
 ---
 
