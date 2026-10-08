@@ -1,9 +1,9 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** C1-A R1-FIX — dois achados obrigatórios R1-F1/F2; C1-B permanece bloqueado
+**Status:** C1-A R1-F1/F2 CORRIGIDOS — PRONTO PARA R1.1 INDEPENDENTE; C1-B permanece bloqueado
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
-**Base reconciliada:** API/PWA `feat/api-bootstrap@23a78bebdf46062eef937966101246567cd963de`; Desktop `develop@9e5b5e1a33cb7d61db200866aea683a6334de922`. **Feature:** `feat/spec027-cloud`, criada a partir de `23a78be` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`. **C1-A code HEAD:** `36b3c9b96ecfe8e88b6471f57ce0564a9e87850f`; o commit documental deste checkpoint será seu sucessor local.
+**Base reconciliada:** API/PWA `feat/api-bootstrap@23a78bebdf46062eef937966101246567cd963de`; Desktop `develop@9e5b5e1a33cb7d61db200866aea683a6334de922`. **Feature:** `feat/spec027-cloud`, criada a partir de `23a78be` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`. **C1-A functional HEAD após correções R1:** `17afb4e19e21ce93e8eb1b8b0c8bfe47ebcf3364`; o commit documental deste registro será seu sucessor local.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
 **Objetivo:** um protocolo auditável de entregas incrementais, com parada obrigatória após cada checkpoint, para SPEC 027 sem efeitos operacionais prematuros.
 
@@ -54,7 +54,7 @@
 | Ordem | Checkpoint | Entrega sob controle | Gate independente | Situação |
 |---|---|---|---|---|
 | 0 | P0 — Reconciliação e plano | Verificar estado cross-repo; preparar proposta de integração sem alterar produção; planejar C1 com tasks TDD e contratos | R0/R0.1/R0.2 aprovam base e plano antes de programar | **APROVADO EM R0.2** |
-| 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1 revisa identidade, constraints, isolamento e contrato | **R1-FIX — R1-F1/F2** |
+| 1 | C1-A — Domínio/contrato | Modelo CloudBinding, associação realm/device_id, invariantes, interfaces, testes unitários; migração **somente proposta** | R1/R1.1 revisam identidade, constraints, isolamento e contrato | **PRONTO PARA R1.1 — R1-F1/F2 corrigidos** |
 | 2 | C1-B — Persistência/credenciais | Credencial própria, hash/rotação/revogação, repos/endpoints Desktop-only e testes; migração versionada **não aplicada** | R2 revisa autorização, secrets e idempotência | **BLOQUEADO até R1.1** |
 | 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | BLOQUEADO |
 | 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | BLOQUEADO |
@@ -288,6 +288,50 @@ Isso viola a idempotência do retry do lifecycle corrente e pode fazer backends 
 - C1-B permanece **BLOQUEADO**.
 
 **Próximo passo autorizado:** Executor corrige somente R1-F1 e R1-F2 com TDD, roda testes C1-A + regressões focadas + suíte API completa + `git diff --check`, faz commit funcional local e atualiza este checkpoint. Parar para **R1.1 independente**. Não iniciar C1-B, não criar migration 019, não push/deploy e não tocar no Shadow.
+
+### Correções R1-F1/F2 — Executor (2026-10-08)
+
+**Status:** PRONTO PARA R1.1 INDEPENDENTE. Escopo restrito aos dois achados R1; C1-B permanece bloqueado.
+
+**Base da correção**
+- branch/worktree: `feat/spec027-cloud` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`;
+- HEAD de entrada: `3b6d087beec16be314a08a2122833a3033082ddf` (parecer R1 documental);
+- base C1-A: `23a78bebdf46062eef937966101246567cd963de`;
+- commit funcional da correção: **`17afb4e19e21ce93e8eb1b8b0c8bfe47ebcf3364`** — `fix(cloud): harden c1-a binding invariants`.
+
+**R1-F1 — status runtime inválido — RED→GREEN**
+- RED adicionado em `test_cloud_binding_contract.py` cobrindo exatamente:
+  - `status="active"` com `revoked_at` preenchido;
+  - `status="revoked"` com `revoked_at=None`;
+  - `status="garbage"`.
+- RED observado: **3 falhas `Failed: DID NOT RAISE ValueError`**, confirmando que type hints/identidade do enum não protegiam runtime.
+- GREEN mínimo: `CloudBindingRecord.__post_init__` agora rejeita qualquer `status` que não seja instância de `CloudBindingStatus`, sem coerção silenciosa; os checks existentes `ACTIVE ↔ revoked_at is None` e `REVOKED ↔ revoked_at is not None` permanecem.
+- Resultado: os três casos inválidos são rejeitados e os estados enum válidos continuam cobertos pelos testes existentes.
+
+**R1-F2 — retry de revoke com timestamp empatado — RED→GREEN**
+- RED adicionado em `test_cloud_binding_memory_repository.py` com clock fixo e UUIDs adversariais:
+  - primeiro lifecycle: `ffffffff-ffff-ffff-ffff-ffffffffffff`;
+  - segundo lifecycle: `00000000-0000-0000-0000-000000000001`;
+  - sequência: create A → revoke A → rebind B → revoke B → retry revoke, tudo no mesmo timestamp.
+- RED observado: retry devolveu **A** em vez de **B**, reproduzindo a ordenação incorreta por UUID.
+- GREEN mínimo: o retry não ordena mais histórico por `(created_at, UUID)`; usa a ordem de inserção do histórico interno já preservada pelo repository de memória, de modo que o último binding criado/revogado do device é o lifecycle corrente.
+- Histórico e isolamento por `device_id` permanecem preservados.
+
+**Verificação após correções**
+- testes C1-A: **18/18 passed**;
+- regressões focadas existentes `test_memory_repository.py + test_devices_repository_contract.py`: **7/7 passed**;
+- suíte API completa: **490 passed / 34 skipped / 0 failed**;
+- `git diff --check`: PASS antes do commit funcional;
+- diff funcional: somente `cloud_bindings.py`, `memory.py` e os dois testes C1-A.
+
+**Fronteiras preservadas**
+- C1-B **não iniciado**;
+- migration 019 **não criada/aplicada**;
+- nenhum endpoint/Postgres/Supabase/admin script/runtime Cloud operacional novo;
+- nenhum push/deploy;
+- Shadow não foi interrompido ou alterado.
+
+**PARECER SOLICITADO:** **R1.1 independente** sobre R1-F1/F2 e o commit funcional `17afb4e`. Nenhuma etapa C1-B iniciada.
 
 ### C2-P / C2 / C3-P / C3 / C4 / C5
 
