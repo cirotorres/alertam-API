@@ -1,9 +1,9 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** PREPARAÇÃO — P0 aguardando execução e R0 independente
+**Status:** P0 CONCLUÍDO — aguardando R0 independente; nenhuma integração ou implementação C1 executada
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
-**Branch atual após organização Git:** feat/api-bootstrap (HEAD local d0c28c3; documentação de gate/checkpoints e auditoria Git commitadas localmente, sem push). A futura implementação da SPEC 027 usará **uma única branch de feature**, `feat/spec027-cloud`, criada após o P0/R0 a partir da base reconciliada.
+**Base P0 API/PWA auditada:** feat/api-bootstrap @ 8177332; **base Desktop auditada:** develop @ abe386f, com Plan 5 pendente em 9e5b5e1. A futura implementação da SPEC 027 usará **uma única branch de feature**, `feat/spec027-cloud`, criada somente após R0 e reconciliação aprovada.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
 **Objetivo:** um protocolo auditável de entregas incrementais, com parada obrigatória após cada checkpoint, para SPEC 027 sem efeitos operacionais prematuros.
 
@@ -16,15 +16,15 @@
 5. specs/025-webpilot-http-observed-weather-shadow-migration.md e specs/030-device-operational-gate.md, **se presente**; se não existir nesse repo, localizar fonte canônica antes de projetar.
 6. docs/superpowers/strategy/2026-10-02-alertam-cloud-evolution-roadmap.md.
 7. docs/superpowers/plans/2026-10-06-pre-spec027-cloud-infra-spike.md e handoff correspondente.
-8. Plano detalhado C1 **a ser criado no P0 e aprovado em R0**; este protocolo não o substitui.
+8. `docs/superpowers/plans/2026-10-08-spec027-c1-binding-realm-authority.md` — criado no P0; execução depende de aprovação R0.
 
 ## 2. Estado de entrada verificado (2026-10-08)
 
 - SPEC 025 Plan 5: gate técnico MET; 25h53m, 1501 comparáveis, 1499 equivalentes, 109 limpos, nenhuma falha; 4 registros explicados de 2 episódios, hipótese forte de diferença temporal Selenium/HTTP, **não comprovada como causa-raiz**.
 - Usuário aceitou a hipótese documentada e autorizou avançar o **desenvolvimento** da SPEC 027; **não** autorizou migrações de produção, WebPilot real no Cloud, publicação source=cloud, cutover ou failover real.
 - Desktop: feat/spec025-plan5-shadow-evidence-gate, HEAD após organização 9e5b5e1 (documentação R2/Task 5 commitada); develop abe386f; checkout limpo, branch Plan 5 não integrada, Shadow real não deve ser interrompido.
-- API/PWA: feat/api-bootstrap local d0c28c3, remoto observado 3d85578 (5 commits locais à frente, **nenhum push**; validar na abertura).
-- API/PWA checkout principal: feat/api-bootstrap, HEAD d0c28c3, limpo; a antiga prep/spec027-cloud-infra-spike foi removida após integração documental fast-forward. Specs 025/027, handoffs e auditoria Git estão commitados localmente.
+- API/PWA: `feat/api-bootstrap` local **8177332**, `origin/feat/api-bootstrap` observado **3d85578**; checkout limpo, local 6 commits à frente, **nenhum push**.
+- API/PWA checkout principal auditado em `feat/api-bootstrap@8177332`; documentação de gate/checkpoints e auditoria Git já está preservada nessa base.
 - Spike Northflank em worktree .worktrees/pre-spec027-cloud-infra-spike, branch feat/pre-spec027-cloud-infra-spike, HEAD documental local dc23003 (à frente do remoto), núcleo infra já no remoto no commit 9508af3; aprovado só como sandbox infra.
 - Achado residual Shadow: assinatura explicada reincidente pode incrementar occurrences/last_seen sem reabrir status. Tratar como hotfix TDD Desktop separado, sem modificar aplicação em coleta por conta própria. Reexaminar reincidências.
 
@@ -125,9 +125,69 @@ A SPEC 027 usa **uma branch longa de feature por repositório**, e não uma bran
 
 ### P0 — Reconciliação + plano C1
 
-**Status:** AGUARDA EXECUTOR.
-**Executor:** pendente. **Revisor R0:** pendente.
-**Próximo ato permitido:** inventário e plano C1, sem implementação nem integração.
+**Status:** PRONTO PARA R0 INDEPENDENTE.
+**Executor:** concluído em 2026-10-08. **Revisor R0:** pendente.
+**Próximo ato permitido:** somente R0. Nenhuma integração, criação de `feat/spec027-cloud` ou implementação C1 antes do parecer.
+
+**Estado Git auditado**
+- API/PWA checkout principal: `feat/api-bootstrap@8177332`, limpo; `origin/feat/api-bootstrap@3d85578`; local 6 commits à frente, sem push.
+- Spike: `feat/pre-spec027-cloud-infra-spike@dc23003`, worktree limpa; remoto da branch em `9508af3`. O commit `dc23003` fecha documentalmente o spike homologado Northflank.
+- Desktop checkout principal: `feat/spec025-plan5-shadow-evidence-gate@9e5b5e1`, limpo; `develop@abe386f` e `origin/develop@abe386f`.
+- Worktrees sujas não relacionadas foram identificadas e preservadas: API `/home/ciro/dev/prog/.worktrees/alertamaritimoAPI-spec029`; Desktop `/home/ciro/dev/prog/.worktrees/alertamaritimo-win-updater-provisioning`; externos `~/.cache/claude-hfi/.../elm` e `.../oak`. `/home/ciro/dev/prog/alertamaritimo/.worktrees/spec028-plan1` está limpo porém não integrado e também foi preservado.
+- A fonte canônica da SPEC 030 foi localizada no repo Desktop: `/home/ciro/dev/prog/alertamaritimo/specs/030-device-admin-operational-gate.md`; ela foi lida integralmente e usada no desenho fail-closed de C1.
+
+**Auditoria Plan 5 Desktop**
+- Plan 5 é descendente linear de `develop@abe386f`; `develop` não possui commits exclusivos contra a branch.
+- `git merge-tree --write-tree develop feat/spec025-plan5-shadow-evidence-gate`: PASS, sem conflito.
+- Integração proposta pós-R0: fast-forward de `develop` para `9e5b5e1` em checkout/worktree separado, sem trocar/interromper o checkout do Shadow real.
+- Achado residual de reincidência de divergence explained permanece hotfix Desktop separado; não entra em C1 e não exige parar Shadow.
+
+**Auditoria spike Northflank**
+- Merge-base com a base API atual: `af5e81f`.
+- Spike possui `146f09b`, `0eccfa1`, `9558f29`, `9508af3`, `dc23003`; base API possui commits posteriores próprios.
+- `git merge-tree --write-tree feat/api-bootstrap feat/pre-spec027-cloud-infra-spike`: PASS, sem conflito.
+- Integração proposta pós-R0: merge real do spike em `feat/api-bootstrap`, regressões locais, sem push/deploy.
+- O serviço sandbox Northflank permanece somente health/readiness; nenhum secret operacional ou WebPilot real foi usado.
+
+**Reconciliação docs/pre-plan4-gate-alignment**
+- `docs/pre-plan4-gate-alignment@ecb7b37` não deve ser mergeada.
+- Os três planos alterados por `ecb7b37` são byte-identical à base atual.
+- Handoff, roadmap e SPECs atuais contêm o conteúdo útil da branch e revisões posteriores (SPEC029, spike, gate MET).
+- Merge direto hoje produziria conflitos add/add/content sem acrescentar semântica nova.
+- Proposta pós-R0: remover worktree/branch documental somente após uma última verificação; nenhuma alteração local será perdida.
+
+**Plano C1 produzido**
+- `docs/superpowers/plans/2026-10-08-spec027-c1-binding-realm-authority.md`.
+- C1-A: domínio/interfaces/invariantes.
+- C1-B: migration 019 apenas local, repositories, credencial e endpoints Desktop-only.
+- C1-C: fail-closed, credential authority, cross-device/cross-realm e revogações.
+- C1-D: contratos, smoke/regressões, auditoria de segurança e encerramento.
+- TDD RED→GREEN obrigatório; STOP R1/R2/R3/R4.
+- Uma única branch `feat/spec027-cloud`; nenhuma branch por checkpoint/fase.
+- C1 não ativa runtime Cloud operacional e, por default, não altera Desktop runtime.
+
+**Decisões P0 submetidas a R0**
+1. Aprovar a sequência de reconciliação Git acima.
+2. Aprovar não mergear `ecb7b37`, por estar superseded.
+3. Aprovar o contrato C1: credencial Cloud própria de alta entropia, plaintext somente em request HTTPS, hash-only persistido, write-only em response.
+4. Aprovar WebPilotAuthRealm administrado fora do PWA e autorização explícita device↔realm.
+5. Aprovar `GET cloud-binding` consultável por secret válido mesmo com device disabled, mas todas as mutações e qualquer uso da binding fail-closed quando disabled/unavailable.
+6. Aprovar migration proposta `019_cloud_binding_realm.sql` somente para testes locais/efêmeros durante C1; produção continua proibida.
+7. Aprovar que C2 SessionLease/Auth Broker e C3 source/failover permaneçam fora de C1.
+
+**Verificação P0**
+- `git diff --check`: limpo no API/PWA antes do commit documental.
+- `git merge-tree` repetido: Plan 5→develop e spike→feat/api-bootstrap sem conflitos.
+- `feat/spec027-cloud` inexistente nos dois repos.
+- Nenhuma suíte funcional foi rerodada no P0 porque o único diff produzido é documental/plano; regressões funcionais são gate da base reconciliada pós-R0 antes de criar a feature.
+
+**Pendências para depois de R0**
+- executar as integrações aprovadas e registrar os novos SHAs reconciliados;
+- rodar regressões da base reconciliada;
+- criar `feat/spec027-cloud` somente então;
+- iniciar apenas C1-A.
+
+**Confirmação de escopo P0:** nenhum merge, push, deploy, migration, branch de implementação, WebPilot Cloud, cookie/SessionLease, `source=cloud`, failover/failback ou cutover foi executado.
 
 ### C1-A / C1-B / C1-C / C1-D
 
