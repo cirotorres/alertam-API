@@ -24,7 +24,7 @@
 ## Próxima etapa — C1: plano e executor separados
 
 1. Preparar plano de implementação C1 (Binding, WebPilotAuthRealm e autoridade administrativa), com tarefas pequenas, interfaces, migrações versionadas e TDD RED/GREEN.
-2. Reconciliar bases antes de programar: integrar o spike somente após aprovação do merge e review; preservar commits locais/branch/worktrees e dependências.
+2. Reconciliar bases antes de programar: integrar o spike somente após aprovação do merge e review; depois usar **uma única branch `feat/spec027-cloud` para C1→C4**. Não criar branch por checkpoint; os checkpoints/revisões fazem o isolamento.
 3. Definir modelo CloudBinding separado da credencial WebPilot; identidade device_id existente; vínculo autorizável/revogável; realm explícito; isolamento cross-device e cross-realm.
 4. Definir endpoints Desktop-only com autorização, rotação/revogação, idempotência e auditoria sanitizada; nunca expor secrets no PWA.
 5. Planejar DeviceOperationalGate fail-closed, incluindo enabled=false, autorização indisponível, revogação e bloqueio da coleta.
@@ -42,4 +42,4 @@
 
 ## Prompt sugerido ao próximo planejador/executor
 
-Leia integralmente specs/027-alertam-cloud-continuity.md, docs/superpowers/handoffs/2026-10-08-spec025-final-handoff.md e este handoff. Revalide as branches do spike Cloud e a base feat/api-bootstrap. Prepare o Plano C1 Binding/realm/autoridade com TDD, isolamento por device_id, credencial revogável, DeviceOperationalGate fail-closed e checkpoints de revisão; não implemente C2/C3, não ative Cloud operacional e não faça migrations em produção/deploy/merge/push sem autorização. Pare para revisão do plano antes de executar.
+Leia integralmente specs/027-alertam-cloud-continuity.md, docs/superpowers/handoffs/2026-10-08-spec025-final-handoff.md e este handoff. Revalide as branches do spike Cloud e a base feat/api-bootstrap. Prepare o Plano C1 Binding/realm/autoridade com TDD, isolamento por device_id, credencial revogável, DeviceOperationalGate fail-closed e checkpoints de revisão. A estratégia de Git é **uma única branch `feat/spec027-cloud` para C1→C4**, criada somente após P0/R0 e reconciliação da base; não criar branches C1/C2/C3/C4 separadas. Não implemente C2/C3 durante o P0, não ative Cloud operacional e não faça migrations em produção/deploy/merge/push sem autorização. Pare para revisão do plano antes de executar.
