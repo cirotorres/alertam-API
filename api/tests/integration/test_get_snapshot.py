@@ -204,3 +204,40 @@ def test_get_snapshot_returns_v2_exact_structure_when_v2_is_stored():
 
     assert response.status_code == 200
     assert response.json()["snapshot"] == payload
+
+def test_c3a_get_snapshot_envelope_keeps_exact_pwa_shape():
+    """Source fencing metadata must remain internal, for both v1 and v2."""
+    from app.models.read_snapshot import SnapshotMetaResponse, SnapshotReadResponse
+
+    assert set(SnapshotReadResponse.model_fields) == {"snapshot", "meta"}
+    assert set(SnapshotMetaResponse.model_fields) == {
+        "received_at", "age_seconds", "collector_online",
+        "stale_after_seconds", "device_enabled",
+    }
+
+    for fixture_path in (FIXTURE, V2_FIXTURE):
+        repo = _repo(with_snapshot=False)
+        payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+        repo.put_snapshot(
+            StoredSnapshot(
+                device_id=DEVICE_ID,
+                snapshot=payload,
+                snapshot_schema_version=payload["schema_version"],
+                boot_id=UUID(payload["boot_id"]),
+                sequence=payload["sequence"],
+                generated_at=datetime.fromisoformat(payload["generated_at"]),
+                received_at=RECEIVED_AT,
+            )
+        )
+        response = _client(repo, RECEIVED_AT + timedelta(seconds=10)).get(
+            f"/api/v1/devices/{DEVICE_ID}/snapshot",
+            headers={"Authorization": f"Bearer {VIEW_SECRET}"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert set(body) == {"snapshot", "meta"}
+        assert set(body["meta"]) == set(SnapshotMetaResponse.model_fields)
+        assert body["snapshot"] == payload
+        assert not {"authority_epoch", "authority_lease_id", "holder_instance_id"}.intersection(
+            body["snapshot"]
+        )

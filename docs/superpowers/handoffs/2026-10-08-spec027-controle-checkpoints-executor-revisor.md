@@ -1,7 +1,7 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** **C3-P APROVADO EM R9.2 — commit documental exato autorizado**; C1/C2 encerrados; C3-A ainda depende do commit exato e de autorização explícita de avanço
+**Status:** **C3-A APROVADO EM R10.2**; R10-F1..F5 e R10.1-F1/F2 encerrados; C3-P aprovado em R9.2; C3-B bloqueado
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
 **Base reconciliada:** API/PWA `feat/api-bootstrap@23a78bebdf46062eef937966101246567cd963de`; Desktop `develop@9e5b5e1a33cb7d61db200866aea683a6334de922`. **Feature:** `feat/spec027-cloud`, criada a partir de `23a78be` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`. **C1-A functional HEAD após correções R1:** `17afb4e19e21ce93e8eb1b8b0c8bfe47ebcf3364`; o commit documental deste registro será seu sucessor local.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
@@ -63,7 +63,7 @@
 | 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | **APROVADO EM R4 — commit final C1 `61342b2ac47ffa48bfe90787b8aa2afb4bb4cda8`** |
 | 5 | C2-P — Plano Auth Broker | Desenhar reuso do coletor validado, contrato SessionLease, epoch, segurança, standby | R5/R5.1 (plano); **não** copiar parser/coletor | **APROVADO EM R5.1 — commit `7c9f19516673c80860b144b9f421aaea0810e423`** |
 | 6 | C2 — Execução em checkpoints próprios | Broker federado, anti-replay e core HTTP em standby headless sem source efetivo | R6/R7/R8; commit somente após cada aprovação | **ENCERRADO — commit final C2 `b991ffb16d110c617c7c4bc90a842cc9abc22059`** |
-| 7 | C3-P / C3 — Autoridade e snapshots | Plano de authority epoch/fencing, heartbeat/freshness, hysteresis, snapshots state-only e persistência Cloud | R9/R9.1/R9.2 revisam somente o plano; C3-A..F exigem gates próprios | **C3-P APROVADO EM R9.2 — commit documental exato autorizado; C3-A aguarda autorização** |
+| 7 | C3-P / C3 — Autoridade e snapshots | Plano de authority epoch/fencing, heartbeat/freshness, hysteresis, snapshots state-only e persistência Cloud | R9/R9.1/R9.2 revisam somente o plano; C3-A..F exigem gates próprios | **C3-P APROVADO E COMMITADO `7e22a7c`; C3-A APROVADO EM R10.2; C3-B BLOQUEADO** |
 | 8 | C4 — Observabilidade | Status, logs sanitizados, smoke prolongado, degradação e reconciliação | Revisão operacional humana | BLOQUEADO |
 | 9 | C5 — Eventos/Push | Plano próprio de idempotência cross-source, sem duplicação | **Somente se autorizado separadamente** | FORA DA LIBERAÇÃO ATUAL |
 
@@ -3519,4 +3519,301 @@ Está autorizado um único commit local contendo exatamente o plano C3-P + hando
 **Próximo checkpoint**
 C3-A ainda não inicia automaticamente. Após o commit documental exato e working tree limpo, o próximo passo possível é **C3-A — domínio, source metadata e contratos**, somente mediante autorização explícita do usuário. C3-A deverá terminar sem commit/stage para R10 independente.
 
+### C3-A — registro do gate de entrada (2026-10-09)
+
+**Commit documental C3-P aprovado em R9.2:** `7e22a7c66149e10cef155ca7458fffd6cb74fc9c` (`docs(spec027): approve C3-P source authority plan and R9 reviews`). Entrada API/Cloud `feat/spec027-cloud@7e22a7c`, `b991ffb16d110c617c7c4bc90a842cc9abc22059` confirmado ancestral; Desktop `feat/spec027-cloud@c8191bfea696368a7698a08bea727811412c05fd`. Ambos working trees limpos antes do início; Shadow original ativo, PIDs 14865/14873, sem intervenção. C3-A autorizado explicitamente pelo usuário somente para domínio/metadata/contratos com TDD, sem commit/stage, sem C3-B, código operacional ou migration 021.
+
 Push, merge, deploy, migration 021 produção, Northflank operacional, WebPilot real no Cloud, snapshot Cloud operacional, `source=cloud`, failover/failback real e cutover continuam proibidos.
+
+### C3-A — entrega do Executor; domínio/source metadata/contratos (2026-10-09)
+
+**Status:** **C3-A PRONTO PARA R10 INDEPENDENTE**. C3-B não iniciado. Tudo permanece no working tree, sem stage/commit.
+
+**Base aprovada e integridade de entrada**
+- API/Cloud: `feat/spec027-cloud@7e22a7c66149e10cef155ca7458fffd6cb74fc9c`, commit documental C3-P aprovado em R9.2. Ancestral `b991ffb16d110c617c7c4bc90a842cc9abc22059` confirmado por `git merge-base --is-ancestor`.
+- Desktop: `feat/spec027-cloud@c8191bfea696368a7698a08bea727811412c05fd`, limpo, ancestral requerido confirmado.
+- Ambos working trees estavam limpos antes da primeira edição. Shadow original preservado: PIDs 14865/14873 com início em 2026-10-08 10:01:41; nenhum restart, interrupção ou mudança.
+
+**Arquivos da entrega (exatamente estes seis, somente no repo API/PWA/Cloud)**
+1. `api/app/models/source_authority.py` — NOVO; enums `desktop|cloud` e `legacy|managed`, status/reason codes, records, candidate, dois comandos tipados e mutuamente diferentes, grant/result/decision, side-effect policy, constantes puras e headers compartilhados dos endpoints managed.
+2. `api/app/repositories/source_authority.py` — NOVO; `SourceAuthorityRepository` e `SourceHeartbeatRepository` como `Protocol` apenas; nenhum adapter ou implementação.
+3. `api/tests/unit/test_source_authority_contract.py` — NOVO; tipos/contratos, separation of epochs, cross-device isolation, recovery write distinto de renew, bootstrap Desktop, fencing, winner/loser side effects, idempotência e headers.
+4. `api/tests/integration/test_get_snapshot.py` — teste de contrato real GET v1/v2, shape externo `snapshot + meta` invariável, nenhum campo C3 no envelope.
+5. `frontend/src/api/contract.test.ts` — testes Zod strict contra source/authority metadata indevida na raiz/meta/snapshot; confirma payload v1/v2 corrente.
+6. Este handoff — base, RED/GREEN, evidência e pedido de R10.
+
+**RED → GREEN**
+- RED: `cd api && uv run --no-sync pytest tests/unit/test_source_authority_contract.py -q` → erro de collection esperado `ModuleNotFoundError: No module named 'app.models.source_authority'`; nenhum contrato C3-A existia.
+- GREEN focado inicial: `cd api && uv run --no-sync pytest tests/unit/test_source_authority_contract.py tests/integration/test_get_snapshot.py tests/unit/test_snapshot_read_service.py tests/contract/test_desktop_snapshot_contract.py -q` → PASS; após refinamento final, **43 testes focados passaram**; testes adicionais de replay idempotente elevaram a regressão final.
+- GREEN regressão API final: `cd api && uv run --no-sync pytest -o addopts='' -q tests/unit tests/contract tests/integration/test_get_snapshot.py tests/integration/test_post_snapshot.py` → **504 passed, 0 failed**.
+- GREEN frontend focado: `cd frontend && npm test -- --run src/api/contract.test.ts src/api/snapshotClient.test.ts` → **29 passed**.
+- GREEN frontend completo: `cd frontend && npm test -- --run` → **295 passed, 50 files, 0 failed**. Aviso não bloqueante de `act(...)` em um teste React existente.
+- `cd frontend && npm run build` → **PASS**, incluindo PWA/service worker; avisos não bloqueantes de Rollup/Zod e tamanho de chunks.
+
+**Invariantes e limites demonstrados**
+- `realm_epoch` é exclusivo do auth broker/SessionLease e rejeitado nos contratos de fencing de source; `authority_epoch` pertence ao grant por `device_id`, com `boot_id/holder_instance_id` idênticos.
+- `PublishUnderCurrentGrant` exige epoch+lease+instance existentes; `TransitionCandidate` rejeita fields futuros de epoch/lease; futuro DB/PostgreSQL fica responsável pelo único grant vencedor, sem implementação agora.
+- `current_grant_write_eligible` e `current_holder_renew_eligible` são policies **puras** independentes. Snapshot autoritativo stale pode bloquear renew sem bloquear recovery write do holder sob grant ainda válido; fencing/expiry/other device proíbem write. Nenhum relógio ou arbitragem DB foi implementado. Bootstrap inicial managed exige Desktop saudável, snapshot recente e boot correspondente, com epoch 1 a ser criado futuramente pelo DB.
+- `ManagedSnapshotAcceptanceResult` modela `previous_source`, transição, `SideEffectPolicy` e previous snapshot somente para `desktop_continuity`; Cloud sempre `none`; loser/retry idempotente não dispara side effects. Grant tipado obrigatório quando aceito/idempotente. Nenhum pre-read externo decide side effect.
+- GET PWA `SnapshotReadResponse` continua estritamente `{snapshot, meta}`; schema v1/v2 não foi estendido nem criado v3. Tests rejeitam metadata de authority fora de contrato.
+
+**Auditoria de segurança/Git/escopo**
+- `git diff --check` dos arquivos tracked: PASS; `git diff --no-index --check /dev/null` dos três novos arquivos untracked: PASS.
+- Security grep `secret|credential|cookie|password|bearer|authorization|ciphertext` em novos modelos/protocols: nenhuma ocorrência. Snapshot candidate e previous snapshot `repr=False`; nenhuma credencial ou material WebPilot introduzido.
+- Staged files: **0**. Commits deste checkpoint: **0**. Desktop limpo, Shadow intacto.
+- Migration `021_source_authority_snapshots.sql`: **não criada**; zero schema/SQL/RPC, zero repository Memory/Postgres/Supabase implementation, zero heartbeat/renew HTTP, zero timer/hysteresis operacional, zero Cloud writer, zero source Cloud operacional/failover/failback, zero eventos/Push, zero C3-B.
+- Nenhum push, merge, deploy, Northflank operacional, WebPilot real Cloud ou cutover.
+- Limitação consciente: testes PostgreSQL/concorrência/fencing runtime e migração 021 pertencem ao **C3-B**; timers/heartbeat/hysteresis runtime pertencem ao **C3-C**. Não foram antecipados.
+
+**PARECER SOLICITADO:** **R10 INDEPENDENTE** sobre C3-A, limitado ao diff acima. **C3-B BLOQUEADO**, sem commit/stage até revisão independente.
+
+### R10 independente — revisão do C3-A (2026-10-09)
+
+**Resultado:** CORREÇÕES OBRIGATÓRIAS. A entrega respeitou o escopo C3-A, preservou PWA strict, separou `realm_epoch` de `authority_epoch`, não antecipou SQL/runtime e passou as regressões. Porém cinco contratos ainda permitem estados/comandos que contradizem o C3-P aprovado e precisam ser fechados antes do commit.
+
+**Evidência independente**
+- base API/Cloud: `7e22a7c66149e10cef155ca7458fffd6cb74fc9c`;
+- base Desktop: `c8191bfea696368a7698a08bea727811412c05fd`;
+- diff limitado aos seis arquivos declarados pelo Executor;
+- staged files: 0; Desktop limpo; Shadow original intacto nos PIDs 14865/14873;
+- testes focados API: **44 passed**;
+- regressão API independente: **504 passed**;
+- frontend focado: **29 passed**;
+- frontend completo: **295 passed / 50 files**;
+- `git diff --check`: PASS; untracked sem diagnóstico.
+
+#### R10-F1 — `X-Alertam-Authority-Operation` não é realmente obrigatório
+
+O C3-P aprovado exige explicitamente `X-Alertam-Authority-Operation` em ambos os endpoints managed. Porém `parse_managed_authority_headers()` aceita ausência do header e cai implicitamente em `TransitionCandidateHeaders`, porque esse modelo possui default `transition-candidate`.
+
+Reprodução independente: input somente `X-Alertam-Source-Instance` → resultado válido `TransitionCandidateHeaders` com operation `transition-candidate`.
+
+**Critério de aceite:** missing/unknown operation deve falhar; current-grant exige epoch+lease+instance; transition-candidate exige instance e proíbe epoch/lease; adicionar RED/GREEN específico.
+
+#### R10-F2 — heartbeat de source foi modelado como “holder”, embora standby não seja holder
+
+O plano aprovado define `device_source_heartbeats.instance_id`; Cloud pode enviar heartbeat em standby, quando não possui authority. A implementação usa `SourceHeartbeatRecord.holder_instance_id`, misturando identidade do processo/source com identidade de holder.
+
+**Critério de aceite:** usar `instance_id` no heartbeat; reservar `holder_instance_id` para authority/grant/candidate onde aplicável; provar por teste que heartbeat de source não-holder é representável sem implicar authority.
+
+#### R10-F3 — resultado managed permite failback Desktop aceito com side-effect policy incorreta
+
+O C3-P fixa Cloud→Desktop failback e primeiro Desktop em source transition como `baseline`. O validator atual ainda aceita `status=accepted`, `source=desktop`, `previous_source=cloud`, `source_transition=true`, `side_effect_policy=none`.
+
+**Critério de aceite:** Desktop `ACCEPTED` com `source_transition=True` exige `BASELINE`; Cloud aceito permanece `NONE`; `DESKTOP_CONTINUITY` somente Desktop→Desktop sem transition e com previous snapshot transacional; `IDEMPOTENT` permanece sem side effect.
+
+#### R10-F4 — reason code diverge do contrato documental aprovado
+
+O plano fixa `snapshot_out_of_order`, enquanto o enum implementado usa `SNAPSHOT_OUT_OF_ORDER = "out_of_order"`.
+
+**Critério de aceite:** o reason code C3 deve ser exatamente `snapshot_out_of_order`; manter códigos legados separados se necessário; teste deve comparar o valor externo exato.
+
+#### R10-F5 — `ManagedSnapshotCandidate` aceita metadata duplicada incoerente com o body persistido
+
+O validator protege `boot_id` e `sequence`, mas não `generated_at` nem `snapshot_schema_version`. Probe independente aceitou candidate declarando schema v2/generated_at 12:00 com body schema v1/generated_at 11:00.
+
+**Critério de aceite:** exigir coerência dos campos canônicos duplicados `boot_id`, `sequence`, `schema_version` e `generated_at` normalizado timezone-aware; mismatch deve falhar antes do repository; não alterar PWA nem criar v3.
+
+**Pontos aprovados em R10:** separação `realm_epoch`×`authority_epoch`; comandos current-grant×transition-candidate; write×renew eligibility; bootstrap Desktop healthy/fresh; PWA strict preservado; repository Protocol-only; nenhum SQL/migration/runtime/failover antecipado; nenhuma credencial introduzida.
+
+**Próximo passo autorizado:** corrigir somente R10-F1..F5 no mesmo working tree C3-A, com TDD, sem commit/stage e sem iniciar C3-B. Repetir testes focados C3-A, regressão API proporcional, frontend contract, `git diff --check`, untracked check e security grep; atualizar este handoff e parar para **R10.1 independente**.
+
+### C3-A — correções R10-F1..F5 do Executor (2026-10-09)
+
+**Estado:** **PRONTO PARA R10.1 INDEPENDENTE**, limitado aos cinco achados R10. Não há autorização para C3-B, stage, commit ou alteração operacional.
+
+**Git/base e escopo preservados**
+- API/PWA/Cloud: `feat/spec027-cloud@7e22a7c66149e10cef155ca7458fffd6cb74fc9c`; mesmos seis arquivos do diff C3-A apresentado em R10; nenhuma alteração de outro arquivo.
+- Desktop: `feat/spec027-cloud@c8191bfea696368a7698a08bea727811412c05fd`, working tree limpo.
+- Shadow original preservado: PIDs `14865` e `14873`, iniciados em 2026-10-08 10:01:41, sem interrupção/restart/modificação.
+
+**R10-F1 — operação managed obrigatória (corrigido para revisão)**
+- `CurrentGrantHeaders.operation` e `TransitionCandidateHeaders.operation` agora são campos obrigatórios, sem default implícito.
+- `parse_managed_authority_headers()` falha por validação para operação ausente/desconhecida. Current-grant exige epoch/lease/instance; transition-candidate exige instance e rejeita epoch/lease.
+- Testes negativos de todos esses casos incluídos em `test_source_authority_contract.py`; contrato único para Desktop e Cloud sem implementar rotas.
+
+**R10-F2 — heartbeat não implica holder (corrigido para revisão)**
+- `SourceHeartbeatRecord.holder_instance_id` substituído por `instance_id` para representar corretamente Desktop/Cloud standby não-holder.
+- Testes para ambas as sources constroem heartbeat com `instance_id`, sem grant/epoch/lease nem `holder_instance_id`; `holder_instance_id` permanece nos grants/comandos aplicáveis.
+- Nenhum adapter, heartbeat HTTP ou repository concreto modificado.
+
+**R10-F3 — failback/transition Desktop exige baseline (corrigido para revisão)**
+- `ManagedSnapshotAcceptanceResult` agora exige `side_effect_policy=baseline` quando `status=accepted`, `source=desktop` e `source_transition=True`.
+- Cloud accepted continua `none`; `desktop_continuity` permanece restrito ao Desktop→Desktop sem transição com previous snapshot transacional; `idempotent` não permite side effects.
+- Testes negativos para Desktop transition com `none`/`desktop_continuity` e teste positivo de Cloud accepted state-only; testes existentes preservam baseline e continuity válidos.
+
+**R10-F4 — reason code canônico (corrigido para revisão)**
+- `AuthorityReasonCode.SNAPSHOT_OUT_OF_ORDER = "snapshot_out_of_order"`, exatamente como o C3-P.
+- `AcceptSnapshotStatus.OUT_OF_ORDER = "out_of_order"` do fluxo legacy permanece intocado; teste explícito compara ambos.
+
+**R10-F5 — metadata do candidate consistente com body (corrigido para revisão)**
+- `ManagedSnapshotCandidate` exige presença de `boot_id`, `sequence`, `schema_version`, `generated_at` no body.
+- Compara `boot_id` UUID, sequence/schema version como inteiros exatos, e `generated_at` ISO/datetime com timezone e comparação de instantes normalizados em UTC. Mismatch, campo ausente ou datetime naive/inválido falham por `ValidationError` antes de qualquer repository.
+- Fixture sintética do teste de domínio passou a incluir os quatro campos, refletindo MobileSnapshot v1/v2 real; teste positivo de offset -03:00 equivalente a UTC e testes negativos para cada campo.
+
+**TDD — RED**
+- Após adicionar somente testes R10-F1..F5, comando:
+  `cd api && uv run --no-sync pytest -o addopts='' -q tests/unit/test_source_authority_contract.py -k r10`
+- Resultado reproduzido: **14 failed, 9 passed, 22 deselected**. Causas: header ausente aceito, heartbeat standby não modelável, transition Desktop aceitando `none`, código `out_of_order` divergente, e snapshot body ausente/incoerente/naive aceito.
+
+**TDD — GREEN e regressões**
+- `cd api && uv run --no-sync pytest -o addopts='' -q tests/unit/test_source_authority_contract.py` → **45 passed, 0 failed**.
+- `cd api && uv run --no-sync pytest -o addopts='' -q tests/unit tests/contract tests/integration/test_get_snapshot.py tests/integration/test_post_snapshot.py` → **527 passed, 0 failed**.
+- `cd frontend && npm test -- --run src/api/contract.test.ts src/api/snapshotClient.test.ts` → **29 passed / 2 files**.
+- `cd frontend && npm test -- --run` → **295 passed / 50 files**, sem falhas (aviso React act(...) pré-existente, não bloqueante).
+- API/PWA GET `SnapshotReadResponse` continua `{snapshot, meta}`, sem metadata C3, sem MobileSnapshot v3; frontend Zod strict não foi alterado.
+
+**Verificações e fronteiras**
+- `git diff --check` tracked: PASS; `git diff --no-index --check /dev/null` para os três arquivos novos/untracked: PASS.
+- `git diff --cached --name-only`: **0 staged**; nenhum commit realizado, HEAD preservado.
+- Security grep de `secret|credential|cookie|password|bearer|authorization|ciphertext|session_token` nos novos modelos/protocols: nenhuma ocorrência. Nenhum segredo materializado, logado ou serializado.
+- Migration `021_source_authority_snapshots.sql`: ausente. Nenhum SQL/RPC/schema, persistência Memory/Postgres/Supabase, heartbeat funcional, renewal, Cloud writer, `source=cloud`, failover/failback real, eventos/Push, C3-B, push, merge, deploy ou Northflank.
+- Apenas `api/app/models/source_authority.py` (contratos) e `api/tests/unit/test_source_authority_contract.py` (RED/GREEN) foram ajustados funcionalmente nesta rodada, além deste handoff. Os demais testes do diff C3-A permanecem como foram revisados em R10.
+
+**PARECER SOLICITADO:** **R10.1 INDEPENDENTE**, exclusivamente R10-F1..F5. **C3-B BLOQUEADO**.
+
+### R10.1 independente — revisão das correções R10-F1..F5 (2026-10-09)
+
+**Resultado:** CORREÇÕES OBRIGATÓRIAS. R10-F1..F5 estão encerrados, mas a revisão integral do contrato C3-A encontrou dois resíduos de modelagem que precisam ser fechados antes do commit.
+
+**Evidência independente**
+- base API/Cloud preservada em `7e22a7c66149e10cef155ca7458fffd6cb74fc9c`;
+- Desktop preservado em `c8191bfea696368a7698a08bea727811412c05fd`;
+- mesmos seis arquivos C3-A; staged files 0; nenhum C3-B/SQL/runtime iniciado;
+- probes independentes confirmaram R10-F1..F5 corrigidos;
+- focados C3-A: **67 passed**;
+- regressão API proporcional: **527 passed**;
+- frontend focado: **29 passed**;
+- frontend completo: **295 passed / 50 files**;
+- Shadow original permaneceu intacto nos PIDs 14865/14873.
+
+**R10-F1..F5 — ENCERRADOS**
+- missing/unknown `X-Alertam-Authority-Operation` agora falha fechado;
+- heartbeat usa `instance_id`, sem implicar holder;
+- Desktop accepted source transition exige `baseline`;
+- reason code C3 é exatamente `snapshot_out_of_order`;
+- candidate rejeita divergência de `boot_id`, `sequence`, `schema_version` e `generated_at`, aceitando apenas timestamps aware do mesmo instante.
+
+#### R10.1-F1 — `SourceAuthorityRecord` não representa toda a metadata aprovada nem protege o escopo Cloud/Desktop
+
+O C3-P aprovado define na linha `device_source_authority`, além dos campos já modelados:
+- `observed_realm_epoch bigint null`;
+- `updated_at timestamptz`.
+
+O record C3-A omitiu ambos. Além disso, o modelo aceita:
+- grant `source=cloud` sem `cloud_binding_id` e sem `realm_id`;
+- grant `source=desktop` carregando `cloud_binding_id/realm_id`.
+
+Isso enfraquece justamente o fencing administrativo estreito aprovado em R9: revoke de binding/realm precisa conseguir identificar o Cloud grant correto, enquanto metadata Cloud não deve contaminar authority Desktop.
+
+**Critério de aceite R10.1-F1**
+- materializar `observed_realm_epoch` como metadata diagnóstica, explicitamente não-fencing, e `updated_at` no `SourceAuthorityRecord` conforme o C3-P;
+- para `active_source=cloud`, exigir a associação necessária para fencing administrativo (`cloud_binding_id` e `realm_id`); `observed_realm_epoch` pode permanecer metadata diagnóstica conforme o plano, sem virar authority token;
+- para `active_source=desktop`, proibir metadata Cloud de binding/realm/observed realm epoch;
+- legacy sem grant não deve carregar associação de holder Cloud ativa;
+- manter `realm_epoch` puro proibido como authority fencing;
+- em `SourceHeartbeatRecord`, `persistent_state_ready` é **Cloud-only** conforme o plano: Desktop heartbeat deve exigir `None`, enquanto Cloud pode representar o gate booleano;
+- cobrir essas combinações por RED/GREEN puro, sem SQL ou adapter.
+
+Reprodução independente atual:
+- Cloud managed grant sem binding/realm: **aceito**;
+- Desktop managed grant com binding/realm: **aceito**;
+- `observed_realm_epoch`: rejeitado como extra;
+- Desktop heartbeat com `persistent_state_ready=True`: **aceito**.
+
+#### R10.1-F2 — `previous_source` e `source_transition` ainda podem se contradizer
+
+O resultado managed deve carregar o contexto transacional vencedor. Hoje o validator garante apenas `source_transition=True -> previous_source diferente`, mas não a recíproca e não impede loser de alegar transição.
+
+Reproduções independentes aceitas pelo modelo atual:
+1. `status=accepted`, `source=desktop`, `previous_source=cloud`, `source_transition=False`, `side_effect_policy=none`;
+2. `status=fenced`, `previous_source=cloud`, `source_transition=True`.
+
+Esses estados são semanticamente impossíveis: se o snapshot aceito tem source diferente do previous, houve transição; se o request perdeu/fenced, nenhuma transição foi cometida.
+
+**Critério de aceite R10.1-F2**
+- para `ACCEPTED`, se `previous_source` existe e difere de `source`, `source_transition` deve obrigatoriamente ser `True`;
+- se `source_transition=False` e `previous_source` existe, ele deve ser igual ao `source`;
+- `FENCED/REJECTED/INELIGIBLE` não podem declarar `source_transition=True`;
+- `IDEMPOTENT` pode refletir uma transição já aceita anteriormente, mas continua com `side_effect_policy=none`;
+- preservar Cloud accepted `none`, Desktop transition `baseline` e Desktop continuity somente Desktop→Desktop;
+- adicionar RED/GREEN para os dois estados contraditórios reproduzidos acima.
+
+**Pontos que permanecem aprovados**
+- separação auth `realm_epoch` × source `authority_epoch`;
+- comandos `PublishUnderCurrentGrant` × `TransitionCandidate`;
+- write eligibility × renew eligibility;
+- canonical candidate metadata;
+- header discriminator obrigatório;
+- PWA strict sem metadata C3;
+- Protocol-only, sem migration/SQL/runtime/failover antecipado.
+
+**Próximo passo autorizado:** corrigir somente R10.1-F1 e R10.1-F2 no mesmo working tree C3-A, com TDD, sem commit/stage e sem iniciar C3-B. Repetir testes focados, regressão API proporcional, frontend contract, `git diff --check`, untracked check e security grep; atualizar este handoff e parar para **R10.2 independente**.
+
+### C3-A — correções R10.1-F1/F2 do Executor (2026-10-09)
+
+**Estado:** **PRONTO PARA R10.2 INDEPENDENTE**. Exclusivamente contratos de domínio C3-A e testes no mesmo working tree. **Não** iniciar C3-B; commit/stage/push/merge/deploy permanecem proibidos.
+
+**Base e worktrees**
+- API/PWA/Cloud: `feat/spec027-cloud@7e22a7c66149e10cef155ca7458fffd6cb74fc9c` (commit C3-P aprovado em R9.2), preservado. Mesmo diff C3-A de seis arquivos do R10/R10.1; neste retorno foram modificados apenas `api/app/models/source_authority.py`, `api/tests/unit/test_source_authority_contract.py` e este handoff.
+- Desktop: `feat/spec027-cloud@c8191bfea696368a7698a08bea727811412c05fd`, sem alterações. Shadow original segue nos PIDs `14865`/`14873`, iniciado 2026-10-08 10:01:41; sem interrupção ou reinício.
+
+**R10.1-F1 — authority record e escopo Cloud/Desktop**
+- `SourceAuthorityRecord` agora materializa `observed_realm_epoch: int | None` (somente diagnóstico, sem integrar `_holder_matches` ou qualquer fencing) e `updated_at: AwareDatetime` (obrigatório e timezone-aware, conforme metadata proposta).
+- Managed `active_source=cloud` exige ambos `cloud_binding_id` e `realm_id` para identificação administrativa estreita. `observed_realm_epoch` é opcional.
+- Managed `active_source=desktop` e `legacy` sem grant rejeitam `cloud_binding_id`, `realm_id` e `observed_realm_epoch` como associação ativa. O campo `realm_epoch` puro continua não reconhecido como source fencing.
+- `SourceHeartbeatRecord` permite `persistent_state_ready` apenas para Cloud; Desktop exige `None`.
+- Testes positivos e negativos verificam Cloud com/sem observed epoch, falta de binding/realm, metadata indevida Desktop/legacy, datetime com timezone e observado `realm_epoch` não alterando write/renew eligibility. Não foi implementado fencing administrativo operacional.
+
+**R10.1-F2 — contexto transacional de source transition**
+- `ManagedSnapshotAcceptanceResult` rejeita `previous_source != source` se `source_transition=False`, inclusive com status `ACCEPTED`.
+- `FENCED/REJECTED/INELIGIBLE` não podem declarar `source_transition=True` (nenhuma transição cometida pelo loser).
+- `IDEMPOTENT` pode descrever transição anterior apenas coerente com `previous_source`, mas não pode emitir side effects; Cloud accepted continua `none`; Desktop accepted com transition exige `baseline`; `desktop_continuity` permanece restrito ao Desktop→Desktop com previous snapshot da transação.
+- Testes reproduzem exatamente os dois contraexemplos da revisão e verificam cada status loser, idempotent e caminhos aceitos válidos.
+
+**TDD RED (antes da alteração dos contratos C3-A)**
+- Comando: `cd api && uv run --no-sync pytest -o addopts='' -q tests/unit/test_source_authority_contract.py -k r101 --tb=line`.
+- Primeiro RED: **8 failed, 10 passed, 45 deselected**; percebeu-se que `updated_at` ainda inexistente provocava falha indireta em alguns testes negativos de F1.
+- Testes foram refinados **antes** do GREEN para eliminar esse falso positivo. RED auditável final: **14 failed, 4 passed, 45 deselected**. Falhas específicas: Cloud sem associações aceito, Desktop/legacy com associações aceitos, metadata `observed_realm_epoch` ausente, `updated_at` ausente, heartbeat Desktop aceitando `persistent_state_ready`, resultado accepted com previous source divergente e loser com transition=true.
+
+**GREEN e regressões**
+- `cd api && uv run --no-sync pytest -o addopts='' -q tests/unit/test_source_authority_contract.py --tb=short`: **63 passed, 0 failed**.
+- `cd api && uv run --no-sync pytest -o addopts='' -q tests/unit tests/contract tests/integration/test_get_snapshot.py tests/integration/test_post_snapshot.py`: **545 passed, 0 failed**.
+- `cd frontend && npm test -- --run src/api/contract.test.ts src/api/snapshotClient.test.ts`: **29 passed / 2 files**.
+- `SnapshotReadResponse` PWA continua estritamente `{snapshot, meta}`; nenhum envelope/schema/route/frontend funcional foi modificado neste checkpoint.
+
+**Segurança e gates de parada**
+- `git diff --check` em tracked: **PASS**; `git diff --no-index --check /dev/null` nos três untracked: **PASS** (verificação final pós-handoff).
+- Security grep proporcional dos novos contratos: nenhum segredo, credential, token, cookie ou ciphertext adicionado.
+- `git diff --cached --name-only`: **0 arquivos**; zero commit, stage, push, merge, deploy. Foram confirmados exatamente os seis arquivos do diff C3-A.
+- Nenhuma migration 021, SQL/RPC, schema DB, implementation de repository, Cloud writer, heartbeat/renew operacional, source transition/failover/failback real, Northflank, WebPilot real ou eventos/Push. C3-B permanece bloqueado.
+
+**PARECER SOLICITADO:** **R10.2 INDEPENDENTE** exclusivamente R10.1-F1 e R10.1-F2, nos mesmos seis arquivos do diff C3-A. Parar até avaliação independente.
+
+### R10.2 independente — encerramento do C3-A (2026-10-09)
+
+**Resultado:** APROVADO. R10-F1..F5 e R10.1-F1/F2 estão encerrados. O diff C3-A revisado está aprovado para fechamento Git exato; C3-B continua bloqueado até autorização separada.
+
+**Evidência independente**
+- API/Cloud base preservada em `7e22a7c66149e10cef155ca7458fffd6cb74fc9c`;
+- Desktop preservado em `c8191bfea696368a7698a08bea727811412c05fd`;
+- exatamente seis arquivos no diff C3-A, sem migration 021, SQL/RPC, runtime de heartbeat, writer Cloud, failover/failback ou C3-B;
+- staged files: 0;
+- testes de domínio C3-A: **63 passed**;
+- regressão API proporcional: **545 passed**;
+- frontend focado: **29 passed**;
+- frontend completo: **295 passed / 50 files**;
+- `git diff --check`: PASS; untracked sem diagnóstico;
+- security grep dos novos contratos sem secrets/credentials/cookies/tokens/ciphertext;
+- Desktop limpo e Shadow original intacto nos PIDs 14865/14873.
+
+**R10.1-F1 — ENCERRADO**
+`SourceAuthorityRecord` agora materializa `observed_realm_epoch` como diagnóstico não-fencing e `updated_at`; Cloud grant exige `cloud_binding_id + realm_id`; Desktop/legacy rejeitam associação Cloud; heartbeat Desktop não aceita `persistent_state_ready`, reservado ao Cloud.
+
+**R10.1-F2 — ENCERRADO**
+`previous_source` e `source_transition` agora são coerentes com o resultado transacional: accepted com source anterior diferente exige transition; losers não podem declarar transition cometida; idempotent pode refletir transição já aceita, sempre sem side effects.
+
+**Fechamento C3-A**
+Permanecem preservados: `realm_epoch != authority_epoch`, current-grant distinto de transition-candidate, write eligibility distinta de renew eligibility, PWA strict sem metadata C3, repository Protocol-only e ausência total de comportamento operacional C3-B.
+
+**Próximo passo:** após o fechamento Git exato do C3-A e working tree limpo, C3-B só pode começar mediante autorização explícita, seguindo o checkpoint `C3-B — migration 021 + authority lease/fencing` e terminando novamente sem commit/stage para R11 independente.

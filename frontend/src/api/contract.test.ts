@@ -29,6 +29,32 @@ test("parses_real_mobile_snapshot_v1", () => {
   expect(parsed.meta.collector_online).toBe(true);
 });
 
+test.each(["source", "authority_epoch", "authority_lease_id", "holder_instance_id"])(
+  "C3-A: strict PWA response rejects authority metadata %s at every envelope boundary",
+  (field) => {
+    for (const base of [
+      { ...responseWith(fixture), [field]: "unexpected" },
+      { ...responseWith(fixture), meta: { ...responseWith(fixture).meta, [field]: "unexpected" } },
+      { ...responseWith(fixture), snapshot: { ...fixture, [field]: "unexpected" } },
+    ]) {
+      expect(() => parseSnapshotReadResponse(base)).toThrow("Resposta de snapshot inválida.");
+    }
+  },
+);
+
+test("C3-A: existing v1/v2 envelopes still parse without authority metadata", () => {
+  for (const snapshot of [fixture, v2WebPilot, v2Fallback]) {
+    const result = parseSnapshotReadResponse(responseWith(snapshot));
+    expect(Object.keys(result).sort()).toEqual(["meta", "snapshot"]);
+    expect(Object.keys(result.meta).sort()).toEqual([
+      "age_seconds", "collector_online", "device_enabled", "received_at", "stale_after_seconds",
+    ]);
+    expect(Object.keys(result.snapshot)).not.toContain("authority_epoch");
+    expect(Object.keys(result.snapshot)).not.toContain("authority_lease_id");
+    expect(Object.keys(result.snapshot)).not.toContain("holder_instance_id");
+  }
+});
+
 test("rejects_unknown_schema_version", () => {
   const incompatible = {
     ...fixture,
