@@ -1,7 +1,7 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** C2-A **APROVADO EM R6.1** — commit consolidado autorizado nesta revisão; C2-B liberado somente após confirmação do commit e working tree limpo
+**Status:** C2-B **APROVADO EM R7.2 — AGUARDA COMMITS EXATOS + REBUILD DO WHEEL PÓS-COMMIT**; C2-C bloqueado até verificação pós-commit
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
 **Base reconciliada:** API/PWA `feat/api-bootstrap@23a78bebdf46062eef937966101246567cd963de`; Desktop `develop@9e5b5e1a33cb7d61db200866aea683a6334de922`. **Feature:** `feat/spec027-cloud`, criada a partir de `23a78be` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`. **C1-A functional HEAD após correções R1:** `17afb4e19e21ce93e8eb1b8b0c8bfe47ebcf3364`; o commit documental deste registro será seu sucessor local.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
@@ -62,7 +62,7 @@
 | 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | **APROVADO EM R3 — commit 25485bba0143fd0c1659a88df89743db629951c2** |
 | 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | **APROVADO EM R4 — commit final C1 `61342b2ac47ffa48bfe90787b8aa2afb4bb4cda8`** |
 | 5 | C2-P — Plano Auth Broker | Desenhar reuso do coletor validado, contrato SessionLease, epoch, segurança, standby | R5/R5.1 (plano); **não** copiar parser/coletor | **APROVADO EM R5.1 — commit `7c9f19516673c80860b144b9f421aaea0810e423`** |
-| 6 | C2 — Execução em checkpoints próprios | Broker federado, anti-replay e core HTTP em standby headless sem source efetivo | R6/R7/R8; commit somente após cada aprovação | **C2-A APROVADO EM R6.1 — commit consolidado nesta revisão; C2-B depois do working tree limpo** |
+| 6 | C2 — Execução em checkpoints próprios | Broker federado, anti-replay e core HTTP em standby headless sem source efetivo | R6/R7/R8; commit somente após cada aprovação | **C2-B APROVADO EM R7.2 — aguarda commits exatos + rebuild wheel pós-commit; C2-C bloqueado** |
 | 7 | C3-P / C3 — Autoridade e snapshots | Plano aprovado; lease/fencing, hysteresis, failover/failback, anti-split-brain; primeira versão só snapshots | Revisões por subtask, gate operacional explícito | BLOQUEADO |
 | 8 | C4 — Observabilidade | Status, logs sanitizados, smoke prolongado, degradação e reconciliação | Revisão operacional humana | BLOQUEADO |
 | 9 | C5 — Eventos/Push | Plano próprio de idempotência cross-source, sem duplicação | **Somente se autorizado separadamente** | FORA DA LIBERAÇÃO ATUAL |
@@ -1699,3 +1699,761 @@ O C2-P exige nomes não vazios e limite de payload total. Hoje `scope_id=' '` pa
 - push/deploy/prod-migrate, migration 020 em produção, WebPilot real no Cloud, snapshot/`source=cloud`, failover/failback e cutover continuam proibidos.
 
 **Próximo passo após o commit consolidado:** executar somente C2-B conforme plano, incluindo integração publisher Desktop + wheel headless canônico/`--no-deps` e standby Cloud sem source efetivo; ao concluir, deixar o próximo ciclo sem commit/stage e parar para **R7 independente**.
+
+
+### C2-B — Executor; B1→B4 parcial; **STOP ARQUITETURA** (2026-10-08)
+
+**Status:** **BLOQUEADO EM B4**. B1, B2 e B3 estão GREEN; B4 provou que o wheel Desktop canônico instalado com `--no-deps` não possui import closure headless executável sem Selenium por causa de imports eager dos packages. Conforme o plano C2-P, o Executor parou **antes de B5/B6** e não solicitou R7.
+
+**Bases reais de entrada**
+- API/PWA/Cloud: `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`, branch `feat/spec027-cloud`, base limpa **`1e0e4f84366eec2c816a5a271c70d83e89d86eb5`** — `feat(cloud): implement c2 session broker core`.
+- Desktop `develop` corrente no início de B1: **`9e5b5e1a33cb7d61db200866aea683a6334de922`**.
+- criada worktree Desktop isolada `/home/ciro/dev/prog/alertamaritimo/.worktrees/spec027-cloud`, branch `feat/spec027-cloud`, baseada exatamente em `9e5b5e1...`.
+- o checkout original `/home/ciro/dev/prog/alertamaritimo` permaneceu na branch `feat/spec025-plan5-shadow-evidence-gate@9e5b5e1...`; nenhum checkout/reset/stash ocorreu nele.
+- Shadow original observado durante B1/B2/B3/B4 nos PIDs **14865/14873**, sem interrupção/manipulação.
+
+**Baseline antes das mudanças**
+- Desktop auth/http/grid/session-bootstrap/Shadow direcionados: GREEN.
+- `make cloud-test`: **9/9 passed**.
+
+#### B1 — worktree Desktop isolada — GREEN
+- `.worktrees/` confirmado ignorado.
+- branch Desktop `feat/spec027-cloud` não existia e foi criada apenas na nova worktree.
+- SHA real de entrada registrado: `9e5b5e1a33cb7d61db200866aea683a6334de922`.
+- worktrees preexistentes não relacionadas permaneceram intactas.
+
+#### B2 — publisher state Desktop — RED→GREEN
+**RED**
+- `tests/unit/test_session_publisher_state.py` falhou na coleta com `ModuleNotFoundError: alertam.infrastructure.session_publisher_state`.
+
+**GREEN**
+- criado `SessionPublisherStateStore` dedicado com JSON persistente contendo exclusivamente:
+  - version;
+  - publisher_id;
+  - last_assigned_generation;
+  - realm_id;
+  - device_id.
+- criação inicial e restart preservam o mesmo `publisher_id`;
+- incremento é serializado e persistido atomicamente via tempfile + fsync + `os.replace`;
+- generations 1..32 concorrentes foram atribuídas sem duplicação no teste;
+- corrupção/schema/scope divergente resulta em `SessionPublisherStateError`, sem reset/overwrite silencioso;
+- rotação é operação explícita e cria novo UUID com generation 0;
+- arquivo não contém cookie/secret;
+- `AppPaths.session_publisher_state_path` dedicado = `webpilot_session_publisher.json`.
+- B2 inicial: **6/6 passed**; cobertura final do arquivo inclui também o AppPaths contract.
+
+#### B3 — publisher HTTP + integração Desktop — RED→GREEN
+**RED HTTP/background**
+- testes falharam na coleta por ausência de `session_publisher_http` e `session_lease_publisher`.
+
+**GREEN HTTP/background**
+- `SessionBrokerHttpClient`:
+  - usa apenas `Device <secret>`;
+  - HTTPS obrigatório fora de localhost/loopback;
+  - PUT publisher com realm/profile C2;
+  - POST lease com somente whitelist `name/value/expiry`;
+  - ignora domain/path/secure/httpOnly/sameSite;
+  - nenhum username/password WebPilot;
+  - erros HTTP/rede sanitizados, sem response body/secret.
+- `SessionLeasePublisher`:
+  - daemon thread própria `session-lease-publisher`;
+  - `submit()` não faz rede;
+  - generation é reservada no worker;
+  - retry máximo = **1** (duas tentativas totais);
+  - retry reutiliza exatamente o mesmo `publisher_id + local_generation + cookies`;
+  - corrupção do state desabilita somente publisher remoto e não chama transport;
+  - logs registram apenas tipo da exceção.
+- HTTP/background: **11/11 passed**.
+
+**RED integração bootstrap**
+- faltavam AppPaths/settings/factories e `_on_webpilot_session` só publicava localmente.
+
+**GREEN integração bootstrap**
+- publisher federado é **opt-in** por `ALERTAM_SESSION_BROKER_PUBLISH_ENABLED`, default **false**;
+- requer identidade Device completa;
+- timeout/retry próprios configuráveis;
+- setup/start/stop integrados ao lifecycle sem alterar a autoridade Selenium;
+- `_on_webpilot_session()` primeiro executa `webpilot_auth.publish(cookies)` local; somente após sucesso agenda publisher remoto;
+- falha/exception do publisher remoto é absorvida com log sanitizado; local lease continua válida;
+- nenhuma chamada broker acontece no thread chamador/Tk.
+- integração bootstrap/path: **6/6 passed**.
+
+**Verificação parcial consolidada antes do STOP**
+- C2-B Desktop B2/B3: **23/23 passed**.
+- regressões Desktop auth/HTTP/grid/session-bootstrap/Shadow: **83/83 passed**.
+- `make cloud-test` após contratos B4 de source: **13/13 passed**.
+
+#### B4 — wheel canônico / import closure — RED→GREEN estrutural, depois **STOP ARQUITETURA**
+**RED estrutural**
+- `make cloud-test` passou de 9 para 13 testes e inicialmente teve quatro falhas esperadas:
+  - target Docker headless ausente;
+  - install `--no-deps` ausente;
+  - script de import closure ausente;
+  - Make targets wheel contract/build/smoke ausentes.
+
+**GREEN estrutural**
+- Cloud mantém target `infra` isolado e ganhou target Docker `headless` separado;
+- wheel é fornecido por BuildKit named context externo `alertam_wheel`; nenhum wheel é versionado;
+- Docker headless instala explicitamente com `python -m pip install ... --no-deps`;
+- criados targets locais:
+  - `cloud-wheel-contract`;
+  - `cloud-build-wheel`;
+  - `cloud-smoke-wheel`.
+- `cloud/scripts/headless_contract.py` exige:
+  - stack Selenium/webdriver/Pillow/pyttsx3 ausente;
+  - imports canônicos do wheel;
+  - `sys.modules` sem Selenium/Tk/UI/browser/driver;
+  - fixture histórica `grid_real_2026-09-21.html` mantendo 22 navios e resumo 4/2/16;
+  - `WebPilotHttpClient` same-origin;
+  - login detection + exatamente um retry;
+  - segundo login não cria loop.
+- contract source confirma que `webpilot_auth.py`, `webpilot_http.py`, grid/parser/weather parser **não foram copiados para `cloud/`**.
+- `make cloud-test`: **13/13 passed** após esse GREEN estrutural.
+
+**Wheel canônico material**
+- construído de um `git archive` do Desktop SHA revisado **`9e5b5e1a33cb7d61db200866aea683a6334de922`**, e não do working tree C2-B;
+- artefato temporário: `/tmp/alertam-c2b-wheel/alertam-4.3.3-py3-none-any.whl`;
+- SHA-256: **`2154f1b1c573985c03bef5a98e68c1c7505cc2d4962c5db9d87476892c591d06`**;
+- instalado em venv limpo com `pip --no-deps`: instalação do wheel em si concluiu sem instalar dependências.
+
+**RED material que bloqueou B4**
+`make cloud-wheel-contract DESKTOP_WHEEL=<wheel> DESKTOP_FIXTURE=<fixture>` falhou no primeiro import canônico:
+
+```text
+alertam.application.webpilot_auth
+  -> importa package alertam.application
+  -> alertam/application/__init__.py importa Controller
+  -> controller/.../weather_coordinator
+  -> alertam.infrastructure.webpilot_weather
+  -> importa package alertam.infrastructure
+  -> alertam/infrastructure/__init__.py importa BrowserSession
+  -> alertam.infrastructure.browser
+  -> from selenium import webdriver
+  -> ModuleNotFoundError: No module named 'selenium'
+```
+
+A inspeção confirmou:
+- `alertam/application/__init__.py` exporta eager `Controller` e demais símbolos;
+- `alertam/infrastructure/__init__.py` exporta eager `BrowserSession`, `DriverManager`, voz/weather etc.;
+- os módulos headless individuais não demonstraram necessidade semântica de Selenium; o bloqueio nasce do **side effect do import de package**;
+- porém o contrato aprovado proíbe contornar isso instalando o stack Desktop e o plano determina STOP antes de alterar packaging/extrair subpacote.
+
+**Decisão arquitetural necessária**
+Nenhuma das alternativas abaixo foi executada:
+1. **refatorar os `__init__.py` Desktop para exports lazy/sem eager UI/Selenium**, preservando API pública quando os símbolos forem realmente acessados — opção mínima provável;
+2. criar packaging/subpacote headless/optional-dependencies próprio — mudança arquitetural maior;
+3. instalar Selenium/webdriver/Pillow/pyttsx3 no Cloud — **não aceitável pelo contrato atual**.
+
+Conforme B4/§3.10, o Executor **não escolheu silenciosamente** entre 1 e 2 e não executou 3.
+
+**Estado no STOP**
+- Desktop working tree contém apenas B2/B3 e seus testes; **sem commit/stage**.
+- API/Cloud working tree contém somente contratos/build local B4; **sem commit/stage**.
+- `git diff --check`: PASS nos dois repos no momento do STOP.
+- B5 `BrokerSessionProvider`: **não iniciado**.
+- B6 standby collector: **não iniciado**.
+- B7/R7: **não executado/solicitado**, pois o gate de import closure obrigatório está bloqueado.
+- nenhuma migration 020 produção, push/merge/deploy/Northflank operacional;
+- nenhum WebPilot real;
+- nenhuma SessionLease real operacional;
+- nenhum snapshot/`source=cloud`, evento/push, failover/failback/fencing/hysteresis/cutover.
+
+**AÇÃO NECESSÁRIA PARA RETOMAR C2-B:** decisão explícita sobre a estratégia de packaging/import closure. Após a decisão, continuar no mesmo working tree a partir de B4; não reiniciar B2/B3 e não iniciar B5 antes de B4 ficar GREEN materialmente.
+
+
+### C2-B — retomada após decisão arquitetural B4; **PRONTO PARA R7 INDEPENDENTE** (2026-10-08)
+
+**Decisão arquitetural aplicada**
+- autorizado corrigir **exclusivamente** os imports eager dos packages Desktop necessários ao closure headless;
+- escolhida a opção mínima: exports lazy via `__getattr__` + `TYPE_CHECKING`, sem novo subpackage, sem reorganização ampla e sem alterar responsabilidades;
+- API pública preservada: `from alertam.application import Controller` e `from alertam.infrastructure import BrowserSession, DriverManager` continuam resolvendo os mesmos objetos no ambiente Desktop normal;
+- nenhum Selenium/webdriver-manager/Pillow/pyttsx3 foi instalado no Cloud como workaround;
+- nenhum módulo `webpilot_auth`, `webpilot_http`, parser/grid/weather foi copiado para `cloud/`.
+
+**Bases mantidas**
+- Desktop worktree: `/home/ciro/dev/prog/alertamaritimo/.worktrees/spec027-cloud`;
+- Desktop branch: `feat/spec027-cloud`;
+- Desktop HEAD/base durante todo o checkpoint: **`9e5b5e1a33cb7d61db200866aea683a6334de922`**;
+- API/PWA/Cloud worktree: `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`;
+- API/PWA/Cloud branch: `feat/spec027-cloud`;
+- API/PWA/Cloud HEAD/base durante todo o checkpoint: **`1e0e4f84366eec2c816a5a271c70d83e89d86eb5`**;
+- nenhum commit/stage foi criado após a base aprovada;
+- checkout original do Shadow permaneceu intocado; PIDs observados ao final: **14865/14873**.
+
+#### B4 — correção estreita do import closure — RED→GREEN
+
+**RED Desktop**
+Novo `tests/unit/test_headless_package_imports.py` reproduziu o problema em subprocesso limpo:
+- `alertam.application.webpilot_auth`;
+- `alertam.infrastructure.webpilot_http`;
+- `alertam.infrastructure.webpilot_grid_html`;
+- `alertam.domain`;
+- `alertam.domain.webpilot_weather_parser`;
+- `alertam.infrastructure.webpilot_weather`.
+
+Resultado RED:
+- 2 falhas / 1 pass;
+- apenas importar packages/headless carregava `alertam.infrastructure.browser`, `driver_manager` e múltiplos módulos `selenium.*`;
+- o teste de compatibilidade dos exports públicos pesados já passava no Desktop normal.
+
+**GREEN Desktop**
+Somente:
+- `src/alertam/application/__init__.py`;
+- `src/alertam/infrastructure/__init__.py`.
+
+foram alterados para:
+- tabela explícita de exports públicos;
+- `__getattr__` lazy;
+- cache do símbolo resolvido em `globals()`;
+- `TYPE_CHECKING` para type checkers;
+- `__all__` preservado;
+- `__dir__` preservando descoberta dos nomes públicos.
+
+Resultado:
+- lazy/import closure tests: **3/3 passed**;
+- acesso explícito a `Controller`, `BrowserSession` e `DriverManager` continua retornando exatamente os objetos dos módulos originais;
+- simples import de `alertam.application` / `alertam.infrastructure` não carrega browser/UI/Tk/Selenium.
+
+**Regressões após lazy imports**
+- B2/B3 Desktop: **23/23 passed**;
+- auth/HTTP/grid/session-bootstrap/Shadow: **83/83 passed**.
+
+#### B4 — wheel pré-R7 construído do working tree revisável
+
+Conforme decisão do usuário, antes da R7 o wheel **não** foi gerado de commit novo. Foi construído diretamente do working tree Desktop baseado em `9e5b5e1...`.
+
+**Diff exato de source usado no wheel**
+Patch reconstruível relativo ao HEAD/base somente para `src/alertam`:
+- arquivo temporário: `/tmp/alertam-c2b-desktop-source-final.patch`;
+- SHA-256 do patch: **`6cc21a4832bd1304cf23b6de1dce16e14a784434491e990df0aae182a943e2be`**;
+- hash foi regenerado no gate final e permaneceu idêntico ao hash usado no build inicial.
+
+Arquivos de source do patch:
+- `src/alertam/application/__init__.py`;
+- `src/alertam/bootstrap.py`;
+- `src/alertam/infrastructure/__init__.py`;
+- `src/alertam/infrastructure/session_lease_publisher.py`;
+- `src/alertam/infrastructure/session_publisher_http.py`;
+- `src/alertam/infrastructure/session_publisher_state.py`;
+- `src/alertam/paths.py`;
+- `src/alertam/settings.py`.
+
+**Wheel pré-R7**
+- nome: **`alertam-4.3.3-py3-none-any.whl`**;
+- caminho temporário: `/tmp/alertam-c2b-working-wheel/alertam-4.3.3-py3-none-any.whl`;
+- SHA-256: **`c2009dee82de7353dc2b0eb4004bc7cb4c268200b178bdc6c58fd92d7027629e`**;
+- instalado em venv limpo com `pip --no-deps`.
+
+**Contract headless material — GREEN**
+`make cloud-wheel-contract` prova:
+- `selenium`, `webdriver_manager`, `PIL`, `pyttsx3` ausentes;
+- imports headless canônicos funcionam;
+- `sys.modules` não carrega Selenium/Tk/UI/browser/driver;
+- fixture histórica `grid_real_2026-09-21.html` mantém **22 navios** e resumo **ATRACADO 4 / FUNDEADO 2 / PREVISTO 16**;
+- `WebPilotHttpClient` mantém same-origin;
+- login detection;
+- exatamente um retry;
+- segundo login não cria loop;
+- weather parser/service headless também importáveis sem stack Desktop.
+
+**Obrigação pós-R7 preservada**
+Se R7 aprovar e o diff exato for commitado, reconstruir o wheel a partir do **SHA Desktop commitado** e repetir import-closure antes de qualquer avanço posterior.
+
+#### B5 — BrokerSessionProvider / CloudBinding consumer — RED→GREEN
+
+**RED**
+- `cloud/tests/test_broker_session.py` inicialmente falhou por ausência de `alertam_cloud.broker_session`;
+- borda adicional RED reproduzida depois: se o broker devolvesse a mesma lease após invalidação, o provider mantinha indevidamente a identidade local corrente.
+
+**GREEN**
+Criado `cloud/alertam_cloud/broker_session.py`:
+- `SessionBrokerClient` stdlib HTTP;
+- CloudBinding credential somente em header `Authorization: CloudBinding ...`;
+- nenhuma credencial em query string;
+- HTTPS obrigatório fora de localhost/loopback;
+- GET consume e POST invalidate do contrato C2-A;
+- `SessionCookie.value` e `BrokerLease.cookies` com repr redigido;
+- errors HTTP/rede/payload sanitizados, sem body secreto;
+- 404 → lease indisponível; 403 → não autorizado.
+
+`BrokerSessionProvider`:
+- anexa-se ao `WebPilotAuthCoordinator` canônico;
+- `prime()` publica uma lease válida localmente apenas uma vez;
+- associa a sessão corrente exatamente a `lease_id + realm_epoch`;
+- semantic recovery invalida **exatamente** a identidade corrente;
+- consome uma nova lease;
+- só publica localmente/retorna sucesso quando há mudança efetiva de identidade;
+- mesma lease devolvida após invalidação é descartada e vira `AUTH_UNAVAILABLE`;
+- ausência/falha de broker permanece `AUTH_UNAVAILABLE`;
+- sem current lease, `request_recovery()` não busca repetidamente e não cria loop;
+- `invalidate_current()` permite invalidar a lease do último retry sem buscar terceira lease.
+
+B5 final direcionado: **10/10 passed**.
+
+#### B6 — collector Cloud headless standby — RED→GREEN
+
+**RED**
+- `cloud/tests/test_standby.py` falhou por ausência de `alertam_cloud.standby`;
+- contrato material `standby_contract.py` inicialmente ausente e o source contract falhou como esperado;
+- o teste legado do spike que proibia qualquer WebPilot/SessionLease em todo o package passou a falhar após B5/B6, expondo contrato obsoleto.
+
+**GREEN**
+Criado `cloud/alertam_cloud/standby.py`:
+- `StandbyCollector` somente in-memory/status;
+- `build_canonical_standby()` importa lazy diretamente do wheel Desktop:
+  - `WebPilotAuthCoordinator`;
+  - `WebPilotHttpClient`;
+  - `extract_grid_rows`;
+  - `parse_grid_rows`;
+  - `parse_webpilot_weather`;
+  - URLs WebPilot canônicas;
+- nenhum código parser/auth/http foi duplicado no Cloud;
+- nenhuma ligação automática ao server default.
+
+Sem lease:
+- ciclo retorna **`AUTH_UNAVAILABLE`**;
+- zero chamada ao fake WebPilot;
+- zero loop de login.
+
+Com lease válida:
+- maneuvers + weather via transport sintético;
+- resultado mantém somente metadata sanitizada:
+  - realm_id;
+  - realm_epoch;
+  - auth_state;
+  - last_collection_at/result;
+  - maneuver_count;
+  - weather_ok;
+- nenhum raw HTML/cookie no status.
+
+Login semântico:
+- primeira lease é invalidada pelo par exato lease/epoch;
+- nova lease efetiva é publicada localmente;
+- o `WebPilotHttpClient` realiza no máximo um retry;
+- se o retry também retornar login, a segunda lease é invalidada sem terceira aquisição/retry e o ciclo termina `AUTH_UNAVAILABLE`.
+
+B6 unitário: **4/4 passed**.
+
+**Contrato sintético material**
+Criado `cloud/scripts/standby_contract.py`, executado no venv com o wheel `--no-deps`:
+1. lease válida → fixture real de maneuvers + fixture weather → `OK`, 22 navios, weather OK;
+2. primeiro GET login → A invalidada → B consumida → único retry → coleta OK com novo epoch;
+3. retry também login → A e B invalidadas nos respectivos pares → sem terceiro retry → `AUTH_UNAVAILABLE`;
+4. sem lease → `AUTH_UNAVAILABLE`, zero WebPilot call.
+
+Resultado: **`standby synthetic contract: PASS`**.
+
+**Servidor default preservado**
+O contrato legado foi estreitado para o requisito C2-B correto:
+- `alertam_cloud.server` continua apenas health/readiness;
+- importar/iniciar o servidor default não importa `broker_session` nem `standby`;
+- o standby não inicia por default;
+- não existe ativação operacional automática.
+
+#### B7 — gate R7 concluído
+
+**API / broker**
+- broker direcionado:
+  - `test_session_broker_service.py`;
+  - `test_supabase_session_broker_repository.py`;
+  - `test_session_broker_api.py`;
+  - **21/21 passed**.
+- API full local com JUnit temporário:
+  - **643 tests**;
+  - **595 passed**;
+  - **48 skipped**;
+  - **0 failures**;
+  - **0 errors**.
+- skips são integrações/backends não disponíveis no gate local; C2-B não alterou persistence/migration.
+
+**Desktop**
+- C2-B focado final, incluindo lazy imports + publisher/state + auth/http/grid/Shadow: **109/109 passed**.
+- `make check`:
+  - **1099 passed**;
+  - **84 skipped**;
+  - import sweep: **imports OK**.
+
+**Cloud**
+- `make cloud-test`: **28/28 passed**.
+- `make cloud-wheel-contract`: PASS:
+  - headless wheel contract PASS;
+  - standby synthetic contract PASS.
+- `make cloud-smoke-wheel DESKTOP_WHEEL=<wheel>`:
+  - image headless buildada com `pip --no-deps`;
+  - `/healthz=200`;
+  - `/readyz=200`;
+  - UID **10001**;
+  - mounts = `[]`;
+  - restart saudável;
+  - filesystem diff vazio;
+  - logs sanitizados.
+- inspeção correta dentro da imagem com `docker run -i --entrypoint python ... -`:
+  - `selenium`, `webdriver_manager`, `PIL`, `pyttsx3` **não instalados**;
+  - imports headless canônicos passam;
+  - nenhum Selenium/Tk/UI/browser/driver em `sys.modules`;
+  - resultado: **`container headless dependency/import closure: PASS`**.
+- `pip list --format=freeze` dentro da imagem headless:
+  - `alertam==4.3.3`;
+  - `pip==25.0.1`;
+  - nenhum stack Desktop adicional.
+
+**git / higiene**
+- Desktop `git diff --check`: PASS;
+- Desktop untracked `diff --no-index --check`: zero diagnósticos;
+- API/Cloud `git diff --check`: PASS;
+- API/Cloud untracked `diff --no-index --check`: zero diagnósticos;
+- staged Desktop: **0**;
+- staged API/Cloud: **0**;
+- HEAD Desktop permanece `9e5b5e1...`;
+- HEAD API/Cloud permanece `1e0e4f8...`.
+
+**Security/redaction audit**
+- nenhum literal sintético `COOKIE-SECRET`, `DEVICE-SECRET`, `CLOUD-CREDENTIAL`, `TOP-SECRET` ou equivalente encontrado em production source Desktop/Cloud;
+- `SessionBrokerClient.__repr__` não inclui credential;
+- cookie value e coleção de cookies têm repr redigido;
+- logs do provider registram somente tipo da exceção;
+- nenhum raw response/body secreto é usado na mensagem de erro;
+- nenhuma URL contém credential;
+- nenhum módulo canônico foi copiado para `cloud/alertam_cloud`;
+- produção Cloud contém apenas `broker_session.py` e `standby.py` novos, além do shell já existente;
+- nenhuma migration nem frontend foi tocado no C2-B.
+
+**Fronteiras preservadas**
+- C2-C: **não iniciado**;
+- WebPilot real no Cloud: **não usado**;
+- SessionLease real operacional: **não habilitada**;
+- publisher Desktop: **opt-in e default false**;
+- standby Cloud: **não ligado ao server default**;
+- snapshot Cloud: **não implementado/não chamado**;
+- `source=cloud`: **não existe**;
+- eventos/push Cloud: **não implementados**;
+- failover/failback/fencing/hysteresis/source arbitration: **não implementados**;
+- migration 020 produção: **não aplicada**;
+- Northflank operacional: **não alterado**;
+- push/merge/deploy: **não executados**;
+- checkout/Shadow original: **intocado**, PIDs finais **14865/14873**.
+
+**Estado entregue ao Revisor**
+- Desktop e API/Cloud permanecem com o diff C2-B completo **sem commit e sem stage**, conforme política vigente;
+- wheel pré-R7 é somente artefato temporário do working tree e não substitui a reconstrução obrigatória pós-commit;
+- nenhuma etapa C2-C foi iniciada.
+
+**PARECER SOLICITADO:** **R7 independente** sobre o C2-B completo nos dois working trees. Se aprovado, autorizar os commits exatos do diff revisado e então reconstruir o wheel Desktop a partir do SHA commitado para repetir o import-closure. Não iniciar C2-C automaticamente.
+
+
+### R7 independente — revisão do C2-B (2026-10-08)
+
+**Resultado:** CORREÇÕES OBRIGATÓRIAS. B1→B7 estão majoritariamente aderentes ao plano e os gates normais passam, mas dois defeitos de segurança/fail-closed precisam ser corrigidos antes de autorizar commits ou avançar ao C2-C.
+
+**Evidência independente**
+- API/Cloud HEAD/base: `1e0e4f84366eec2c816a5a271c70d83e89d86eb5`; Desktop HEAD/base: `9e5b5e1a33cb7d61db200866aea683a6334de922`.
+- Ambos os working trees permaneceram sem commit/stage durante a revisão.
+- Desktop direcionado headless/publisher/auth/http/grid: **69/69 passed**.
+- API broker direcionado: **21/21 passed**.
+- `make cloud-test`: **28/28 passed**.
+- `make cloud-wheel-contract` com o wheel pré-R7: PASS; headless import closure e standby synthetic contract PASS.
+- wheel pré-R7 SHA-256 confirmado: `c2009dee82de7353dc2b0eb4004bc7cb4c268200b178bdc6c58fd92d7027629e`.
+- patch source Desktop usado no wheel SHA-256 confirmado: `6cc21a4832bd1304cf23b6de1dce16e14a784434491e990df0aae182a943e2be`.
+- `git diff --check` + checks dos arquivos untracked: PASS nos dois repos; staged files: 0.
+- Shadow permaneceu ativo nos PIDs observados 14865/14873.
+
+**R7-F1 — redirects HTTP podem vazar Device secret e CloudBinding credential**
+Os dois clientes novos usam `urllib.request.urlopen` padrão com header `Authorization`. O handler padrão de redirect do urllib copia headers para o request redirecionado. Assim, uma resposta 30x do broker pode encaminhar a credencial para outro origin.
+
+Reprodução independente com dois servidores loopback sintéticos:
+- Desktop publish POST → 302 para segundo servidor: o destino recebeu `Authorization: Device SYNTH-DEVICE-SECRET`;
+- Cloud consume GET → 302 para segundo servidor: o destino recebeu `Authorization: CloudBinding SYNTH-CLOUD-CREDENTIAL`.
+
+Isso viola a fronteira de transporte autenticado/seguro e a regra de não vazar credentials.
+
+**Critério de aceite R7-F1:**
+- Desktop `SessionBrokerHttpClient` e Cloud `SessionBrokerClient` devem tratar redirect de forma fail-closed;
+- preferir rejeitar redirects para esses endpoints, ou no mínimo nunca seguir cross-origin e nunca reenviar `Authorization` fora do origin original;
+- cobrir GET/POST relevantes e 301/302/303/307/308 proporcionalmente;
+- adicionar RED que prove que nenhum destino redirecionado recebe Device secret, CloudBinding credential ou cookie payload;
+- manter HTTPS obrigatório fora de loopback e erros sanitizados.
+
+**R7-F2 — falha ao invalidar lease semanticamente expirada deixa provider local como AUTH_READY**
+Quando o WebPilot retorna login e `BrokerSessionProvider.invalidate_current()` falha ao chamar o broker, o método mantém `self._current`. O standby então retorna `last_collection_result=AUTH_UNAVAILABLE`, mas `auth_state=AUTH_READY`, e o próximo ciclo pode reutilizar a mesma sessão já comprovadamente inválida.
+
+Reprodução independente:
+- lease A foi primed;
+- broker.invalidate levantou `OSError`;
+- após resposta `SESSION_EXPIRED`, o provider continuou com identidade A;
+- status observado: `AUTH_READY / AUTH_UNAVAILABLE`.
+
+**Critério de aceite R7-F2:**
+- login semântico deve invalidar localmente a lease corrente **mesmo se a chamada remota de invalidation falhar**;
+- após detectar sessão expirada, o provider deve ficar `AUTH_UNAVAILABLE` e nunca reutilizar a mesma lease local no ciclo seguinte;
+- a falha de invalidation remota pode ser registrada de forma sanitizada/retentável, mas não pode manter a lease local como válida;
+- não buscar terceira lease/não criar loop; preservar o limite de um retry por operação;
+- adicionar RED para outage do broker durante invalidation e provar estado local fail-closed.
+
+**Pontos aceitos em R7**
+- STOP arquitetura B4 foi resolvido pela mudança estreita de lazy imports; wheel `--no-deps` funciona sem Selenium/webdriver-manager/Pillow/pyttsx3;
+- exports públicos pesados continuam disponíveis no Desktop quando acessados explicitamente;
+- publisher Desktop é opt-in, assíncrono e não interfere no `webpilot_auth.publish()` local;
+- estado persistente/generation e retry idempotente estão coerentes no escopo atual;
+- collector Cloud reutiliza wheel canônico, sem cópia de parser/auth/http;
+- standby permanece desligado do server default e usa somente fake transport/fixtures;
+- nenhuma publicação snapshot, `source=cloud`, eventos/push, failover/failback/fencing/hysteresis foi antecipada;
+- nenhuma migration produção, push/deploy ou WebPilot real no Cloud foi executado.
+
+**Próximo passo autorizado:** Executor corrige somente R7-F1 e R7-F2 com TDD nos mesmos dois working trees, ainda sem commit/stage. Repetir testes Desktop publisher/http/headless, API broker relevante, `make cloud-test`, `make cloud-wheel-contract`, smoke-wheel se aplicável, `git diff --check` nos dois repos, atualizar este handoff e parar para **R7.1 independente**. Não iniciar C2-C e não reconstruir wheel de SHA commitado antes da aprovação.
+
+
+### Correções R7-F1/R7-F2 — Executor (2026-10-08)
+
+**Status:** **PRONTO PARA R7.1 INDEPENDENTE**. Somente R7-F1 e R7-F2 foram corrigidos nos mesmos working trees; nenhum commit/stage foi criado e C2-C permanece bloqueado.
+
+**Bases preservadas**
+- Desktop: `feat/spec027-cloud@9e5b5e1a33cb7d61db200866aea683a6334de922`;
+- API/PWA/Cloud: `feat/spec027-cloud@1e0e4f84366eec2c816a5a271c70d83e89d86eb5`;
+- staged files: **0** em ambos;
+- Shadow original não foi manipulado.
+
+#### R7-F1 — redirects autenticados fail-closed — RED→GREEN
+
+**RED**
+- testes com dois servidores loopback reais reproduziram o vazamento do urllib default;
+- Desktop POST `webpilot-session-leases`: 301/302/303 seguiram redirect e não levantaram erro;
+- revisão independente já havia reproduzido o header `Authorization: Device ...` no segundo origin;
+- Cloud GET/POST também usavam o redirect handler default.
+
+**GREEN**
+Desktop `SessionBrokerHttpClient` e Cloud `SessionBrokerClient` agora usam por default:
+- `HTTPRedirectHandler` dedicado cuja `redirect_request()` retorna `None`;
+- `build_opener(...).open`;
+- qualquer 301/302/303/307/308 é tratado como `HTTPError` e falha fechado;
+- o objeto `HTTPError` é fechado explicitamente antes de propagar erro sanitizado, evitando ResourceWarning/socket leak.
+
+Cobertura real de transporte:
+- Desktop publish **POST**: 301/302/303/307/308;
+- Desktop publisher registration **PUT**: 301/302/303/307/308;
+- Cloud consume **GET**: 301/302/303/307/308;
+- Cloud invalidate **POST**: 301/302/303/307/308.
+
+Para todos os casos:
+- servidor de origem recebe a request autenticada;
+- servidor de destino do `Location` recebe **zero requests**;
+- portanto nenhum Device secret, CloudBinding credential ou cookie body é encaminhado;
+- mensagens de erro não ecoam secrets;
+- HTTPS obrigatório fora de loopback continua inalterado;
+- openers injetados por teste continuam suportados.
+
+Desktop `test_session_publisher_http.py`: **17/17 passed** com `-W error`.
+
+#### R7-F2 — invalidation outage fail-closed — RED→GREEN
+
+**RED**
+- reproduzido: `BrokerSessionProvider.invalidate_current()` com `broker.invalidate()` levantando `OSError` mantinha `current_identity` e `AUTH_READY`.
+
+**GREEN**
+- ao detectar invalidação semântica, a identidade corrente `(lease_id, realm_epoch)` é adicionada a `_rejected_identities`;
+- `_current` é limpo **antes** da tentativa remota;
+- isso vale para `invalidate_current()` e `request_recovery()`;
+- falha remota é registrada somente pelo tipo da exceção e retorna false, mas o estado local permanece `AUTH_UNAVAILABLE`;
+- `prime()` rejeita qualquer lease cuja identidade esteja tombstonada localmente;
+- se o broker, por ter falhado a invalidação, servir novamente a mesma lease no ciclo seguinte, ela não é republicada no coordinator e não volta a `AUTH_READY`;
+- nenhum terceiro fetch/retry foi introduzido;
+- quando a invalidação remota funciona, o fluxo normal de uma única lease substituta continua preservado.
+
+Cobertura:
+- provider direto com outage em `invalidate_current()`;
+- provider direto com outage em `request_recovery()`;
+- ambos provam que um `prime()` subsequente consumindo a mesma lease permanece fail-closed e não republica cookies;
+- standby integrado prova `AUTH_UNAVAILABLE / AUTH_UNAVAILABLE` no ciclo do login e no ciclo seguinte, com apenas a primeira chamada WebPilot e sem loop.
+
+Cloud:
+- `test_broker_session.py`: **14/14 passed**;
+- `test_standby.py`: **5/5 passed**.
+
+#### Gates repetidos para R7.1
+
+- Desktop publisher/http/headless/auth/grid direcionados: **79/79 passed**.
+- API broker relevante: **21/21 passed**.
+- `make cloud-test`: **33/33 passed**.
+- `make cloud-wheel-contract`: PASS:
+  - headless wheel contract PASS;
+  - standby synthetic contract PASS.
+- `make cloud-smoke-wheel`: PASS:
+  - health/readiness 200;
+  - UID 10001;
+  - mounts vazios;
+  - restart saudável;
+  - filesystem diff vazio;
+  - logs sanitizados.
+- inspeção dentro da imagem: `container headless dependency/import closure: PASS`.
+
+**Wheel pré-R7.1 do working tree revisável**
+- base Desktop permanece `9e5b5e1a33cb7d61db200866aea683a6334de922`;
+- patch de source `src/alertam` relativo à base:
+  - `/tmp/alertam-c2b-r71-source.patch`;
+  - SHA-256 **`229a344f3766060458ea1001e2b36da1b11974f363c253b4b5cdf314dcce5c29`**;
+- wheel:
+  - `/tmp/alertam-c2b-r71-wheel/alertam-4.3.3-py3-none-any.whl`;
+  - SHA-256 **`76f2b566874798b2b471d9f4ba74903a3992d23b1695df41d072f6ee54f30056`**;
+- continua sendo artefato temporário do working tree, não wheel de SHA commitado.
+
+**Fronteiras preservadas**
+- nenhum commit/stage;
+- C2-C não iniciado;
+- nenhum WebPilot real no Cloud;
+- nenhuma SessionLease operacional habilitada;
+- nenhum snapshot/`source=cloud`;
+- nenhum evento/push;
+- nenhum failover/failback/fencing/hysteresis;
+- nenhuma migration produção;
+- nenhum push/merge/deploy;
+- checkout/Shadow original intocado.
+
+**PARECER SOLICITADO:** **R7.1 independente** sobre somente R7-F1/R7-F2 e o C2-B corrigido. Não iniciar C2-C nem reconstruir wheel de SHA commitado antes da aprovação.
+
+
+### R7.1 independente — revisão das correções R7-F1/R7-F2 (2026-10-08)
+
+**Resultado:** CORREÇÃO OBRIGATÓRIA. R7-F1 está encerrado. R7-F2 melhorou corretamente o fail-closed imediato, mas ainda permite ressuscitar uma lease previamente rejeitada em uma recuperação posterior.
+
+**Evidência independente**
+- Bases preservadas: Desktop `9e5b5e1a33cb7d61db200866aea683a6334de922`; API/Cloud `1e0e4f84366eec2c816a5a271c70d83e89d86eb5`.
+- Ambos os working trees seguem sem commit/stage.
+- Desktop redirect tests: **17/17 passed**.
+- Cloud broker/standby correções: **14/14 + 5/5 passed**.
+- `git diff --check`: PASS nos dois repos; staged files: 0.
+- Shadow permaneceu ativo nos PIDs observados 14865/14873.
+
+**R7-F1 — ENCERRADO**
+Reprodução independente com dois servidores loopback confirmou que redirects agora são bloqueados:
+- Desktop POST → 302: `Session broker HTTP 302`; destino recebeu zero requests;
+- Cloud GET → 302: `Session broker HTTP 302`; destino recebeu zero requests.
+Device secret, CloudBinding credential e payload não foram reenviados ao destino. O tratamento fail-closed por `HTTPRedirectHandler` dedicado está adequado.
+
+**R7.1-F1 — lease tombstonada pode ser ressuscitada por `request_recovery()`**
+O novo `_rejected_identities` é consultado por `prime()`, mas não pelo caminho de replacement dentro de `request_recovery()`.
+
+Cenário reproduzido independentemente:
+1. lease B/epoch 7 é publicada localmente;
+2. login semântico ocorre e a invalidação remota de B falha; B é corretamente tombstonada e `_current` vira `None`;
+3. depois o broker oferece lease A/epoch 8; `prime()` aceita A;
+4. A expira; sua invalidação remota funciona;
+5. o broker volta a oferecer B/epoch 7, que permaneceu aceita remotamente porque a primeira invalidation falhou;
+6. `request_recovery()` aceita B novamente, apesar de B constar em `_rejected_identities`.
+
+Saída observada:
+- após outage de B: `current_identity=None`;
+- A é aceita como current;
+- recovery de A publica novamente B;
+- `current_identity` volta para B/7.
+
+Isso viola a regra do C2-P de que uma lease semanticamente invalidada não pode ser ressuscitada e reabre a sessão que o Cloud já comprovou inválida.
+
+**Critério de aceite R7.1-F1**
+- qualquer lease retornada pelo broker deve ser rejeitada se `(lease_id, realm_epoch)` estiver em `_rejected_identities`, independentemente de entrar por `prime()` ou `request_recovery()`;
+- centralizar a decisão de elegibilidade do candidate para evitar divergência entre os dois caminhos;
+- ao receber uma identidade tombstonada durante recovery, permanecer `AUTH_UNAVAILABLE`, sem republicar cookies;
+- não buscar terceira lease e não criar loop;
+- adicionar RED reproduzindo a sequência B invalidation outage → A válida → recovery de A → broker devolve B tombstonada;
+- preservar o fluxo normal de uma única substituição quando a identidade realmente é nova.
+
+**Próximo passo autorizado:** corrigir somente R7.1-F1 no Cloud, com TDD, no mesmo working tree e sem commit/stage. Repetir `test_broker_session.py`, `test_standby.py`, `make cloud-test`, `make cloud-wheel-contract`, `git diff --check`; atualizar este handoff e parar para **R7.2 independente**. Desktop não precisa de nova alteração para este achado. C2-C continua bloqueado.
+
+
+### Correção R7.1-F1 — Executor (2026-10-08)
+
+**Status:** **PRONTO PARA R7.2 INDEPENDENTE**. Somente o achado R7.1-F1 foi corrigido no Cloud; Desktop não recebeu alteração adicional. Ambos os working trees permanecem sem commit/stage e C2-C segue bloqueado.
+
+**RED válido**
+- novo cenário em `cloud/tests/test_broker_session.py` reproduziu integralmente a sequência revisada:
+  1. lease **B/epoch 7** é aceita;
+  2. login semântico ocorre e a invalidation remota de B falha;
+  3. B fica tombstonada localmente e `current_identity=None`;
+  4. o broker fornece lease **A/epoch 8**, aceita por `prime()`;
+  5. A expira e sua invalidation remota funciona;
+  6. o broker volta a fornecer **B/epoch 7**;
+  7. implementação anterior aceitava B novamente via `request_recovery()`.
+- RED observado: `provider.request_recovery()` retornou **True** quando deveria retornar false.
+
+**GREEN**
+- a decisão de elegibilidade de toda lease candidata foi centralizada em `BrokerSessionProvider._accept_candidate()`;
+- `prime()` e `request_recovery()` usam exatamente o mesmo caminho de aceitação;
+- qualquer `(lease_id, realm_epoch)` presente em `_rejected_identities`:
+  - é recusado independentemente da origem do candidate;
+  - não é republicado no `WebPilotAuthCoordinator`;
+  - deixa `_current=None`;
+  - mantém `AUTH_UNAVAILABLE`;
+- não há terceira aquisição/retry;
+- uma identidade realmente nova continua sendo aceita normalmente;
+- o fluxo anterior B outage → A válida permanece permitido, mas B tombstonada nunca pode ressuscitar depois.
+
+**Testes direcionados**
+- `test_broker_session.py`: **15/15 passed**;
+- `test_standby.py`: **5/5 passed**;
+- o novo teste prova:
+  - invalidations tentadas exatamente em B/7 e A/8;
+  - `consume_calls == 3`;
+  - cookies publicados somente para B inicial e A;
+  - B retornada no recovery final não é republicada;
+  - estado final `AUTH_UNAVAILABLE`.
+
+**Gates R7.2**
+- `make cloud-test`: **34/34 passed**;
+- `make cloud-wheel-contract`: PASS:
+  - headless wheel contract PASS;
+  - standby synthetic contract PASS;
+- wheel Desktop reutilizado sem rebuild, porque não houve alteração Desktop nesta correção:
+  - `/tmp/alertam-c2b-r71-wheel/alertam-4.3.3-py3-none-any.whl`;
+  - SHA-256 **`76f2b566874798b2b471d9f4ba74903a3992d23b1695df41d072f6ee54f30056`**;
+- Desktop HEAD/base permanece **`9e5b5e1a33cb7d61db200866aea683a6334de922`**;
+- API/Cloud HEAD/base permanece **`1e0e4f84366eec2c816a5a271c70d83e89d86eb5`**.
+
+**Escopo preservado**
+- Desktop não modificado nesta correção;
+- nenhum commit/stage;
+- C2-C não iniciado;
+- nenhum WebPilot real;
+- nenhuma SessionLease operacional ativada;
+- nenhum snapshot/`source=cloud`;
+- nenhum failover/failback/fencing/hysteresis;
+- nenhum push/merge/deploy/prod-migrate;
+- Shadow original não manipulado.
+
+**PARECER SOLICITADO:** **R7.2 independente** sobre exclusivamente R7.1-F1 e o C2-B corrigido. Não iniciar C2-C.
+
+
+### R7.2 independente — encerramento do C2-B (2026-10-08)
+
+**Resultado:** APROVADO. R7-F1, R7-F2 e R7.1-F1 estão encerrados. O C2-B está aprovado para commits exatos nos dois repositórios e verificação material pós-commit do wheel Desktop.
+
+**Evidência independente**
+- Bases de revisão preservadas: Desktop `9e5b5e1a33cb7d61db200866aea683a6334de922`; API/Cloud `1e0e4f84366eec2c816a5a271c70d83e89d86eb5`.
+- Ambos os working trees permaneceram sem commit/stage durante a revisão.
+- Probe independente do cenário R7.1-F1 resultou em:
+  - recovery da lease tombstonada: **False**;
+  - `current_identity=None`;
+  - `AUTH_UNAVAILABLE`;
+  - exatamente duas invalidações tentadas (B/7 e A/8);
+  - três consumes no cenário inteiro;
+  - somente duas publicações locais (B inicial e A), sem ressurreição de B.
+- `make cloud-test`: **34/34 passed**.
+- `make cloud-wheel-contract` com o wheel pré-R7.1: PASS para import-closure headless e standby synthetic contract.
+- `git diff --check`: PASS nos dois repos; staged files: 0.
+- nenhum `source=cloud`, snapshot POST, failover/failback funcional ou alteração de source foi encontrado no diff funcional.
+- Shadow original permaneceu ativo nos PIDs observados 14865/14873.
+
+**R7-F1 — ENCERRADO**
+Os clientes Desktop e Cloud rejeitam redirects autenticados. Os REDs/reprodução real provaram que o destino de redirect não recebe Device secret, CloudBinding credential nem payload secreto.
+
+**R7-F2 / R7.1-F1 — ENCERRADOS**
+A identidade semanticamente rejeitada é tombstonada antes da invalidation remota, a lease local é removida imediatamente e toda lease candidata passa por um único caminho de elegibilidade. Isso vale tanto para `prime()` quanto para `request_recovery()`. Uma identidade tombstonada não pode ser republicada mesmo que o broker a sirva novamente após uma falha anterior de invalidation.
+
+**Parecer R7.2**
+- C2-B: **APROVADO**.
+- Commits do checkpoint: **AUTORIZADOS agora**, contendo exatamente os diffs revisados em cada repositório.
+- Desktop e API/Cloud devem receber commits locais separados, sem alteração adicional entre esta aprovação e os commits.
+- Após ambos os commits, confirmar working trees limpos.
+- Em seguida, **reconstruir o wheel a partir do SHA Desktop commitado**, não do working tree, e repetir `cloud-wheel-contract`/import-closure headless.
+- O SHA Desktop final, SHA API/Cloud final e SHA-256 do wheel pós-commit devem ser registrados no handoff como base de entrada do C2-C.
+- C2-C: **LIBERADO somente se** o rebuild pós-commit e o import-closure passarem. Até essa verificação, continua bloqueado.
+- push/merge/deploy, WebPilot real no Cloud, SessionLease operacional real, migration produção, snapshot/`source=cloud`, failover/failback e cutover continuam proibidos.
+
+**Sequência autorizada agora:** (1) commit exato Desktop; (2) commit exato API/Cloud; (3) confirmar ambos limpos; (4) rebuild wheel do SHA Desktop commitado; (5) repetir import-closure/`cloud-wheel-contract`; (6) registrar SHAs/hashes; somente então iniciar C2-C, novamente sem commit/stage até R8.

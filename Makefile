@@ -5,6 +5,9 @@ DEV_COMPOSE := docker compose -f docker-compose.dev.yml
 PROD_COMPOSE := docker compose -f docker-compose.prod.yml
 PROD_ENV := api/.env.prod
 MIGRATIONS_DIR := api/supabase/migrations
+DESKTOP_WHEEL ?=
+DESKTOP_FIXTURE ?=
+CLOUD_HEADLESS_IMAGE ?= alertam-cloud-headless:local
 
 .PHONY: help run dev dev-up dev-down dev-reset dev-logs dev-ps dev-config dev-info \
         dev-db-shell dev-api-shell api-run sync test test-unit test-contract \
@@ -194,10 +197,23 @@ cloud-test:
 	cd cloud && python3.12 -W error -m unittest discover -s tests -v
 
 cloud-build:
-	docker build -t alertam-cloud-infra-spike:local ./cloud
+	docker build --target infra -t alertam-cloud-infra-spike:local ./cloud
 
 cloud-smoke: cloud-build
 	./cloud/scripts/smoke.sh
+
+cloud-wheel-contract:
+	@test -f "$(DESKTOP_WHEEL)" || { echo "Erro: DESKTOP_WHEEL precisa apontar para o wheel canônico."; exit 1; }
+	@test -f "$(DESKTOP_FIXTURE)" || { echo "Erro: DESKTOP_FIXTURE precisa apontar para a fixture histórica."; exit 1; }
+	@set -e; 	tmp="$$(mktemp -d)"; 	trap 'rm -rf "$$tmp"' EXIT; 	python3.12 -m venv "$$tmp/venv"; 	"$$tmp/venv/bin/python" -m pip install --disable-pip-version-check --no-deps "$(DESKTOP_WHEEL)"; 	"$$tmp/venv/bin/python" cloud/scripts/headless_contract.py --fixture "$(DESKTOP_FIXTURE)"; \
+	"$$tmp/venv/bin/python" cloud/scripts/standby_contract.py --fixture "$(DESKTOP_FIXTURE)"
+
+cloud-build-wheel:
+	@test -f "$(DESKTOP_WHEEL)" || { echo "Erro: DESKTOP_WHEEL precisa apontar para o wheel canônico."; exit 1; }
+	@set -e; 	wheel="$$(realpath "$(DESKTOP_WHEEL)")"; 	wheel_dir="$$(dirname "$$wheel")"; 	wheel_name="$$(basename "$$wheel")"; 	docker build --target headless 	  --build-context alertam_wheel="$$wheel_dir" 	  --build-arg ALERTAM_WHEEL_NAME="$$wheel_name" 	  -t "$(CLOUD_HEADLESS_IMAGE)" ./cloud
+
+cloud-smoke-wheel: cloud-build-wheel
+	CLOUD_IMAGE="$(CLOUD_HEADLESS_IMAGE)" 	CLOUD_CONTAINER_NAME=alertam-cloud-headless-smoke 	./cloud/scripts/smoke.sh
 
 prod-env:
 	@if [ -e "$(PROD_ENV)" ]; then \

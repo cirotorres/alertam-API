@@ -20,10 +20,20 @@ class ContainerContractTests(unittest.TestCase):
         self.assertIn("HEALTHCHECK", content)
         self.assertIn("/healthz", content)
         self.assertIn('["python", "-m", "alertam_cloud"]', content)
-        self.assertNotIn("pip install", lowered)
-        self.assertNotIn("supabase", lowered)
-        self.assertNotIn("webpilot", lowered)
-        self.assertNotIn("device_secret", lowered)
+        self.assertIn("AS headless", content)
+        self.assertIn("COPY --from=alertam_wheel", content)
+        self.assertIn("pip install", lowered)
+        self.assertIn("--no-deps", content)
+        for forbidden in (
+            "selenium",
+            "webdriver-manager",
+            "webdriver_manager",
+            "pillow",
+            "pyttsx3",
+            "supabase",
+            "device_secret",
+        ):
+            self.assertNotIn(forbidden, lowered)
 
     def test_dockerignore_excludes_local_and_sensitive_artifacts(self) -> None:
         dockerignore = CLOUD_DIR / ".dockerignore"

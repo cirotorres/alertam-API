@@ -113,23 +113,36 @@ class CloudServiceContractTests(unittest.TestCase):
         stdout, _ = process.communicate(timeout=3)
         self.assertEqual(process.returncode, 0, stdout)
 
-    def test_cloud_runtime_has_no_operational_dependencies(self) -> None:
-        runtime_dir = CLOUD_DIR / "alertam_cloud"
-        self.assertTrue(runtime_dir.is_dir(), "cloud runtime package must exist")
-        runtime_sources = "\n".join(
-            path.read_text(encoding="utf-8").lower()
-            for path in sorted(runtime_dir.rglob("*.py"))
-        )
-        forbidden = (
+    def test_default_server_does_not_import_or_start_standby(self) -> None:
+        server_source = (CLOUD_DIR / "alertam_cloud" / "server.py").read_text(
+            encoding="utf-8"
+        ).lower()
+        for token in (
+            "broker_session",
+            "standby",
             "webpilot",
             "sessionlease",
             "cloudbinding",
-            "supabase",
             "source=cloud",
             "device_secret",
+        ):
+            self.assertNotIn(token, server_source)
+
+        probe = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; import alertam_cloud.server; "
+                "print(int('alertam_cloud.broker_session' in sys.modules)); "
+                "print(int('alertam_cloud.standby' in sys.modules))",
+            ],
+            cwd=CLOUD_DIR,
+            capture_output=True,
+            text=True,
+            check=False,
         )
-        for token in forbidden:
-            self.assertNotIn(token, runtime_sources)
+        self.assertEqual(probe.returncode, 0, probe.stderr)
+        self.assertEqual(probe.stdout.splitlines(), ["0", "0"])
 
 
 if __name__ == "__main__":
