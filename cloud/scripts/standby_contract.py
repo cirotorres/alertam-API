@@ -17,6 +17,7 @@ from alertam_cloud.broker_session import (  # noqa: E402
     BrokerLease,
     BrokerLeaseUnavailable,
     BrokerSessionProvider,
+    InMemoryRejectedIdentityStore,
     SessionCookie,
 )
 from alertam_cloud.standby import build_canonical_standby  # noqa: E402
@@ -101,7 +102,9 @@ def _collector(
     broker: FakeBroker,
     transport: FakeTransport,
 ):
-    provider = BrokerSessionProvider(broker)
+    provider = BrokerSessionProvider(
+        broker, rejection_store=InMemoryRejectedIdentityStore()
+    )
     collector = build_canonical_standby(
         provider,
         transport=transport,

@@ -1,7 +1,7 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** C2-B **APROVADO EM R7.2 — AGUARDA COMMITS EXATOS + REBUILD DO WHEEL PÓS-COMMIT**; C2-C bloqueado até verificação pós-commit
+**Status:** C2 **APROVADO EM R8.1 — C2-C AUTORIZADO PARA COMMIT EXATO**; Desktop C2-B permanece commitado/limpo; C3-P será o próximo checkpoint após o commit; C3 continua bloqueado
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
 **Base reconciliada:** API/PWA `feat/api-bootstrap@23a78bebdf46062eef937966101246567cd963de`; Desktop `develop@9e5b5e1a33cb7d61db200866aea683a6334de922`. **Feature:** `feat/spec027-cloud`, criada a partir de `23a78be` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`. **C1-A functional HEAD após correções R1:** `17afb4e19e21ce93e8eb1b8b0c8bfe47ebcf3364`; o commit documental deste registro será seu sucessor local.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
@@ -62,7 +62,7 @@
 | 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | **APROVADO EM R3 — commit 25485bba0143fd0c1659a88df89743db629951c2** |
 | 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | **APROVADO EM R4 — commit final C1 `61342b2ac47ffa48bfe90787b8aa2afb4bb4cda8`** |
 | 5 | C2-P — Plano Auth Broker | Desenhar reuso do coletor validado, contrato SessionLease, epoch, segurança, standby | R5/R5.1 (plano); **não** copiar parser/coletor | **APROVADO EM R5.1 — commit `7c9f19516673c80860b144b9f421aaea0810e423`** |
-| 6 | C2 — Execução em checkpoints próprios | Broker federado, anti-replay e core HTTP em standby headless sem source efetivo | R6/R7/R8; commit somente após cada aprovação | **C2-B APROVADO EM R7.2 — aguarda commits exatos + rebuild wheel pós-commit; C2-C bloqueado** |
+| 6 | C2 — Execução em checkpoints próprios | Broker federado, anti-replay e core HTTP em standby headless sem source efetivo | R6/R7/R8; commit somente após cada aprovação | **APROVADO EM R8.1 — C2-C autorizado para commit exato; próximo passo C3-P, nunca C3 automático** |
 | 7 | C3-P / C3 — Autoridade e snapshots | Plano aprovado; lease/fencing, hysteresis, failover/failback, anti-split-brain; primeira versão só snapshots | Revisões por subtask, gate operacional explícito | BLOQUEADO |
 | 8 | C4 — Observabilidade | Status, logs sanitizados, smoke prolongado, degradação e reconciliação | Revisão operacional humana | BLOQUEADO |
 | 9 | C5 — Eventos/Push | Plano próprio de idempotência cross-source, sem duplicação | **Somente se autorizado separadamente** | FORA DA LIBERAÇÃO ATUAL |
@@ -2457,3 +2457,518 @@ A identidade semanticamente rejeitada é tombstonada antes da invalidation remot
 - push/merge/deploy, WebPilot real no Cloud, SessionLease operacional real, migration produção, snapshot/`source=cloud`, failover/failback e cutover continuam proibidos.
 
 **Sequência autorizada agora:** (1) commit exato Desktop; (2) commit exato API/Cloud; (3) confirmar ambos limpos; (4) rebuild wheel do SHA Desktop commitado; (5) repetir import-closure/`cloud-wheel-contract`; (6) registrar SHAs/hashes; somente então iniciar C2-C, novamente sem commit/stage até R8.
+
+### C2-B — fechamento pós-R7.2 e wheel reconstruído do SHA commitado (2026-10-08)
+
+**Status:** **C2-B FECHADO PÓS-COMMIT — GATE MATERIAL PASS. C2-C LIBERADO PARA EXECUÇÃO.**
+
+**Commits exatos aprovados em R7.2**
+- Desktop: **`c8191bfea696368a7698a08bea727811412c05fd`** — `feat(cloud): publish webpilot session leases`;
+- API/Cloud: **`f36b0d184aea26a136ba136b11fe69822249a254`** — `feat(cloud): add headless session standby`;
+- ambos os working trees ficaram limpos imediatamente após os commits;
+- hashes dos diffs revisados imediatamente antes do commit:
+  - Desktop: `4241fe2370db218f627a0aa2161b3d3666d167fc15f669fd8b68e069c8fd2e75`;
+  - API/Cloud: `3946ca01228089166c8edbeceefd3f815f9825be05cc9b7b4f9659bf17068285`.
+
+**Wheel canônico pós-commit**
+Construído exclusivamente de um `git archive` do SHA Desktop commitado, sem usar o working tree pré-R7.2.
+
+Comando exato:
+```bash
+git -C /home/ciro/dev/prog/alertamaritimo/.worktrees/spec027-cloud archive c8191bfea696368a7698a08bea727811412c05fd \
+  | tar -x -C /tmp/alertam-c2b-postcommit-src
+cd /tmp/alertam-c2b-postcommit-src
+uv build --wheel --out-dir /tmp/alertam-c2b-postcommit-wheel
+```
+
+Artefato:
+- nome: **`alertam-4.3.3-py3-none-any.whl`**;
+- caminho temporário: `/tmp/alertam-c2b-postcommit-wheel/alertam-4.3.3-py3-none-any.whl`;
+- SHA-256: **`76f2b566874798b2b471d9f4ba74903a3992d23b1695df41d072f6ee54f30056`**.
+
+**Verificação material pós-commit**
+- venv novo criado com `python3.12 -m venv`;
+- wheel instalado explicitamente com `python -m pip install --no-deps`;
+- `pip list`: somente `alertam==4.3.3` + `pip`;
+- import-closure headless explícito: **PASS**;
+- ausência confirmada de `selenium`, `webdriver_manager`, `PIL`, `pyttsx3` e Tk/UI/browser/driver no `sys.modules`;
+- `make cloud-wheel-contract`: **PASS**;
+- parser histórico: **PASS**, 22 navios e resumo 4/2/16;
+- `WebPilotHttpClient`: same-origin/login detection/one-retry: **PASS**;
+- standby synthetic contract: **PASS**;
+- nenhum WebPilot real foi usado;
+- Shadow original permaneceu intocado.
+
+**Gate de decisão:** todos os requisitos pós-commit passaram. Portanto o **C2-B está tecnicamente fechado** e o **C2-C está liberado para execução**, ainda sujeito a R8 independente antes de qualquer commit do C2-C.
+
+
+### C2-C — Executor; C1→C6 concluídos (2026-10-08)
+
+**Status:** **PRONTO PARA R8 INDEPENDENTE**. C2-C foi executado somente após o C2-B ter sido commitado, o wheel ter sido reconstruído do SHA Desktop commitado e todo o gate material pós-commit ter passado. O working tree API/Cloud contém somente o C2-C sem commit/stage; o Desktop permanece limpo no commit C2-B aprovado.
+
+**Bases reais de entrada**
+- Desktop: `feat/spec027-cloud@c8191bfea696368a7698a08bea727811412c05fd`;
+- API/PWA/Cloud: `feat/spec027-cloud@f36b0d184aea26a136ba136b11fe69822249a254`;
+- wheel canônico C2-B pós-commit:
+  - `/tmp/alertam-c2b-postcommit-wheel/alertam-4.3.3-py3-none-any.whl`;
+  - SHA-256 `76f2b566874798b2b471d9f4ba74903a3992d23b1695df41d072f6ee54f30056`;
+- nenhum arquivo Desktop foi alterado em C2-C.
+
+#### C1/C2 — matriz multi-provider, compatibility, expiry/recovery/restarts
+
+Foram adicionadas provas em PostgreSQL 16 real antes de qualquer mudança de runtime:
+- provider B incompatível com `required_provider_scope`:
+  - fica `INCOMPATIBLE`;
+  - não publica lease utilizável;
+  - não cria epoch;
+- B alterado para profile compatível:
+  - nasce `UNVERIFIED`;
+  - somente após verificação backend/admin vira `VERIFIED`;
+- A e B compatíveis publicam no mesmo realm com `realm_epoch` global monotônico:
+  - A generation 37 → epoch 101;
+  - B generation 1 → epoch 102;
+  - A generation 38 → epoch 103;
+- mesmo publisher/generation com payload diferente continua conflito tipado e não avança epoch;
+- revoke de B não invalida A;
+- rotação do publisher A revoga a identidade anterior e a identidade antiga não pode publicar;
+- mudança de `required_provider_scope` torna provider existente inelegível imediatamente;
+- `device.enabled=false`, realm inactive e membership revoked bloqueiam consumo/publicação imediatamente;
+- lease expirada não é selecionada;
+- invalidation da lease mais nova permite fallback para a próxima lease válida do realm;
+- novo repository instance preserva lease corrente, anti-replay e contador global de epoch.
+
+**Resultado PostgreSQL real:** **10/10 passed, 0 skipped**.
+
+Esses testes ficaram GREEN na primeira execução contra o runtime C2-A/C2-B já aprovado. Portanto **nenhuma alteração SQL/repository/API runtime foi necessária** para C1/C2; o trabalho aqui foi ampliar a prova de integração conforme o plano C2-C.
+
+#### C4 — observabilidade sanitizada e restart Cloud — RED→GREEN
+
+**RED**
+- novos testes tentaram importar `StandbyReason` e `LeaseExpiryState`; ambos ainda não existiam;
+- `StandbyStatus` também não expunha publisher, age/expiry state nem reason code enumerado.
+
+**GREEN**
+`cloud/alertam_cloud/standby.py` passou a expor apenas metadata sanitizada:
+- `realm_id`;
+- `realm_epoch`;
+- `publisher_id`;
+- `lease_age_seconds`;
+- `lease_expiry_state` = `unknown | no_expiry | active | expired`;
+- `auth_state`;
+- `last_collection_at`;
+- `last_collection_result`;
+- `reason_code` = `OK | AUTH_UNAVAILABLE | HTTP_ERROR | PARSE_ERROR`;
+- maneuver count e weather health já existentes.
+
+A derivação não armazena cookies, ciphertext, Authorization, CloudBinding credential, Device secret, raw HTML ou session payload.
+
+Cobertura adicional:
+- metadata ativa com publisher/epoch/age/expiry;
+- AUTH_UNAVAILABLE com expiry `UNKNOWN`;
+- serialização do status sem raw payload/secrets;
+- restart do `BrokerSessionProvider` contra broker persistente recupera a mesma lease/epoch sem resetar `realm_epoch`.
+
+Gates específicos finais:
+- `test_standby.py`: **7/7 passed**;
+- `test_broker_session.py`: **16/16 passed**.
+
+#### C3 — sandbox Docker totalmente sintético — RED→GREEN
+
+**RED estrutural**
+- `test_c2c_sandbox_contract.py` foi criado primeiro e falhou por ausência do sandbox.
+
+**GREEN estrutural**
+Criado `cloud/sandbox/` com:
+- `c2c-compose.yml`;
+- `migrate_c2c.sh`;
+- `bootstrap.py`;
+- `publisher.py`;
+- `fake_webpilot.py`;
+- `cloud_scenario.py`;
+- `verify.py`.
+
+Contrato estrutural: **4/4 passed**.
+
+**Isolamento do sandbox**
+- PostgreSQL 16 efêmero com data dir em `tmpfs`;
+- nenhum port publicado ao host;
+- migrations apenas no DB descartável;
+- API local Docker;
+- servidor fake WebPilot interno usando somente fixtures históricas;
+- dois publishers sintéticos usando Device auth e o wire contract C2;
+- Cloud headless construído com o wheel canônico pós-commit e `--no-deps`;
+- volume de estado descartável;
+- target `make cloud-c2c-sandbox` sempre executa `down -v --remove-orphans` ao terminar.
+
+**REDs reais encontrados durante a construção do sandbox**
+1. migrador geral tentou migration 015 e falhou por ausência de `pg_cron` no Postgres Alpine;
+   - GREEN: harness sintético alinhado ao harness C2 aprovado, aplicando somente **001 + 018 + 019 + 020**; nenhuma migration foi modificada;
+2. jobs API one-shot não encontravam package `app`;
+   - GREEN: `PYTHONPATH=/app` somente nesses jobs;
+3. jobs Cloud one-shot não encontravam `alertam_cloud`;
+   - GREEN: `PYTHONPATH=/app` somente nos runners sintéticos;
+4. runner Cloud non-root não podia escrever no volume criado pelo bootstrap root;
+   - GREEN: bootstrap do sandbox libera apenas o diretório efêmero de estado; runtime Cloud continua UID 10001;
+5. fake login usava uma URL final de origem sintética e o cliente canônico corretamente retornava `HTTP_ERROR` antes da login detection;
+   - GREEN: o fake transport usa a URL final canônica somente como **metadata simulada**, enquanto todo body/network continua vindo exclusivamente de `fake-webpilot` interno;
+6. verificador consultou uma coluna de snapshot não presente no subconjunto 001/018/019/020;
+   - GREEN: verificação usa as colunas reais de `001_devices.sql`.
+
+**Cenário final aprovado pelo sandbox**
+1. bootstrap cria dois devices, realm, memberships, required scope e CloudBinding sintéticos;
+2. publisher A registra profile, é verificado backend-side e publica generation 37 → realm epoch 1;
+3. Cloud inicial consome A e processa fixture histórica: **22 navios + weather OK**;
+4. publisher B registra profile, é verificado e publica generation 1 → realm epoch 2;
+5. B repete a mesma generation com payload diferente → **409 `session_lease_generation_conflict`**;
+6. Cloud restart/runner consome B epoch 2;
+7. fake login semântico invalida B/2, consome fallback A/1 e o único retry coleta maneuvers+weather com sucesso;
+8. novo fake login invalida A/1; não existe terceira lease;
+9. estado final: **AUTH_UNAVAILABLE**, sem terceiro retry/loop;
+10. verificador PostgreSQL confirma:
+    - epochs persistidos 1/2;
+    - ambas as leases invalidadas no encerramento;
+    - `last_epoch=2`;
+    - nenhuma coluna de snapshot foi preenchida.
+
+Saída final:
+- `sandbox bootstrap: PASS`;
+- publisher A: PASS;
+- `c2c cloud sandbox initial: PASS`;
+- publisher B: PASS;
+- `c2c cloud sandbox recovery: PASS`;
+- `c2c docker sandbox verification: PASS`;
+- target retornou exit code **0** e removeu containers/volume; `docker compose ... ps -a` ficou vazio.
+
+Nenhum request foi enviado ao WebPilot real.
+
+#### C5/C6 — gates finais de C2
+
+**Broker/persistência**
+- Supabase MockTransport: **8/8 passed**;
+- PostgreSQL 16 real SessionBroker: **10/10 passed, 0 skipped**;
+- `make test-all`: **646 passed / 0 skipped / 0 failed**.
+
+**Desktop**
+- `make check`: **1109 passed / 84 skipped / 0 failed**;
+- import sweep: **imports OK**;
+- working tree Desktop limpo no SHA `c8191bfea696368a7698a08bea727811412c05fd`.
+
+**Cloud**
+- `make cloud-test`: **41/41 passed**;
+- `make cloud-wheel-contract`: PASS:
+  - headless wheel contract PASS;
+  - parser histórico 22 navios / 4 atracados / 2 fundeados / 16 previstos;
+  - same-origin/login detection/one-retry do `WebPilotHttpClient`;
+  - standby synthetic contract PASS;
+- `make cloud-smoke`: PASS:
+  - healthz 200;
+  - readyz 200;
+  - UID 10001;
+  - mounts vazios;
+  - restart healthy;
+  - filesystem diff vazio;
+  - logs sanitizados;
+- `make cloud-c2c-sandbox`: PASS, ambiente removido ao final.
+
+**Migrations**
+- `make migrate-list` confirma migrations **001→020**, incluindo `020_webpilot_session_broker.sql`;
+- nenhum arquivo de migration foi alterado em C2-C;
+- migration 020 **não foi aplicada em produção**; somente DBs Docker efêmeros de teste/sandbox.
+
+**Frontend / contratos compartilhados**
+- nenhum arquivo em `frontend/` foi alterado;
+- nenhum response contract Mobile/PWA foi alterado;
+- por isso o gate frontend condicional do plano não foi acionado.
+
+**Security/redaction audit**
+- production runtime Cloud não contém os secrets sintéticos do sandbox;
+- nenhum added-line de runtime C2-C contém cookie, ciphertext, Authorization, credential, raw HTML, session payload ou Device secret;
+- observabilidade contém somente IDs/epochs/age/state/reason/counts;
+- sandbox contém apenas credenciais/cookies **explicitamente sintéticos e descartáveis**;
+- fake WebPilot não acessa domínio externo;
+- default Cloud server continua health/readiness-only e não inicia o standby automaticamente.
+
+**Escopo proibido preservado**
+- nenhum snapshot Cloud foi publicado ou chamado;
+- verificador sandbox confirma snapshot fields nulos;
+- nenhum `source=cloud`;
+- nenhum failover/failback;
+- nenhum fencing/hysteresis/source arbitration;
+- nenhum evento/push;
+- nenhum WebPilot real;
+- nenhuma SessionLease operacional real;
+- nenhum Northflank operacional;
+- nenhum push/merge/deploy/cutover.
+
+**Git / estado final**
+- API/Cloud HEAD permanece **`f36b0d184aea26a136ba136b11fe69822249a254`**;
+- C2-C está inteiro no working tree API/Cloud, **sem commit e sem stage**;
+- Desktop HEAD permanece **`c8191bfea696368a7698a08bea727811412c05fd`**, limpo e stage 0;
+- `git diff --check` API/Cloud: PASS;
+- untracked files também validados com `git diff --no-index --check`: zero diagnósticos;
+- `git diff --check` Desktop: PASS;
+- Shadow original observado ao final nos mesmos processos iniciados às 10:01:41:
+  - PID 14865 `uv run python -m alertam`;
+  - PID 14873 Python da venv Desktop;
+- Shadow não foi reiniciado, manipulado ou usado pelo sandbox.
+
+**PARECER SOLICITADO:** **R8 independente** sobre o C2-C completo e o encerramento técnico do C2. Não fazer commit/stage do C2-C antes da aprovação. Não iniciar SPEC027 C3/source authority.
+
+
+### R8 independente — revisão do C2-C e encerramento técnico do C2 (2026-10-08)
+
+**Resultado:** CORREÇÕES OBRIGATÓRIAS. A matriz multi-provider, sandbox sintético, observabilidade sanitizada e gates gerais estão amplamente aderentes, mas dois pontos de lifecycle de SessionLease ainda quebram o fail-closed antes de encerrar C2.
+
+**Evidência independente**
+- Base API/Cloud permaneceu `f36b0d184aea26a136ba136b11fe69822249a254`; Desktop permaneceu limpo em `c8191bfea696368a7698a08bea727811412c05fd`.
+- C2-C continua sem commit/stage.
+- `make cloud-test`: **41/41 passed**.
+- contrato estrutural do sandbox: **4/4 passed**.
+- `git diff --check`: PASS nos dois repos; stage 0.
+- revisão de escopo do diff não encontrou implementação de snapshot Cloud, `source=cloud`, failover/failback, fencing/hysteresis ou eventos/push.
+
+**R8-F1 — lease corrente pode expirar localmente e continuar AUTH_READY / coletando**
+`BrokerSessionProvider.prime()` retorna imediatamente `True` sempre que `_current` existe, sem verificar `BrokerLease.expires_at`. O `WebPilotAuthCoordinator` canônico também não expira automaticamente a sessão publicada. Assim, uma lease válida quando consumida pode passar do `expires_at` entre ciclos e continuar sendo usada indefinidamente até o WebPilot responder login.
+
+Reprodução independente:
+- lease aceita com `expires_at=T0+10s`;
+- provider primed em T0;
+- próximo ciclo executado em `T0+30s`;
+- resultado observado: **`AUTH_READY` + `lease_expiry_state=expired` + `last_collection_result=OK`**;
+- ocorreram **2 chamadas WebPilot** usando a sessão já expirada;
+- broker não foi consultado novamente.
+
+Isso contradiz o requisito C2 de expiry fail-closed e cria estado observável internamente inconsistente: uma lease marcada como expired continua autenticando coleta.
+
+**Critério de aceite R8-F1**
+- `BrokerSessionProvider` deve avaliar expiry de toda lease corrente/candidata com clock injetável e timezone-aware;
+- lease com `expires_at <= now` nunca pode manter `AUTH_READY` nem ser publicada/reutilizada;
+- ao iniciar novo ciclo com current expirada, limpar/rejeitar a identidade antes de qualquer chamada WebPilot;
+- o provider pode fazer uma única tentativa de obter uma lease nova do broker; se não houver lease nova válida, retornar `AUTH_UNAVAILABLE`;
+- candidate já expirada também deve ser rejeitada;
+- uma nova publicação/lease válida deve restaurar standby normalmente;
+- adicionar RED/GREEN provando: válida antes do expiry → tempo avança → zero uso da stale lease → AUTH_UNAVAILABLE ou replacement válida.
+
+**R8-F2 — tombstone de lease semanticamente rejeitada não sobrevive restart Cloud**
+A correção R7/R7.1 mantém `_rejected_identities` apenas em memória. Se o WebPilot prova semanticamente que a lease é inválida, a invalidation remota falha e o processo Cloud reinicia, a nova instância perde o tombstone. Como o broker ainda pode servir a mesma lease que não conseguiu invalidar, ela é republicada e volta a `AUTH_READY`.
+
+Reprodução independente:
+1. lease A/epoch 7 é aceita;
+2. semantic invalidation remota falha com outage;
+3. provider atual fica corretamente `AUTH_UNAVAILABLE` e `current_identity=None`;
+4. processo/provider é recriado simulando restart Cloud;
+5. broker ainda serve A/7;
+6. nova instância aceita A/7 novamente e volta a **AUTH_READY**.
+
+Saída observada no probe:
+- antes do restart após outage: `AUTH_UNAVAILABLE`;
+- após restart + prime: `True`, identidade A/7, **AUTH_READY**, cookies republicados.
+
+O teste de restart adicionado em C2-C cobre somente a lease válida e, portanto, não detecta essa regressão. Em um restart real após falha de invalidation, uma sessão já comprovadamente inválida pode ressuscitar.
+
+**Critério de aceite R8-F2**
+- o conhecimento necessário para não reutilizar `lease_id + realm_epoch` rejeitado precisa sobreviver a restart quando a invalidation remota não foi confirmada;
+- usar persistência local mínima/atômica de tombstones ou pending invalidation, ou mecanismo equivalente que prove a mesma garantia;
+- restart com lease válida continua recuperando a mesma epoch sem criar epoch nova;
+- restart após invalidation outage não pode republicar a lease rejeitada;
+- quando o broker finalmente oferece uma identidade nova/elegível, standby pode se recuperar;
+- manter estado bounded/sanitizado, sem cookie/ciphertext/credential/raw payload;
+- cobrir restart fail-closed com RED/GREEN e sandbox sintético proporcional.
+
+**Pontos aceitos em R8**
+- matriz multi-provider PostgreSQL e ordenação global de realm_epoch estão coerentes com o plano;
+- incompatível/unverified fica inelegível; required-scope change e authority disable são fail-closed no broker;
+- fallback entre leases válidas e anti-replay persistente estão cobertos;
+- observabilidade adicionada contém somente metadata permitida;
+- sandbox Docker é sintético/efêmero, sem WebPilot real e sem escrita de snapshot/source;
+- Desktop permaneceu limpo no commit C2-B aprovado e o wheel pós-commit segue sendo o artefato canônico.
+
+**Próximo passo autorizado:** corrigir somente R8-F1 e R8-F2 no Cloud/C2-C com TDD, no mesmo working tree, sem commit/stage. Repetir `make cloud-test`, restart/expiry direcionados, `make cloud-wheel-contract`, sandbox sintético proporcional, `git diff --check` e security/redaction audit; atualizar este handoff e parar para **R8.1 independente**. Não iniciar C3-P/C3.
+
+
+### R8 — correções do Executor; R8-F1/R8-F2 (2026-10-08)
+
+**Status:** **PRONTO PARA R8.1 INDEPENDENTE**. Corrigidos somente R8-F1 e R8-F2 no mesmo working tree C2-C, sem commit/stage. C3-P/C3 não foi iniciado.
+
+**Base preservada**
+- API/Cloud HEAD: `f36b0d184aea26a136ba136b11fe69822249a254`;
+- Desktop HEAD: `c8191bfea696368a7698a08bea727811412c05fd`, limpo;
+- wheel canônico pós-C2-B mantido:
+  - `alertam-4.3.3-py3-none-any.whl`;
+  - SHA-256 `76f2b566874798b2b471d9f4ba74903a3992d23b1695df41d072f6ee54f30056`.
+
+#### RED — reprodução exata contra o SHA base
+
+Além dos novos testes terem sido escritos antes da implementação, foi executado probe comportamental diretamente contra `f36b0d184aea26a136ba136b11fe69822249a254`, sem alterar o working tree:
+
+**R8-F1**
+- lease com expiry curta foi primed;
+- após o tempo ultrapassar `expires_at`, `prime()` antigo retornou **True**;
+- broker continuou com apenas **1 consume**;
+- portanto a lease stale continuava corrente/reutilizável.
+
+Saída:
+- `R8-F1_BASE_stale_prime=True`;
+- `R8-F1_BASE_consume_calls=1`.
+
+**R8-F2**
+- A/7 foi aceita;
+- invalidation remota falhou;
+- novo `BrokerSessionProvider` foi criado;
+- o broker ainda serviu A/7;
+- a instância nova retornou **True** e republicou A/7.
+
+Saída:
+- `R8-F2_BASE_restart_prime=True`;
+- `R8-F2_BASE_restart_identity=(A,7)`.
+
+**RED comportamental confirmado para os dois achados.**
+
+#### R8-F1 — expiry fail-closed
+
+`BrokerSessionProvider` agora recebe clock injetável; default usa `datetime.now(timezone.utc)`.
+
+Regras implementadas:
+- toda lease corrente é reavaliada em cada `prime()`;
+- toda lease candidata é validada antes de `publish()`;
+- `expires_at <= now` é inelegível;
+- datetime sem timezone é rejeitado fail-closed;
+- clock inválido/indisponível também falha fechado;
+- current expirada é removida **antes** de qualquer coleta WebPilot;
+- após expiração, o provider faz no máximo uma tentativa de `consume()` para obter replacement;
+- sem replacement elegível: `AUTH_UNAVAILABLE`;
+- replacement válida restaura `AUTH_READY`.
+
+**GREEN direcionado**
+- current válida → tempo avança além do expiry → current removida → broker consultado uma vez → sem replacement → AUTH_UNAVAILABLE;
+- candidate já expirada nunca é publicada;
+- current expirada + replacement válida → B/8 publicada normalmente;
+- integração com `StandbyCollector`: segundo ciclo após expiry faz **zero novas chamadas WebPilot** e retorna AUTH_UNAVAILABLE.
+
+#### R8-F2 — tombstone persistente entre restarts
+
+Adicionado contrato de rejection store com duas implementações:
+- `InMemoryRejectedIdentityStore` para testes isolados;
+- `FileRejectedIdentityStore` para persistência local de restart.
+
+`FileRejectedIdentityStore`:
+- persiste **somente** `lease_id + realm_epoch`;
+- formato versionado;
+- default bounded em **256 identidades**;
+- remove entradas mais antigas acima do limite;
+- escrita em arquivo temporário + `fsync` + `os.replace`;
+- arquivo final `0600`;
+- nenhuma cookie, ciphertext, Authorization, CloudBinding credential, Device secret ou raw payload;
+- path configurável por `ALERTAM_CLOUD_SESSION_TOMBSTONES_PATH`;
+- default local: `/tmp/alertam-cloud/session-rejections.json`;
+- erro de leitura/escrita do store é fail-closed para aceitação/rejeição.
+
+No semantic reject:
+1. current local é removida;
+2. identidade é persistida antes da tentativa remota;
+3. somente depois ocorre `broker.invalidate()`;
+4. se a invalidation remota falhar, o tombstone local permanece;
+5. após restart, mesma `lease_id + realm_epoch` é rejeitada antes de publish;
+6. uma identidade nova/elegível pode ser aceita normalmente.
+
+O restart de lease válida sem tombstone continua recuperando a mesma epoch, sem criar epoch nova.
+
+**GREEN direcionado**
+- outage de invalidation + restart com mesmo store:
+  - A/7 não é republicada;
+  - primeiro `prime()` após restart retorna False/AUTH_UNAVAILABLE;
+  - próximo broker candidate B/8 é aceita;
+- store bounded/sanitized/private:
+  - pruning comprovado;
+  - conteúdo sem secrets;
+  - modo `0600`;
+  - nenhum temp residual após replace.
+
+#### Sandbox sintético proporcional
+
+O sandbox C2-C foi ampliado sem alterar o runtime operacional:
+- `restart-outage`: processo/container Cloud sintético aceita A/77, sofre invalidation outage e persiste tombstone sanitizado;
+- `restart-probe`: **novo processo/container** compartilha apenas o state volume, recebe A/77 e rejeita; em seguida recebe B/78 e aceita;
+- `expiry-probe`: aceita lease válida, avança clock além de expiry e prova AUTH_UNAVAILABLE antes de reutilização.
+
+Saídas:
+- `c2c restart outage tombstone: PASS`;
+- `c2c restart rejects stale and accepts new identity: PASS`;
+- `c2c expiry rejects stale lease before reuse: PASS`;
+- cenário anterior de publisher A/B + Cloud recovery continua PASS;
+- verificador final de DB/snapshots continua PASS;
+- sandbox encerra com exit code 0 e `down -v --remove-orphans`;
+- nenhum WebPilot real.
+
+#### Gates finais R8-F1/F2
+
+Direcionados:
+- `test_broker_session.py`: **22/22 passed**;
+- `test_standby.py`: **8/8 passed**;
+- contrato estrutural sandbox: **5/5 passed**.
+
+Cloud:
+- `make cloud-test`: **49/49 passed**;
+- `make cloud-wheel-contract`: **PASS**;
+  - headless wheel contract PASS;
+  - standby synthetic contract PASS;
+- `make cloud-c2c-sandbox`: **PASS**.
+
+Security/redaction:
+- added-lines de runtime C2-C/R8 sem cookie/ciphertext/Authorization/credential/raw HTML/session payload/Device secret;
+- tombstone contém somente UUID + epoch;
+- nenhum `source=cloud`, snapshot Cloud, failover/failback, fencing/hysteresis ou event/push;
+- nenhum WebPilot real;
+- nenhuma migration alterada/aplicada em produção.
+
+Git/hygiene:
+- `git diff --check`: PASS;
+- untracked files verificados com `git diff --no-index --check`: zero diagnósticos;
+- API/Cloud staged files: **0**;
+- API/Cloud HEAD permanece `f36b0d184aea26a136ba136b11fe69822249a254`;
+- Desktop staged files: **0** e working tree limpo;
+- sandbox final removido;
+- Shadow original segue nos mesmos PIDs 14865/14873, start time 10:01:41, sem reinício/manipulação.
+
+**PARECER SOLICITADO:** **R8.1 independente** exclusivamente sobre o fechamento de R8-F1 e R8-F2. Não fazer commit/stage antes do parecer. C3-P/C3 permanece bloqueado.
+
+
+### R8.1 independente — fechamento de R8-F1/R8-F2 e encerramento técnico do C2 (2026-10-09)
+
+**Resultado:** APROVADO. R8-F1 e R8-F2 estão encerrados. O C2-C está aprovado para um único commit exato no repositório API/Cloud; o C2 fica tecnicamente encerrado após esse commit.
+
+**Evidência independente**
+- Base API/Cloud revisada: `f36b0d184aea26a136ba136b11fe69822249a254`.
+- Desktop permaneceu limpo em `c8191bfea696368a7698a08bea727811412c05fd`; nenhum arquivo Desktop mudou em C2-C.
+- Probe independente R8-F1: depois de ultrapassar `expires_at`, `prime()` retornou **False**, `AUTH_UNAVAILABLE`, `current_identity=None`; houve somente a tentativa única de buscar replacement e nenhum novo publish da lease stale.
+- Probe independente R8-F2: após invalidation outage + nova instância usando o mesmo store persistente, A/7 foi recusada; o candidate novo B/8 foi aceito; arquivo ficou `0600` e sem material secreto.
+- Probes adicionais do contrato C2 confirmaram:
+  - estado inicialmente `AUTH_UNAVAILABLE` volta a `AUTH_READY` quando aparece uma nova lease elegível;
+  - lease com expiry futura continua permitindo invalidation semântica e troca para nova identidade.
+- `make cloud-test`: **49/49 passed**.
+- `make cloud-wheel-contract`: PASS com o wheel canônico pós-C2-B SHA-256 `76f2b566874798b2b471d9f4ba74903a3992d23b1695df41d072f6ee54f30056`.
+- `make cloud-c2c-sandbox`: PASS, incluindo restart-outage, restart-probe e expiry-probe em containers separados com estado persistido apenas no volume sintético; ambiente removido ao final.
+- `make test-all`: **646 passed / 0 failed**.
+- `git diff --check`: PASS; untracked também sem diagnósticos; staged files: 0.
+- não restaram containers/volumes do sandbox C2-C.
+- Shadow original permaneceu intacto nos PIDs 14865/14873, iniciado às 10:01:41.
+
+**Fechamento R8-F1 — APROVADO**
+A validade temporal agora é checada tanto na lease corrente quanto em todo candidate. Lease expirada ou com timestamp/clock inválido falha fechado antes de qualquer novo acesso WebPilot. Uma replacement válida pode restaurar o standby; sem replacement, permanece `AUTH_UNAVAILABLE`.
+
+**Fechamento R8-F2 — APROVADO**
+A rejeição semântica é persistida antes da tentativa de invalidation remota e sobrevive à recriação do provider/processo quando o mesmo estado persistente é usado. A identidade rejeitada não é republicada; identidade nova continua elegível. O store mantém somente `lease_id + realm_epoch`, é bounded, sanitizado e escrito de forma atômica.
+
+**Nota operacional não bloqueante para C3-P**
+O default atual do store é `/tmp/alertam-cloud/session-rejections.json`. O C2 ainda não liga o standby no runtime operacional, portanto isso não bloqueia o encerramento técnico do C2. Antes de qualquer Cloud operacional/redeploy/recriação de container, o C3-P deve tornar explícito um path/volume realmente persistente para `ALERTAM_CLOUD_SESSION_TOMBSTONES_PATH`; não presumir que `/tmp` sobreviva a recriação do container.
+
+**Autorização Git**
+- autorizado **um único commit local** contendo exatamente o diff C2-C revisado + registros R8/R8.1 no API/Cloud;
+- nenhuma alteração adicional antes desse commit; se houver, re-review;
+- após o commit, confirmar working tree limpo e registrar o SHA final no handoff;
+- nenhum novo commit Desktop é necessário para C2-C.
+
+**Próximo checkpoint**
+Após o commit exato do C2-C, o único avanço permitido é **C3-P — plano de autoridade/source/snapshots**. Não iniciar C3 funcional automaticamente. C3-P deve ser revisado independentemente antes de implementar source authority, snapshots, lease/fencing, hysteresis ou failover/failback.
+
+Push, merge, deploy, migration 020 em produção, Northflank operacional, WebPilot real no Cloud, SessionLease operacional real, `source=cloud`, failover/failback e cutover continuam proibidos sem autorização separada.

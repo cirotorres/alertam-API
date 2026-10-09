@@ -8,13 +8,15 @@ MIGRATIONS_DIR := api/supabase/migrations
 DESKTOP_WHEEL ?=
 DESKTOP_FIXTURE ?=
 CLOUD_HEADLESS_IMAGE ?= alertam-cloud-headless:local
+C2C_SANDBOX_COMPOSE := docker compose -f cloud/sandbox/c2c-compose.yml
 
 .PHONY: help run dev dev-up dev-down dev-reset dev-logs dev-ps dev-config dev-info \
         dev-db-shell dev-api-shell api-run sync test test-unit test-contract \
         test-integration test-all docker-build migrate migrate-dev migrate-seed \
         migrate-list migration-new prod-migrate prod-migrate-check prod-migrate-status prod-env prod-check \
         prod prod-up prod-down prod-logs prod-ps prod-config prod-rebuild \
-        cloud-test cloud-build cloud-smoke
+        cloud-test cloud-build cloud-smoke cloud-wheel-contract cloud-build-wheel \
+        cloud-smoke-wheel cloud-c2c-sandbox
 
 help:
 	@printf '%s\n' \
@@ -214,6 +216,11 @@ cloud-build-wheel:
 
 cloud-smoke-wheel: cloud-build-wheel
 	CLOUD_IMAGE="$(CLOUD_HEADLESS_IMAGE)" 	CLOUD_CONTAINER_NAME=alertam-cloud-headless-smoke 	./cloud/scripts/smoke.sh
+
+cloud-c2c-sandbox:
+	@test -f "$(DESKTOP_WHEEL)" || { echo "Erro: DESKTOP_WHEEL precisa apontar para o wheel canônico."; exit 1; }
+	@test -f "$(DESKTOP_FIXTURE)" || { echo "Erro: DESKTOP_FIXTURE precisa apontar para a fixture histórica."; exit 1; }
+	@set -u; 	wheel="$$(realpath "$(DESKTOP_WHEEL)")"; 	export DESKTOP_WHEEL_DIR="$$(dirname "$$wheel")"; 	export ALERTAM_WHEEL_NAME="$$(basename "$$wheel")"; 	export DESKTOP_FIXTURE_DIR="$$(dirname "$$(realpath "$(DESKTOP_FIXTURE)")")"; 	cleanup() { $(C2C_SANDBOX_COMPOSE) down -v --remove-orphans >/dev/null 2>&1 || true; }; 	trap cleanup EXIT; 	$(C2C_SANDBOX_COMPOSE) up -d --build; 	set +e; 	$(C2C_SANDBOX_COMPOSE) wait verify; 	code=$$?; 	set -e; 	$(C2C_SANDBOX_COMPOSE) logs --no-color bootstrap publisher-a cloud-a publisher-b cloud-runner restart-outage restart-probe expiry-probe verify; 	exit $$code
 
 prod-env:
 	@if [ -e "$(PROD_ENV)" ]; then \

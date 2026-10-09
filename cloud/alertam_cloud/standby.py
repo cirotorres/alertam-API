@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import StrEnum
 from typing import Callable, Protocol
+from uuid import UUID
 
 
 class SessionProvider(Protocol):
@@ -18,13 +20,31 @@ class HttpClient(Protocol):
     def get(self, url: str): ...
 
 
+class StandbyReason(StrEnum):
+    OK = "OK"
+    AUTH_UNAVAILABLE = "AUTH_UNAVAILABLE"
+    HTTP_ERROR = "HTTP_ERROR"
+    PARSE_ERROR = "PARSE_ERROR"
+
+
+class LeaseExpiryState(StrEnum):
+    UNKNOWN = "unknown"
+    NO_EXPIRY = "no_expiry"
+    ACTIVE = "active"
+    EXPIRED = "expired"
+
+
 @dataclass(frozen=True)
 class StandbyStatus:
     realm_id: str | None
     realm_epoch: int | None
+    publisher_id: UUID | None
+    lease_age_seconds: int | None
+    lease_expiry_state: LeaseExpiryState
     auth_state: str
     last_collection_at: datetime | None
     last_collection_result: str
+    reason_code: StandbyReason
     maneuver_count: int
     weather_ok: bool
 
@@ -148,6 +168,46 @@ class StandbyCollector:
         weather_ok: bool,
     ) -> StandbyStatus:
         lease = self.session_provider.current_lease
+        publisher_id = (
+            getattr(lease, "publisher_id", None)
+            if lease is not None
+            else None
+        )
+        if publisher_id is not None and not isinstance(publisher_id, UUID):
+            try:
+                publisher_id = UUID(str(publisher_id))
+            except (TypeError, ValueError):
+                publisher_id = None
+
+        lease_age_seconds: int | None = None
+        expiry_state = LeaseExpiryState.UNKNOWN
+        if lease is not None:
+            received_at = getattr(lease, "received_at", None)
+            if (
+                isinstance(received_at, datetime)
+                and received_at.tzinfo is not None
+                and received_at.utcoffset() is not None
+            ):
+                lease_age_seconds = max(
+                    0,
+                    int((now - received_at.astimezone(timezone.utc)).total_seconds()),
+                )
+
+            expires_at = getattr(lease, "expires_at", None)
+            if expires_at is None:
+                expiry_state = LeaseExpiryState.NO_EXPIRY
+            elif (
+                isinstance(expires_at, datetime)
+                and expires_at.tzinfo is not None
+                and expires_at.utcoffset() is not None
+            ):
+                expiry_state = (
+                    LeaseExpiryState.EXPIRED
+                    if expires_at.astimezone(timezone.utc) <= now
+                    else LeaseExpiryState.ACTIVE
+                )
+
+        reason = StandbyReason(result)
         return StandbyStatus(
             realm_id=(getattr(lease, "realm_id", None) if lease is not None else None),
             realm_epoch=(
@@ -155,9 +215,13 @@ class StandbyCollector:
                 if lease is not None
                 else None
             ),
+            publisher_id=publisher_id,
+            lease_age_seconds=lease_age_seconds,
+            lease_expiry_state=expiry_state,
             auth_state="AUTH_READY" if lease is not None else "AUTH_UNAVAILABLE",
             last_collection_at=now,
             last_collection_result=result,
+            reason_code=reason,
             maneuver_count=max(0, int(maneuver_count)),
             weather_ok=bool(weather_ok),
         )

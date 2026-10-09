@@ -402,3 +402,307 @@ def test_postgres_publisher_id_owner_or_realm_collision_is_conflict():
             publisher_id=PUB_A,
             provider_scope=profile,
         )
+
+
+def test_c2c_multi_provider_scope_matrix_and_global_epoch_order():
+    repo = _repo()
+    _seed(repo)
+
+    incompatible = repo.ensure_session_publisher(
+        device_id="pecem-b",
+        realm_id="webpilot-pecem",
+        publisher_id=PUB_B,
+        provider_scope=ProviderScopeProfile(
+            scope_id="other-profile",
+            schema_version=1,
+            capabilities=("maneuvers",),
+        ),
+    )
+    assert incompatible is not None
+    checked = repo.verify_session_publisher_scope(PUB_B)
+    assert checked is not None
+    assert checked.scope_status is ScopeStatus.INCOMPATIBLE
+    assert _accept(
+        repo,
+        device_id="pecem-b",
+        publisher_id=PUB_B,
+        lease_id=LEASE_B,
+        generation=1,
+        fingerprint="b" * 64,
+    ) is None
+
+    assert DSN is not None
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        assert conn.execute(
+            "select count(*) from public.webpilot_session_leases"
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "select count(*) from public.webpilot_realm_epoch_counters"
+        ).fetchone()[0] == 0
+
+    compatible_b = repo.ensure_session_publisher(
+        device_id="pecem-b",
+        realm_id="webpilot-pecem",
+        publisher_id=PUB_B,
+        provider_scope=ProviderScopeProfile(
+            scope_id="pecem-standard",
+            schema_version=1,
+            capabilities=("maneuvers", "weather"),
+        ),
+    )
+    assert compatible_b is not None
+    assert compatible_b.scope_status is ScopeStatus.UNVERIFIED
+    verified_b = repo.verify_session_publisher_scope(PUB_B)
+    assert verified_b is not None
+    assert verified_b.scope_status is ScopeStatus.VERIFIED
+    _publisher(repo, PUB_A, "pecem-a")
+
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(
+            """
+            insert into public.webpilot_realm_epoch_counters(realm_id, last_epoch)
+            values ('webpilot-pecem', 100)
+            on conflict (realm_id) do update set last_epoch = excluded.last_epoch
+            """
+        )
+
+    lease_a_37 = _accept(
+        repo,
+        device_id="pecem-a",
+        publisher_id=PUB_A,
+        lease_id=LEASE_A,
+        generation=37,
+        fingerprint="a" * 64,
+    )
+    lease_b_1 = _accept(
+        repo,
+        device_id="pecem-b",
+        publisher_id=PUB_B,
+        lease_id=LEASE_B,
+        generation=1,
+        fingerprint="b" * 64,
+    )
+    lease_a_38_id = UUID("33333333-3333-3333-3333-333333333333")
+    assert lease_a_37 is not None and lease_b_1 is not None
+    assert (lease_a_37.realm_epoch, lease_b_1.realm_epoch) == (101, 102)
+
+    with pytest.raises(SessionLeaseGenerationConflictError):
+        _accept(
+            repo,
+            device_id="pecem-a",
+            publisher_id=PUB_A,
+            lease_id=UUID("44444444-4444-4444-4444-444444444444"),
+            generation=37,
+            fingerprint="different".ljust(64, "d"),
+        )
+
+    lease_a_38 = _accept(
+        repo,
+        device_id="pecem-a",
+        publisher_id=PUB_A,
+        lease_id=lease_a_38_id,
+        generation=38,
+        fingerprint="c" * 64,
+    )
+    assert lease_a_38 is not None
+    assert lease_a_38.realm_epoch == 103
+    assert repo.get_current_session_lease("webpilot-pecem", now=NOW) == lease_a_38
+
+    revoked_b = repo.revoke_session_publisher(PUB_B)
+    assert revoked_b is not None
+    assert repo.get_current_session_lease("webpilot-pecem", now=NOW) == lease_a_38
+    assert _accept(
+        repo,
+        device_id="pecem-b",
+        publisher_id=PUB_B,
+        lease_id=UUID("55555555-5555-5555-5555-555555555555"),
+        generation=2,
+        fingerprint="e" * 64,
+    ) is None
+
+    pub_a2 = UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
+    rotated = repo.ensure_session_publisher(
+        device_id="pecem-a",
+        realm_id="webpilot-pecem",
+        publisher_id=pub_a2,
+        provider_scope=ProviderScopeProfile(
+            scope_id="pecem-standard",
+            schema_version=1,
+            capabilities=("maneuvers", "weather"),
+        ),
+    )
+    assert rotated is not None
+    assert repo.verify_session_publisher_scope(pub_a2).scope_status is ScopeStatus.VERIFIED
+    assert repo.get_session_publisher(PUB_A).status.value == "revoked"
+    assert _accept(
+        repo,
+        device_id="pecem-a",
+        publisher_id=PUB_A,
+        lease_id=UUID("66666666-6666-6666-6666-666666666666"),
+        generation=39,
+        fingerprint="f" * 64,
+    ) is None
+
+
+def test_c2c_required_scope_change_and_authority_disable_are_immediate_fail_closed():
+    repo = _repo()
+    _seed(repo)
+    _publisher(repo, PUB_A, "pecem-a")
+    accepted = _accept(
+        repo,
+        device_id="pecem-a",
+        publisher_id=PUB_A,
+        lease_id=LEASE_A,
+        generation=1,
+        fingerprint="a" * 64,
+    )
+    assert accepted is not None
+
+    changed = repo.set_required_provider_scope(
+        "webpilot-pecem",
+        ProviderScopeProfile(
+            scope_id="pecem-v2",
+            schema_version=2,
+            capabilities=("maneuvers", "weather"),
+        ),
+    )
+    assert changed is not None
+    assert repo.get_session_publisher(PUB_A).scope_status is ScopeStatus.INCOMPATIBLE
+    assert repo.get_current_session_lease("webpilot-pecem", now=NOW) is None
+    assert _accept(
+        repo,
+        device_id="pecem-a",
+        publisher_id=PUB_A,
+        lease_id=LEASE_B,
+        generation=2,
+        fingerprint="b" * 64,
+    ) is None
+
+    assert DSN is not None
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        assert conn.execute(
+            "select last_epoch from public.webpilot_realm_epoch_counters "
+            "where realm_id='webpilot-pecem'"
+        ).fetchone()[0] == 1
+
+        conn.execute(
+            "update public.webpilot_provider_scope_requirements "
+            "set scope_id='pecem-standard', schema_version=1, "
+            "capabilities=array['maneuvers','weather'] "
+            "where realm_id='webpilot-pecem'"
+        )
+        conn.execute(
+            "update public.webpilot_session_publishers "
+            "set scope_status='verified', scope_verified_at=clock_timestamp() "
+            "where publisher_id=%s",
+            (PUB_A,),
+        )
+        conn.execute("update public.devices set enabled=false where device_id='pecem-a'")
+
+    assert repo.get_current_session_lease("webpilot-pecem", now=NOW) is None
+    assert _accept(
+        repo,
+        device_id="pecem-a",
+        publisher_id=PUB_A,
+        lease_id=LEASE_B,
+        generation=2,
+        fingerprint="b" * 64,
+    ) is None
+
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute("update public.devices set enabled=true where device_id='pecem-a'")
+        conn.execute(
+            "update public.webpilot_auth_realms set active=false "
+            "where realm_id='webpilot-pecem'"
+        )
+    assert repo.get_current_session_lease("webpilot-pecem", now=NOW) is None
+
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(
+            "update public.webpilot_auth_realms set active=true "
+            "where realm_id='webpilot-pecem'"
+        )
+        conn.execute(
+            "update public.webpilot_auth_realm_devices "
+            "set revoked_at=clock_timestamp() "
+            "where realm_id='webpilot-pecem' and device_id='pecem-a'"
+        )
+    assert repo.get_current_session_lease("webpilot-pecem", now=NOW) is None
+
+
+def test_c2c_expiry_invalidation_fallback_and_repository_restart_preserve_epoch():
+    repo = _repo()
+    _seed(repo)
+    _publisher(repo, PUB_A, "pecem-a")
+    _publisher(repo, PUB_B, "pecem-b")
+
+    expired = repo.accept_session_lease_atomic(
+        device_id="pecem-a",
+        realm_id="webpilot-pecem",
+        publisher_id=PUB_A,
+        lease_id=LEASE_A,
+        local_generation=1,
+        payload_fingerprint="a" * 64,
+        ciphertext="cipher-a",
+        nonce="nonce-a",
+        key_version=1,
+        payload_schema_version=1,
+        expires_at=NOW - timedelta(seconds=1),
+    )
+    valid_b = _accept(
+        repo,
+        device_id="pecem-b",
+        publisher_id=PUB_B,
+        lease_id=LEASE_B,
+        generation=1,
+        fingerprint="b" * 64,
+    )
+    assert expired is not None and valid_b is not None
+    assert repo.get_current_session_lease("webpilot-pecem", now=NOW) == valid_b
+
+    valid_a2 = _accept(
+        repo,
+        device_id="pecem-a",
+        publisher_id=PUB_A,
+        lease_id=UUID("33333333-3333-3333-3333-333333333333"),
+        generation=2,
+        fingerprint="c" * 64,
+    )
+    assert valid_a2 is not None
+    assert repo.get_current_session_lease("webpilot-pecem", now=NOW) == valid_a2
+
+    invalidated = repo.invalidate_session_lease(
+        realm_id="webpilot-pecem",
+        lease_id=valid_a2.lease_id,
+        realm_epoch=valid_a2.realm_epoch,
+    )
+    assert invalidated is not None
+    assert repo.get_current_session_lease("webpilot-pecem", now=NOW) == valid_b
+
+    restarted = _repo()
+    assert restarted.get_current_session_lease("webpilot-pecem", now=NOW) == valid_b
+    with pytest.raises(SessionLeaseGenerationConflictError):
+        restarted.accept_session_lease_atomic(
+            device_id="pecem-b",
+            realm_id="webpilot-pecem",
+            publisher_id=PUB_B,
+            lease_id=UUID("77777777-7777-7777-7777-777777777777"),
+            local_generation=1,
+            payload_fingerprint="different".ljust(64, "d"),
+            ciphertext="cipher-different",
+            nonce="nonce-different",
+            key_version=1,
+            payload_schema_version=1,
+            expires_at=NOW + timedelta(hours=1),
+        )
+
+    new_b = _accept(
+        restarted,
+        device_id="pecem-b",
+        publisher_id=PUB_B,
+        lease_id=UUID("88888888-8888-8888-8888-888888888888"),
+        generation=2,
+        fingerprint="e" * 64,
+    )
+    assert new_b is not None
+    assert new_b.realm_epoch == valid_a2.realm_epoch + 1

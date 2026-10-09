@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import logging
+import os
+from pathlib import Path
+import tempfile
 from typing import Any, Callable, Mapping, Protocol, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -34,6 +37,146 @@ class BrokerLeaseUnavailable(BrokerSessionError):
 
 class BrokerUnauthorized(BrokerSessionError):
     pass
+
+
+class RejectedIdentityStoreError(BrokerSessionError):
+    pass
+
+
+RejectedIdentity = tuple[UUID, int]
+
+
+class RejectedIdentityStore(Protocol):
+    def contains(self, identity: RejectedIdentity) -> bool: ...
+    def add(self, identity: RejectedIdentity) -> None: ...
+
+
+class InMemoryRejectedIdentityStore:
+    def __init__(self, *, max_entries: int = 256) -> None:
+        self._max_entries = max(1, int(max_entries))
+        self._items: list[RejectedIdentity] = []
+
+    def contains(self, identity: RejectedIdentity) -> bool:
+        return identity in self._items
+
+    def add(self, identity: RejectedIdentity) -> None:
+        normalized = (UUID(str(identity[0])), int(identity[1]))
+        self._items = [item for item in self._items if item != normalized]
+        self._items.append(normalized)
+        if len(self._items) > self._max_entries:
+            self._items = self._items[-self._max_entries:]
+
+
+class FileRejectedIdentityStore:
+    VERSION = 1
+
+    def __init__(
+        self,
+        path: str | os.PathLike[str],
+        *,
+        max_entries: int = 256,
+    ) -> None:
+        self.path = Path(path)
+        self.max_entries = max(1, int(max_entries))
+
+    @classmethod
+    def from_environment(cls) -> "FileRejectedIdentityStore":
+        raw = os.environ.get(
+            "ALERTAM_CLOUD_SESSION_TOMBSTONES_PATH",
+            "/tmp/alertam-cloud/session-rejections.json",
+        )
+        return cls(raw)
+
+    def contains(self, identity: RejectedIdentity) -> bool:
+        normalized = (UUID(str(identity[0])), int(identity[1]))
+        return normalized in self._load()
+
+    def add(self, identity: RejectedIdentity) -> None:
+        normalized = (UUID(str(identity[0])), int(identity[1]))
+        items = [item for item in self._load() if item != normalized]
+        items.append(normalized)
+        self._write(items[-self.max_entries:])
+
+    def _load(self) -> list[RejectedIdentity]:
+        if not self.path.exists():
+            return []
+        try:
+            decoded = json.loads(self.path.read_text(encoding="utf-8"))
+            if (
+                not isinstance(decoded, dict)
+                or decoded.get("version") != self.VERSION
+                or not isinstance(decoded.get("identities"), list)
+            ):
+                raise ValueError
+            items: list[RejectedIdentity] = []
+            for item in decoded["identities"]:
+                if not isinstance(item, dict):
+                    raise ValueError
+                lease_id = UUID(str(item["lease_id"]))
+                realm_epoch = int(item["realm_epoch"])
+                if realm_epoch <= 0:
+                    raise ValueError
+                identity = (lease_id, realm_epoch)
+                if identity not in items:
+                    items.append(identity)
+            return items[-self.max_entries:]
+        except (
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise RejectedIdentityStoreError(
+                "SessionLease rejection store inválido"
+            ) from exc
+
+    def _write(self, items: Sequence[RejectedIdentity]) -> None:
+        payload = {
+            "version": self.VERSION,
+            "identities": [
+                {
+                    "lease_id": str(lease_id),
+                    "realm_epoch": int(realm_epoch),
+                }
+                for lease_id, realm_epoch in items
+            ],
+        }
+        parent = self.path.parent
+        temp_path: Path | None = None
+        try:
+            parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=parent,
+                prefix=f".{self.path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                temp_path = Path(handle.name)
+                json.dump(
+                    payload,
+                    handle,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(temp_path, 0o600)
+            os.replace(temp_path, self.path)
+        except OSError as exc:
+            raise RejectedIdentityStoreError(
+                "SessionLease rejection store indisponível"
+            ) from exc
+        finally:
+            if temp_path is not None and temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
 
 
 @dataclass(frozen=True)
@@ -249,11 +392,20 @@ class SessionBrokerClient:
 class BrokerSessionProvider:
     """Adapta SessionLease do broker ao WebPilotAuthCoordinator canônico."""
 
-    def __init__(self, broker: object) -> None:
+    def __init__(
+        self,
+        broker: object,
+        *,
+        clock: Callable[[], datetime] | None = None,
+        rejection_store: RejectedIdentityStore | None = None,
+    ) -> None:
         self._broker = broker
         self._auth: LocalAuthCoordinator | None = None
         self._current: BrokerLease | None = None
-        self._rejected_identities: set[tuple[UUID, int]] = set()
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._rejection_store = (
+            rejection_store or FileRejectedIdentityStore.from_environment()
+        )
 
     @property
     def current_identity(self) -> tuple[UUID, int] | None:
@@ -274,8 +426,12 @@ class BrokerSessionProvider:
         self._auth = auth
 
     def prime(self) -> bool:
-        if self._current is not None:
-            return True
+        current = self._current
+        if current is not None:
+            if self._lease_time_valid(current):
+                return True
+            self._current = None
+
         lease = self._consume_safe()
         if lease is None:
             return False
@@ -286,8 +442,9 @@ class BrokerSessionProvider:
         if current is None:
             return False
         identity = (current.lease_id, current.realm_epoch)
-        self._rejected_identities.add(identity)
         self._current = None
+        if not self._remember_rejected(identity):
+            return False
         try:
             self._broker.invalidate(*identity)
         except Exception as exc:  # noqa: BLE001
@@ -303,8 +460,9 @@ class BrokerSessionProvider:
         if current is None:
             return False
         identity = (current.lease_id, current.realm_epoch)
-        self._rejected_identities.add(identity)
         self._current = None
+        if not self._remember_rejected(identity):
+            return False
         try:
             self._broker.invalidate(*identity)
         except Exception as exc:  # noqa: BLE001
@@ -321,11 +479,56 @@ class BrokerSessionProvider:
         return self._accept_candidate(replacement)
 
     def _accept_candidate(self, lease: BrokerLease) -> bool:
+        if not self._lease_time_valid(lease):
+            self._current = None
+            return False
         identity = (lease.lease_id, lease.realm_epoch)
-        if identity in self._rejected_identities:
+        if self._is_rejected(identity):
             self._current = None
             return False
         return self._publish(lease)
+
+    def _lease_time_valid(self, lease: BrokerLease) -> bool:
+        expires_at = lease.expires_at
+        if expires_at is None:
+            return True
+        if expires_at.tzinfo is None or expires_at.utcoffset() is None:
+            log.warning("SessionLease expiry inválido")
+            return False
+        try:
+            now = self._clock()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("SessionLease clock indisponível: %s", type(exc).__name__)
+            return False
+        if (
+            not isinstance(now, datetime)
+            or now.tzinfo is None
+            or now.utcoffset() is None
+        ):
+            log.warning("SessionLease clock inválido")
+            return False
+        return expires_at.astimezone(timezone.utc) > now.astimezone(timezone.utc)
+
+    def _is_rejected(self, identity: RejectedIdentity) -> bool:
+        try:
+            return self._rejection_store.contains(identity)
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "SessionLease rejection store unavailable: %s",
+                type(exc).__name__,
+            )
+            return True
+
+    def _remember_rejected(self, identity: RejectedIdentity) -> bool:
+        try:
+            self._rejection_store.add(identity)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "SessionLease rejection store unavailable: %s",
+                type(exc).__name__,
+            )
+            return False
 
     def _consume_safe(self) -> BrokerLease | None:
         try:

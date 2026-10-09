@@ -1,0 +1,250 @@
+name: alertam-c2c-sandbox
+
+x-api-build: &api-build
+  context: ../../api
+  dockerfile: Dockerfile
+  target: dev
+
+x-cloud-build: &cloud-build
+  context: ..
+  dockerfile: Dockerfile
+  target: headless
+  additional_contexts:
+    alertam_wheel: ${DESKTOP_WHEEL_DIR:?DESKTOP_WHEEL_DIR required}
+  args:
+    ALERTAM_WHEEL_NAME: ${ALERTAM_WHEEL_NAME:?ALERTAM_WHEEL_NAME required}
+
+x-db-env: &db-env
+  DATABASE_URL: postgresql://alertam:alertam@db:5432/alertam_c2c
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: alertam
+      POSTGRES_PASSWORD: alertam
+      POSTGRES_DB: alertam_c2c
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alertam -d alertam_c2c"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+      start_period: 2s
+
+  migrate:
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *db-env
+    volumes:
+      - ../../api/supabase/migrations:/migrations:ro
+      - ./migrate_c2c.sh:/sandbox/migrate_c2c.sh:ro
+    command: ["/bin/sh", "/sandbox/migrate_c2c.sh"]
+    restart: "no"
+
+  bootstrap:
+    build: *api-build
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *db-env
+      DEVICE_A_SECRET: sandbox-device-a-secret
+      DEVICE_B_SECRET: sandbox-device-b-secret
+      CLOUD_CREDENTIAL: CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+      STATE_DIR: /state
+      PYTHONPATH: /app
+    volumes:
+      - ./bootstrap.py:/sandbox/bootstrap.py:ro
+      - sandbox_state:/state
+    command: ["python", "/sandbox/bootstrap.py"]
+    restart: "no"
+
+  api:
+    build: *api-build
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    environment:
+      <<: *db-env
+      ENVIRONMENT: test
+      PERSISTENCE_BACKEND: postgres
+      MOCK_SEED_DEVICE: "false"
+      SESSION_BROKER_FINGERPRINT_KEY: RkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkY
+      SESSION_BROKER_KEYRING: '{"1":"S0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0s"}'
+      SESSION_BROKER_ACTIVE_KEY_VERSION: "1"
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    restart: "no"
+
+  fake-webpilot:
+    image: python:3.12-slim
+    volumes:
+      - ./fake_webpilot.py:/sandbox/fake_webpilot.py:ro
+      - ${DESKTOP_FIXTURE_DIR:?DESKTOP_FIXTURE_DIR required}:/fixtures:ro
+    command: ["python", "/sandbox/fake_webpilot.py"]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/healthz', timeout=2).read()"
+      interval: 1s
+      timeout: 3s
+      retries: 20
+      start_period: 1s
+    restart: "no"
+
+  publisher-a:
+    build: *api-build
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      <<: *db-env
+      API_URL: http://api:8000
+      DEVICE_ID: sandbox-desktop-a
+      DEVICE_SECRET: sandbox-device-a-secret
+      PUBLISHER_ID: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
+      GENERATION: "37"
+      COOKIE_VALUE: synthetic-cookie-a
+      STATE_FILE: /state/publisher-a.json
+      EXPECT_CONFLICT: "false"
+      PYTHONPATH: /app
+    volumes:
+      - ./publisher.py:/sandbox/publisher.py:ro
+      - sandbox_state:/state
+    command: ["python", "/sandbox/publisher.py"]
+    restart: "no"
+
+  cloud-a:
+    build: *cloud-build
+    depends_on:
+      publisher-a:
+        condition: service_completed_successfully
+      fake-webpilot:
+        condition: service_healthy
+    environment:
+      CLOUD_CREDENTIAL: CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+      API_INTERNAL_URL: http://api:8000
+      FAKE_WEBPILOT_URL: http://fake-webpilot:8081
+      SCENARIO_MODE: initial
+      STATE_DIR: /state
+      PYTHONPATH: /app
+    volumes:
+      - ./cloud_scenario.py:/sandbox/cloud_scenario.py:ro
+      - sandbox_state:/state
+    command: ["python", "/sandbox/cloud_scenario.py"]
+    restart: "no"
+
+  publisher-b:
+    build: *api-build
+    depends_on:
+      cloud-a:
+        condition: service_completed_successfully
+    environment:
+      <<: *db-env
+      API_URL: http://api:8000
+      DEVICE_ID: sandbox-desktop-b
+      DEVICE_SECRET: sandbox-device-b-secret
+      PUBLISHER_ID: bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb
+      GENERATION: "1"
+      COOKIE_VALUE: synthetic-cookie-b
+      STATE_FILE: /state/publisher-b.json
+      EXPECT_CONFLICT: "true"
+      PYTHONPATH: /app
+    volumes:
+      - ./publisher.py:/sandbox/publisher.py:ro
+      - sandbox_state:/state
+    command: ["python", "/sandbox/publisher.py"]
+    restart: "no"
+
+  cloud-runner:
+    build: *cloud-build
+    depends_on:
+      publisher-b:
+        condition: service_completed_successfully
+      fake-webpilot:
+        condition: service_healthy
+    environment:
+      CLOUD_CREDENTIAL: CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+      API_INTERNAL_URL: http://api:8000
+      FAKE_WEBPILOT_URL: http://fake-webpilot:8081
+      SCENARIO_MODE: recovery
+      STATE_DIR: /state
+      PYTHONPATH: /app
+    volumes:
+      - ./cloud_scenario.py:/sandbox/cloud_scenario.py:ro
+      - sandbox_state:/state
+    command: ["python", "/sandbox/cloud_scenario.py"]
+    restart: "no"
+
+  restart-outage:
+    build: *cloud-build
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    environment:
+      MODE: outage
+      STATE_DIR: /state
+      PYTHONPATH: /app
+    volumes:
+      - ./restart_persistence.py:/sandbox/restart_persistence.py:ro
+      - sandbox_state:/state
+    command: ["python", "/sandbox/restart_persistence.py"]
+    restart: "no"
+
+  restart-probe:
+    build: *cloud-build
+    depends_on:
+      restart-outage:
+        condition: service_completed_successfully
+    environment:
+      MODE: restart
+      STATE_DIR: /state
+      PYTHONPATH: /app
+    volumes:
+      - ./restart_persistence.py:/sandbox/restart_persistence.py:ro
+      - sandbox_state:/state
+    command: ["python", "/sandbox/restart_persistence.py"]
+    restart: "no"
+
+  expiry-probe:
+    build: *cloud-build
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    environment:
+      MODE: expiry
+      STATE_DIR: /state
+      PYTHONPATH: /app
+    volumes:
+      - ./restart_persistence.py:/sandbox/restart_persistence.py:ro
+      - sandbox_state:/state
+    command: ["python", "/sandbox/restart_persistence.py"]
+    restart: "no"
+
+  verify:
+    build: *api-build
+    depends_on:
+      cloud-runner:
+        condition: service_completed_successfully
+      restart-probe:
+        condition: service_completed_successfully
+      expiry-probe:
+        condition: service_completed_successfully
+    environment:
+      <<: *db-env
+      STATE_DIR: /state
+      PYTHONPATH: /app
+    volumes:
+      - ./verify.py:/sandbox/verify.py:ro
+      - sandbox_state:/state:ro
+    command: ["python", "/sandbox/verify.py"]
+    restart: "no"
+
+volumes:
+  sandbox_state:
