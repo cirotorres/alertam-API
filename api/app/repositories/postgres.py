@@ -9,6 +9,19 @@ from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
 
 from app.models.maneuver_event import ManeuverEventIn
+from app.models.source_authority import (
+    AuthorityGrantView,
+    AuthorityMode,
+    AuthorityReasonCode,
+    AuthorityStatus,
+    ManagedSnapshotAcceptanceResult,
+    PublishUnderCurrentGrant,
+    SideEffectPolicy,
+    Source,
+    SourceAuthorityRecord,
+    SourceHeartbeatRecord,
+    TransitionCandidate,
+)
 from app.models.vessel_tracking_event import VesselTrackingEventIn
 from app.repositories.cloud_bindings import (
     CloudBindingAuthorityRecord,
@@ -72,6 +85,281 @@ from app.repositories.tracking import (
 class PostgresDeviceRepository:
     def __init__(self, database_url: str) -> None:
         self._database_url = database_url
+
+    def get_source_authority(
+        self,
+        device_id: str,
+    ) -> SourceAuthorityRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select device_id, mode, active_source, authority_epoch,
+                           authority_lease_id, holder_instance_id,
+                           lease_expires_at, granted_at, last_renewed_at,
+                           last_transition_at, transition_reason,
+                           last_authoritative_snapshot_at,
+                           authoritative_snapshot_stale_since,
+                           cloud_binding_id, realm_id, observed_realm_epoch,
+                           updated_at
+                    from public.get_device_source_authority(%s)
+                    """,
+                    (device_id,),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._source_authority_from_row(row)
+
+    def get_current_grant(
+        self,
+        device_id: str,
+    ) -> AuthorityGrantView | None:
+        authority = self.get_source_authority(device_id)
+        if authority is None or authority.mode is not AuthorityMode.MANAGED:
+            return None
+        if (
+            authority.active_source is None
+            or authority.authority_lease_id is None
+            or authority.holder_instance_id is None
+            or authority.lease_expires_at is None
+        ):
+            raise PersistenceUnavailableError()
+        return AuthorityGrantView(
+            device_id=authority.device_id,
+            source=authority.active_source,
+            authority_epoch=authority.authority_epoch,
+            authority_lease_id=authority.authority_lease_id,
+            holder_instance_id=authority.holder_instance_id,
+            lease_expires_at=authority.lease_expires_at,
+        )
+
+    def get_source_heartbeat(
+        self,
+        device_id: str,
+        source: Source,
+    ) -> SourceHeartbeatRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select device_id, source, instance_id, last_heartbeat_at,
+                           collection_healthy, process_healthy, healthy_since,
+                           consecutive_healthy, last_collection_ok_at,
+                           last_reported_generated_at,
+                           last_candidate_generated_at, last_reason_code,
+                           persistent_state_ready, updated_at
+                    from public.device_source_heartbeats
+                    where device_id=%s and source=%s
+                    """,
+                    (device_id, source.value),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._source_heartbeat_from_row(row)
+
+    def bootstrap_managed_source_authority(
+        self,
+        device_id: str,
+    ) -> ManagedSnapshotAcceptanceResult:
+        return self._managed_snapshot_rpc(
+            "bootstrap_managed_source_authority",
+            (device_id,),
+        )
+
+    def accept_current_grant_snapshot(
+        self,
+        command: PublishUnderCurrentGrant,
+    ) -> ManagedSnapshotAcceptanceResult:
+        candidate = command.candidate
+        return self._managed_snapshot_rpc(
+            "accept_managed_snapshot_current_grant",
+            (
+                candidate.device_id,
+                candidate.source.value,
+                command.authority_epoch,
+                command.authority_lease_id,
+                command.holder_instance_id,
+                Jsonb(candidate.snapshot),
+                candidate.snapshot_schema_version,
+                candidate.boot_id,
+                candidate.sequence,
+                candidate.generated_at,
+            ),
+        )
+
+    def accept_transition_candidate(
+        self,
+        command: TransitionCandidate,
+    ) -> ManagedSnapshotAcceptanceResult:
+        candidate = command.candidate
+        return self._managed_snapshot_rpc(
+            "accept_managed_snapshot_transition_candidate",
+            (
+                candidate.device_id,
+                candidate.source.value,
+                candidate.holder_instance_id,
+                Jsonb(candidate.snapshot),
+                candidate.snapshot_schema_version,
+                candidate.boot_id,
+                candidate.sequence,
+                candidate.generated_at,
+            ),
+        )
+
+    def return_source_authority_to_legacy(
+        self,
+        device_id: str,
+    ) -> SourceAuthorityRecord | None:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select device_id, mode, active_source, authority_epoch,
+                           authority_lease_id, holder_instance_id,
+                           lease_expires_at, granted_at, last_renewed_at,
+                           last_transition_at, transition_reason,
+                           last_authoritative_snapshot_at,
+                           authoritative_snapshot_stale_since,
+                           cloud_binding_id, realm_id, observed_realm_epoch,
+                           updated_at
+                    from public.return_source_authority_to_legacy(%s)
+                    """,
+                    (device_id,),
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        return self._source_authority_from_row(row)
+
+    def _managed_snapshot_rpc(
+        self,
+        name: str,
+        params: tuple[Any, ...],
+    ) -> ManagedSnapshotAcceptanceResult:
+        placeholders = ", ".join(["%s"] * len(params))
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    f"""
+                    select status, reason_code, received_at, device_id, source,
+                           authority_epoch, authority_lease_id,
+                           holder_instance_id, lease_expires_at,
+                           previous_source, source_transition,
+                           side_effect_policy, previous_snapshot
+                    from public.{name}({placeholders})
+                    """,
+                    params,
+                ).fetchone()
+        except psycopg.Error as exc:
+            raise PersistenceUnavailableError() from exc
+        if row is None:
+            raise PersistenceUnavailableError()
+        return self._managed_snapshot_result_from_row(row)
+
+    @classmethod
+    def _source_authority_from_row(
+        cls,
+        row: Any,
+    ) -> SourceAuthorityRecord | None:
+        if row is None:
+            return None
+        try:
+            return SourceAuthorityRecord(
+                device_id=str(row[0]),
+                mode=AuthorityMode(str(row[1])),
+                active_source=None if row[2] is None else Source(str(row[2])),
+                authority_epoch=int(row[3]),
+                authority_lease_id=None if row[4] is None else UUID(str(row[4])),
+                holder_instance_id=None if row[5] is None else UUID(str(row[5])),
+                lease_expires_at=None if row[6] is None else cls._aware_datetime(row[6]),
+                granted_at=None if row[7] is None else cls._aware_datetime(row[7]),
+                last_renewed_at=None if row[8] is None else cls._aware_datetime(row[8]),
+                last_transition_at=None if row[9] is None else cls._aware_datetime(row[9]),
+                transition_reason=(
+                    None if row[10] is None else AuthorityReasonCode(str(row[10]))
+                ),
+                last_authoritative_snapshot_at=(
+                    None if row[11] is None else cls._aware_datetime(row[11])
+                ),
+                authoritative_snapshot_stale_since=(
+                    None if row[12] is None else cls._aware_datetime(row[12])
+                ),
+                cloud_binding_id=None if row[13] is None else UUID(str(row[13])),
+                realm_id=None if row[14] is None else str(row[14]),
+                observed_realm_epoch=None if row[15] is None else int(row[15]),
+                updated_at=cls._aware_datetime(row[16]),
+            )
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    @classmethod
+    def _source_heartbeat_from_row(
+        cls,
+        row: Any,
+    ) -> SourceHeartbeatRecord | None:
+        if row is None:
+            return None
+        try:
+            return SourceHeartbeatRecord(
+                device_id=str(row[0]),
+                source=Source(str(row[1])),
+                instance_id=UUID(str(row[2])),
+                last_heartbeat_at=cls._aware_datetime(row[3]),
+                collection_healthy=bool(row[4]),
+                process_healthy=bool(row[5]),
+                healthy_since=None if row[6] is None else cls._aware_datetime(row[6]),
+                consecutive_healthy=int(row[7]),
+                last_collection_ok_at=None if row[8] is None else cls._aware_datetime(row[8]),
+                last_reported_generated_at=(
+                    None if row[9] is None else cls._aware_datetime(row[9])
+                ),
+                last_candidate_generated_at=(
+                    None if row[10] is None else cls._aware_datetime(row[10])
+                ),
+                last_reason_code=(
+                    None if row[11] is None else AuthorityReasonCode(str(row[11]))
+                ),
+                persistent_state_ready=None if row[12] is None else bool(row[12]),
+                updated_at=None if row[13] is None else cls._aware_datetime(row[13]),
+            )
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    @classmethod
+    def _managed_snapshot_result_from_row(
+        cls,
+        row: Any,
+    ) -> ManagedSnapshotAcceptanceResult:
+        try:
+            status = AuthorityStatus(str(row[0]))
+            source = Source(str(row[4]))
+            grant = None
+            if all(row[index] is not None for index in (5, 6, 7, 8)):
+                grant = AuthorityGrantView(
+                    device_id=str(row[3]),
+                    source=source,
+                    authority_epoch=int(row[5]),
+                    authority_lease_id=UUID(str(row[6])),
+                    holder_instance_id=UUID(str(row[7])),
+                    lease_expires_at=cls._aware_datetime(row[8]),
+                )
+            return ManagedSnapshotAcceptanceResult(
+                status=status,
+                reason_code=(
+                    None if row[1] is None else AuthorityReasonCode(str(row[1]))
+                ),
+                received_at=None if row[2] is None else cls._aware_datetime(row[2]),
+                device_id=str(row[3]),
+                source=source,
+                grant=grant,
+                previous_source=(
+                    None if row[9] is None else Source(str(row[9]))
+                ),
+                source_transition=bool(row[10]),
+                side_effect_policy=SideEffectPolicy(str(row[11])),
+                previous_snapshot_for_side_effects=row[12],
+            )
+        except (TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
 
     def create_device(self, record: DeviceAuthRecord) -> None:
         try:

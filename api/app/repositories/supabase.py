@@ -7,6 +7,19 @@ from uuid import UUID
 import httpx
 
 from app.models.maneuver_event import ManeuverEventIn
+from app.models.source_authority import (
+    AuthorityGrantView,
+    AuthorityMode,
+    AuthorityReasonCode,
+    AuthorityStatus,
+    ManagedSnapshotAcceptanceResult,
+    PublishUnderCurrentGrant,
+    SideEffectPolicy,
+    Source,
+    SourceAuthorityRecord,
+    SourceHeartbeatRecord,
+    TransitionCandidate,
+)
 from app.models.vessel_tracking_event import VesselTrackingEventIn
 from app.repositories.cloud_bindings import (
     CloudBindingAuthorityRecord,
@@ -86,6 +99,288 @@ class SupabaseDeviceRepository:
         if not self._server_key.startswith("sb_secret_"):
             headers["Authorization"] = f"Bearer {self._server_key}"
         return headers
+
+    def get_source_authority(
+        self,
+        device_id: str,
+    ) -> SourceAuthorityRecord | None:
+        return self._mapped_cloud_rpc(
+            "get_device_source_authority",
+            {"p_device_id": device_id},
+            self._source_authority_from_mapping,
+        )
+
+    def get_current_grant(
+        self,
+        device_id: str,
+    ) -> AuthorityGrantView | None:
+        authority = self.get_source_authority(device_id)
+        if authority is None or authority.mode is not AuthorityMode.MANAGED:
+            return None
+        if (
+            authority.active_source is None
+            or authority.authority_lease_id is None
+            or authority.holder_instance_id is None
+            or authority.lease_expires_at is None
+        ):
+            raise PersistenceUnavailableError()
+        return AuthorityGrantView(
+            device_id=authority.device_id,
+            source=authority.active_source,
+            authority_epoch=authority.authority_epoch,
+            authority_lease_id=authority.authority_lease_id,
+            holder_instance_id=authority.holder_instance_id,
+            lease_expires_at=authority.lease_expires_at,
+        )
+
+    def get_source_heartbeat(
+        self,
+        device_id: str,
+        source: Source,
+    ) -> SourceHeartbeatRecord | None:
+        try:
+            response = self._client.get(
+                f"{self._base_url}/rest/v1/device_source_heartbeats",
+                headers=self._headers(),
+                params={
+                    "select": (
+                        "device_id,source,instance_id,last_heartbeat_at,"
+                        "collection_healthy,process_healthy,healthy_since,"
+                        "consecutive_healthy,last_collection_ok_at,"
+                        "last_reported_generated_at,last_candidate_generated_at,"
+                        "last_reason_code,persistent_state_ready,updated_at"
+                    ),
+                    "device_id": f"eq.{device_id}",
+                    "source": f"eq.{source.value}",
+                    "limit": "1",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise TypeError("Resposta SourceHeartbeat inválida.")
+            if not data:
+                return None
+            if len(data) != 1 or not isinstance(data[0], dict):
+                raise ValueError("Resposta SourceHeartbeat inválida.")
+            return self._source_heartbeat_from_mapping(data[0])
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise PersistenceUnavailableError() from exc
+
+    def bootstrap_managed_source_authority(
+        self,
+        device_id: str,
+    ) -> ManagedSnapshotAcceptanceResult:
+        result = self._mapped_cloud_rpc(
+            "bootstrap_managed_source_authority",
+            {"p_device_id": device_id},
+            self._managed_snapshot_result_from_mapping,
+        )
+        if result is None:
+            raise PersistenceUnavailableError()
+        return result
+
+    def accept_current_grant_snapshot(
+        self,
+        command: PublishUnderCurrentGrant,
+    ) -> ManagedSnapshotAcceptanceResult:
+        candidate = command.candidate
+        result = self._mapped_cloud_rpc(
+            "accept_managed_snapshot_current_grant",
+            {
+                "p_device_id": candidate.device_id,
+                "p_source": candidate.source.value,
+                "p_authority_epoch": command.authority_epoch,
+                "p_authority_lease_id": str(command.authority_lease_id),
+                "p_holder_instance_id": str(command.holder_instance_id),
+                "p_snapshot": candidate.snapshot,
+                "p_snapshot_schema_version": candidate.snapshot_schema_version,
+                "p_boot_id": str(candidate.boot_id),
+                "p_sequence": candidate.sequence,
+                "p_generated_at": candidate.generated_at.isoformat(),
+            },
+            self._managed_snapshot_result_from_mapping,
+        )
+        if result is None:
+            raise PersistenceUnavailableError()
+        return result
+
+    def accept_transition_candidate(
+        self,
+        command: TransitionCandidate,
+    ) -> ManagedSnapshotAcceptanceResult:
+        candidate = command.candidate
+        result = self._mapped_cloud_rpc(
+            "accept_managed_snapshot_transition_candidate",
+            {
+                "p_device_id": candidate.device_id,
+                "p_source": candidate.source.value,
+                "p_holder_instance_id": str(candidate.holder_instance_id),
+                "p_snapshot": candidate.snapshot,
+                "p_snapshot_schema_version": candidate.snapshot_schema_version,
+                "p_boot_id": str(candidate.boot_id),
+                "p_sequence": candidate.sequence,
+                "p_generated_at": candidate.generated_at.isoformat(),
+            },
+            self._managed_snapshot_result_from_mapping,
+        )
+        if result is None:
+            raise PersistenceUnavailableError()
+        return result
+
+    def return_source_authority_to_legacy(
+        self,
+        device_id: str,
+    ) -> SourceAuthorityRecord | None:
+        return self._mapped_cloud_rpc(
+            "return_source_authority_to_legacy",
+            {"p_device_id": device_id},
+            self._source_authority_from_mapping,
+        )
+
+    @classmethod
+    def _source_authority_from_mapping(
+        cls,
+        row: Any,
+    ) -> SourceAuthorityRecord:
+        if not isinstance(row, dict):
+            raise TypeError("SourceAuthority persistida inválida.")
+        updated_at = cls._parse_datetime(row.get("updated_at"))
+        if updated_at is None:
+            raise ValueError("updated_at de SourceAuthority ausente.")
+        return SourceAuthorityRecord(
+            device_id=str(row["device_id"]),
+            mode=AuthorityMode(str(row["mode"])),
+            active_source=(
+                None if row.get("active_source") is None
+                else Source(str(row["active_source"]))
+            ),
+            authority_epoch=int(row["authority_epoch"]),
+            authority_lease_id=(
+                None if row.get("authority_lease_id") is None
+                else UUID(str(row["authority_lease_id"]))
+            ),
+            holder_instance_id=(
+                None if row.get("holder_instance_id") is None
+                else UUID(str(row["holder_instance_id"]))
+            ),
+            lease_expires_at=cls._parse_datetime(row.get("lease_expires_at")),
+            granted_at=cls._parse_datetime(row.get("granted_at")),
+            last_renewed_at=cls._parse_datetime(row.get("last_renewed_at")),
+            last_transition_at=cls._parse_datetime(row.get("last_transition_at")),
+            transition_reason=(
+                None if row.get("transition_reason") is None
+                else AuthorityReasonCode(str(row["transition_reason"]))
+            ),
+            last_authoritative_snapshot_at=cls._parse_datetime(
+                row.get("last_authoritative_snapshot_at")
+            ),
+            authoritative_snapshot_stale_since=cls._parse_datetime(
+                row.get("authoritative_snapshot_stale_since")
+            ),
+            cloud_binding_id=(
+                None if row.get("cloud_binding_id") is None
+                else UUID(str(row["cloud_binding_id"]))
+            ),
+            realm_id=None if row.get("realm_id") is None else str(row["realm_id"]),
+            observed_realm_epoch=(
+                None if row.get("observed_realm_epoch") is None
+                else int(row["observed_realm_epoch"])
+            ),
+            updated_at=updated_at,
+        )
+
+    @classmethod
+    def _source_heartbeat_from_mapping(
+        cls,
+        row: Any,
+    ) -> SourceHeartbeatRecord:
+        if not isinstance(row, dict):
+            raise TypeError("SourceHeartbeat persistido inválido.")
+        last_heartbeat_at = cls._parse_datetime(row.get("last_heartbeat_at"))
+        if last_heartbeat_at is None:
+            raise ValueError("last_heartbeat_at ausente.")
+        for flag in ("collection_healthy", "process_healthy"):
+            if not isinstance(row.get(flag), bool):
+                raise TypeError("Flag SourceHeartbeat inválida.")
+        persistent = row.get("persistent_state_ready")
+        if persistent is not None and not isinstance(persistent, bool):
+            raise TypeError("persistent_state_ready inválido.")
+        updated_at = cls._parse_datetime(row.get("updated_at"))
+        return SourceHeartbeatRecord(
+            device_id=str(row["device_id"]),
+            source=Source(str(row["source"])),
+            instance_id=UUID(str(row["instance_id"])),
+            last_heartbeat_at=last_heartbeat_at,
+            collection_healthy=row["collection_healthy"],
+            process_healthy=row["process_healthy"],
+            healthy_since=cls._parse_datetime(row.get("healthy_since")),
+            consecutive_healthy=int(row["consecutive_healthy"]),
+            last_collection_ok_at=cls._parse_datetime(row.get("last_collection_ok_at")),
+            last_reported_generated_at=cls._parse_datetime(
+                row.get("last_reported_generated_at")
+            ),
+            last_candidate_generated_at=cls._parse_datetime(
+                row.get("last_candidate_generated_at")
+            ),
+            last_reason_code=(
+                None if row.get("last_reason_code") is None
+                else AuthorityReasonCode(str(row["last_reason_code"]))
+            ),
+            persistent_state_ready=persistent,
+            updated_at=updated_at,
+        )
+
+    @classmethod
+    def _managed_snapshot_result_from_mapping(
+        cls,
+        row: Any,
+    ) -> ManagedSnapshotAcceptanceResult:
+        if not isinstance(row, dict):
+            raise TypeError("Resultado managed snapshot inválido.")
+        source = Source(str(row["source"]))
+        grant = None
+        grant_fields = (
+            row.get("authority_epoch"),
+            row.get("authority_lease_id"),
+            row.get("holder_instance_id"),
+            row.get("lease_expires_at"),
+        )
+        if all(value is not None for value in grant_fields):
+            expires_at = cls._parse_datetime(row.get("lease_expires_at"))
+            if expires_at is None:
+                raise ValueError("lease_expires_at ausente.")
+            grant = AuthorityGrantView(
+                device_id=str(row["device_id"]),
+                source=source,
+                authority_epoch=int(row["authority_epoch"]),
+                authority_lease_id=UUID(str(row["authority_lease_id"])),
+                holder_instance_id=UUID(str(row["holder_instance_id"])),
+                lease_expires_at=expires_at,
+            )
+        return ManagedSnapshotAcceptanceResult(
+            status=AuthorityStatus(str(row["status"])),
+            reason_code=(
+                None if row.get("reason_code") is None
+                else AuthorityReasonCode(str(row["reason_code"]))
+            ),
+            received_at=cls._parse_datetime(row.get("received_at")),
+            device_id=str(row["device_id"]),
+            source=source,
+            grant=grant,
+            previous_source=(
+                None if row.get("previous_source") is None
+                else Source(str(row["previous_source"]))
+            ),
+            source_transition=bool(row["source_transition"]),
+            side_effect_policy=SideEffectPolicy(str(row["side_effect_policy"])),
+            previous_snapshot_for_side_effects=row.get("previous_snapshot"),
+        )
 
     def get_device_auth(
         self,

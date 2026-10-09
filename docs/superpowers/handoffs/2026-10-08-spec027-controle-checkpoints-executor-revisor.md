@@ -1,7 +1,7 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** **C3-A APROVADO EM R10.2**; R10-F1..F5 e R10.1-F1/F2 encerrados; C3-P aprovado em R9.2; C3-B bloqueado
+**Status:** **C3-B APROVADO EM R11.2 — commit exato autorizado; R11-F1..F6 e R11.1-F1 encerrados; base C3-A `6806c4a` preservada; C3-C bloqueado até autorização explícita**
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
 **Base reconciliada:** API/PWA `feat/api-bootstrap@23a78bebdf46062eef937966101246567cd963de`; Desktop `develop@9e5b5e1a33cb7d61db200866aea683a6334de922`. **Feature:** `feat/spec027-cloud`, criada a partir de `23a78be` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`. **C1-A functional HEAD após correções R1:** `17afb4e19e21ce93e8eb1b8b0c8bfe47ebcf3364`; o commit documental deste registro será seu sucessor local.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
@@ -63,7 +63,7 @@
 | 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | **APROVADO EM R4 — commit final C1 `61342b2ac47ffa48bfe90787b8aa2afb4bb4cda8`** |
 | 5 | C2-P — Plano Auth Broker | Desenhar reuso do coletor validado, contrato SessionLease, epoch, segurança, standby | R5/R5.1 (plano); **não** copiar parser/coletor | **APROVADO EM R5.1 — commit `7c9f19516673c80860b144b9f421aaea0810e423`** |
 | 6 | C2 — Execução em checkpoints próprios | Broker federado, anti-replay e core HTTP em standby headless sem source efetivo | R6/R7/R8; commit somente após cada aprovação | **ENCERRADO — commit final C2 `b991ffb16d110c617c7c4bc90a842cc9abc22059`** |
-| 7 | C3-P / C3 — Autoridade e snapshots | Plano de authority epoch/fencing, heartbeat/freshness, hysteresis, snapshots state-only e persistência Cloud | R9/R9.1/R9.2 revisam somente o plano; C3-A..F exigem gates próprios | **C3-P APROVADO E COMMITADO `7e22a7c`; C3-A APROVADO EM R10.2; C3-B BLOQUEADO** |
+| 7 | C3-P / C3 — Autoridade e snapshots | Plano de authority epoch/fencing, heartbeat/freshness, hysteresis, snapshots state-only e persistência Cloud | R9/R9.1/R9.2 revisam plano; C3-A..F exigem gates próprios | **C3-P COMMITADO `7e22a7c`; C3-A COMMITADO `6806c4a`; C3-B APROVADO EM R11.2 — commit exato autorizado; C3-C BLOQUEADO** |
 | 8 | C4 — Observabilidade | Status, logs sanitizados, smoke prolongado, degradação e reconciliação | Revisão operacional humana | BLOQUEADO |
 | 9 | C5 — Eventos/Push | Plano próprio de idempotência cross-source, sem duplicação | **Somente se autorizado separadamente** | FORA DA LIBERAÇÃO ATUAL |
 
@@ -3817,3 +3817,986 @@ Esses estados são semanticamente impossíveis: se o snapshot aceito tem source 
 Permanecem preservados: `realm_epoch != authority_epoch`, current-grant distinto de transition-candidate, write eligibility distinta de renew eligibility, PWA strict sem metadata C3, repository Protocol-only e ausência total de comportamento operacional C3-B.
 
 **Próximo passo:** após o fechamento Git exato do C3-A e working tree limpo, C3-B só pode começar mediante autorização explícita, seguindo o checkpoint `C3-B — migration 021 + authority lease/fencing` e terminando novamente sem commit/stage para R11 independente.
+
+
+### C3-B — plano dedicado preparado após fechamento C3-A (2026-10-09)
+
+**Base funcional aprovada**
+- API/PWA/Cloud: `feat/spec027-cloud@6806c4ae3a4f2c505c2e7eb8b774c7823e3ce4c7` (`feat(spec027): define C3-A source authority domain contracts`).
+- C3-P documental: `7e22a7c66149e10cef155ca7458fffd6cb74fc9c`.
+- C2 final: `b991ffb16d110c617c7c4bc90a842cc9abc22059`.
+- Desktop preservado: `feat/spec027-cloud@c8191bfea696368a7698a08bea727811412c05fd`.
+- Shadow original preservado nos PIDs 14865/14873.
+
+**Plano executivo dedicado**
+`docs/superpowers/plans/2026-10-09-spec027-c3b-authority-lease-fencing.md`
+
+O documento dedicado transforma o escopo C3-B do plano geral em instrução executável e revisável, cobrindo:
+- migration 021 additive/local;
+- schema de source authority, heartbeats e transition history;
+- metadata backend do snapshot atual;
+- legacy default e bootstrap Desktop `legacy -> managed`;
+- `publish_under_current_grant`;
+- `transition_candidate`;
+- monotonicidade de `authority_epoch`;
+- authority lease e fencing;
+- idempotência/order;
+- side-effect context transacional;
+- fencing administrativo com escopo correto;
+- lock order único;
+- RLS/privileges;
+- repository/adapters;
+- PostgreSQL real e concorrência;
+- gates de migration/API/PWA/security;
+- proibições explícitas de produção e de C3-C;
+- STOP obrigatório para R11 independente.
+
+**Fronteira**
+C3-B constrói a camada de consistência/authority no banco, mas não liga heartbeat temporal, scheduler de renewal, hysteresis, Cloud writer, failover/failback operacional ou Northflank. Esses itens continuam nos checkpoints posteriores.
+
+**Git desta preparação**
+Esta preparação é somente documental (novo plano + este handoff). Não faz parte do commit funcional C3-A `6806c4a`. Deve permanecer separada da implementação C3-B para manter a base auditável.
+
+**Próxima sessão**
+O Executor deve ler o handoff central, o C3-P e o plano C3-B dedicado antes de alterar código. A implementação C3-B deve terminar sem commit/stage com:
+
+**C3-B PRONTO PARA R11 INDEPENDENTE**
+
+e parar. C3-C não inicia automaticamente.
+
+
+### C3-B — gate de entrada do Executor (2026-10-09)
+
+**Autorização:** executar integralmente e somente **C3-B — migration 021 + authority lease/fencing**, com TDD e PostgreSQL real; sem commit/stage e sem iniciar C3-C.
+
+**Base real de entrada**
+- API/PWA/Cloud: `feat/spec027-cloud@6806c4ae3a4f2c505c2e7eb8b774c7823e3ce4c7` — commit funcional C3-A aprovado em R10.2; `6806c4a...` confirmado como HEAD e, portanto, ancestral do HEAD corrente.
+- Desktop SPEC027 preservado: `feat/spec027-cloud@c8191bfea696368a7698a08bea727811412c05fd`, working tree limpo.
+- O working tree API contém **somente documentação C3-B esperada** antes da implementação: este handoff modificado e o plano dedicado `docs/superpowers/plans/2026-10-09-spec027-c3b-authority-lease-fencing.md` untracked. Nenhum diff funcional inesperado foi encontrado; staged files = 0.
+- A preparação documental C3-B é explicitamente registrada no próprio handoff como separada do commit C3-A e, portanto, é base documental consolidada/autorizada para esta sessão.
+
+**Shadow**
+- checkout operacional original: `/home/ciro/dev/prog/alertamaritimo`;
+- branch observada: `feat/spec025-plan5-shadow-evidence-gate@9e5b5e1a33cb7d61db200866aea683a6334de922`;
+- `develop` aponta para o **mesmo SHA** `9e5b5e1...`; nenhuma divergência funcional entre ambos nesse ponto;
+- Shadow ativo com PIDs atuais **15175/15185**, iniciado em 2026-10-09 12:02:37;
+- a worktree Desktop SPEC027 é separada e não será usada para executar o Shadow;
+- nenhum processo Shadow foi parado, reiniciado, sinalizado ou alterado pelo Executor.
+
+**Leitura obrigatória concluída integralmente, na ordem**
+1. handoff central;
+2. C3-P;
+3. plano dedicado C3-B;
+4. SPEC 027;
+5. adicionalmente, conforme o plano C3-B, migrations 019/020 e testes PostgreSQL correspondentes foram lidos antes da primeira edição funcional.
+
+**Gate:** PASS. A partir deste ponto começa o TDD funcional C3-B. Migration 021 permanece proibida em produção; C3-C continua bloqueado.
+
+
+### C3-B — entrega do Executor; migration 021 + authority lease/fencing (2026-10-09)
+
+**Status:** **PRONTO PARA R11 INDEPENDENTE**. C3-B executado integralmente no working tree, sem commit/stage. **C3-C não foi iniciado.**
+
+#### Base real e gate de entrada
+
+- API/PWA/Cloud permaneceu em `feat/spec027-cloud@6806c4ae3a4f2c505c2e7eb8b774c7823e3ce4c7` durante todo o checkpoint; o commit C3-A aprovado em R10.2 é o HEAD/base de entrada e foi confirmado ancestral.
+- Desktop SPEC027 permaneceu limpo em `feat/spec027-cloud@c8191bfea696368a7698a08bea727811412c05fd`.
+- O diff inicial era exclusivamente documental e esperado: este handoff + plano dedicado C3-B; nenhum diff funcional inesperado existia.
+- Shadow operacional continuou no checkout original `/home/ciro/dev/prog/alertamaritimo`, branch `feat/spec025-plan5-shadow-evidence-gate@9e5b5e1a33cb7d61db200866aea683a6334de922`; `develop` aponta para o mesmo SHA. PIDs atuais observados: **15175/15185**, iniciados 2026-10-09 12:02:37. Nenhuma intervenção do Executor.
+- Leitura obrigatória integral concluída na ordem solicitada: handoff → C3-P → plano C3-B → SPEC 027; migrations 019/020 e seus testes PostgreSQL também foram lidos antes da primeira edição funcional.
+
+#### Arquivos da entrega C3-B
+
+**Produção/runtime DB boundary**
+1. `api/supabase/migrations/021_source_authority_snapshots.sql` — NOVO.
+2. `api/app/repositories/postgres.py` — adapter C3-B PostgreSQL.
+3. `api/app/repositories/supabase.py` — adapter C3-B Supabase/RPC.
+4. `api/app/repositories/source_authority.py` — Protocol ampliado somente com bootstrap/rollback admin necessários ao checkpoint.
+
+**Testes**
+5. `api/tests/contract/test_source_authority_sql.py` — NOVO; schema/RLS/RPC/security contract.
+6. `api/tests/integration/test_source_authority_postgres.py` — NOVO; PostgreSQL real, authority/fencing/races.
+7. `api/tests/unit/test_supabase_source_authority_repository.py` — NOVO; MockTransport, payloads/mappers/redaction.
+
+**Documentação**
+8. `docs/superpowers/plans/2026-10-09-spec027-c3b-authority-lease-fencing.md` — plano dedicado já preparado na entrada.
+9. este handoff.
+
+Nenhum arquivo Desktop, `cloud/`, frontend, router HTTP, scheduler ou writer operacional foi alterado.
+
+#### TDD — RED 1: migration 021 ausente
+
+Primeiro teste criado:
+`tests/contract/test_source_authority_sql.py`.
+
+Comando:
+`cd api && uv run --no-sync pytest -q tests/contract/test_source_authority_sql.py`
+
+RED observado:
+- **6 failed**;
+- causa única: `FileNotFoundError` para `021_source_authority_snapshots.sql`.
+
+Depois da criação da migration:
+- **6/6 passed**.
+
+#### Migration 021 — schema/invariantes
+
+Migration additive cria:
+- `device_source_authority`, uma linha por `device_id`;
+- `device_source_heartbeats`, chave `device_id + source`;
+- `device_source_authority_transitions`, histórico sanitizado;
+- metadata backend em `devices`:
+  - `snapshot_source`;
+  - `snapshot_authority_epoch`;
+  - `snapshot_authority_lease_id`;
+  - `snapshot_writer_instance_id`.
+
+Invariantes principais:
+- `mode default 'legacy'`;
+- managed exige grant completo e epoch > 0;
+- authority estritamente por `device_id`;
+- source somente Desktop/Cloud;
+- Cloud grant exige `cloud_binding_id + realm_id`;
+- Desktop/legacy não carregam associação Cloud ativa;
+- `observed_realm_epoch` é somente diagnóstico;
+- **não existe `realm_epoch` como source fencing token**;
+- heartbeat Desktop não pode possuir `persistent_state_ready`;
+- backend snapshot authority metadata é all-or-none.
+
+RLS habilitado nas três tabelas, nenhuma policy pública criada, privilégios de anon/authenticated revogados.
+
+#### RPCs e operações C3-B
+
+Foram materializadas separadamente:
+- `get_device_source_authority`;
+- `bootstrap_managed_source_authority`;
+- `accept_managed_snapshot_current_grant`;
+- `accept_managed_snapshot_transition_candidate`;
+- `return_source_authority_to_legacy`.
+
+Todas as funções sensíveis usam:
+- `SECURITY DEFINER`;
+- `SET search_path = pg_catalog, public`;
+- objetos `public.*`;
+- EXECUTE revogado de PUBLIC/anon/authenticated;
+- grant somente a `service_role`.
+
+O `accept_device_snapshot` legacy permanece compatível para device legacy, mas falha fechado com `managed_snapshot_required` depois da ativação managed, impedindo bypass do fencing.
+
+#### Bootstrap legacy → managed
+
+O bootstrap é backend/admin e transacional:
+- primeiro holder v1 obrigatoriamente Desktop;
+- exige device enabled;
+- snapshot legacy presente;
+- heartbeat Desktop explícito saudável;
+- heartbeat instance == snapshot boot;
+- cria **authority_epoch=1** server-side;
+- cria `authority_lease_id` server-side;
+- lease TTL inicial conforme contrato C3-P;
+- marca snapshot existente backend-side como Desktop authoritative;
+- grava transition history;
+- retorna grant completo.
+
+Sem os pré-requisitos:
+- retorna `bootstrap_not_eligible`;
+- device permanece legacy;
+- não existe managed parcial/holder vazio.
+
+#### Current grant × transition candidate
+
+**Current grant**
+- exige epoch + lease + instance;
+- DB revalida device/source/grant/lease/admin gates sob lock;
+- wrong epoch, wrong lease, wrong instance e boot reiniciado com token antigo são fenced;
+- recovery write continua permitido quando snapshot anterior está stale, desde que o grant ainda seja corrente/não expirado;
+- recovery aceito atualiza `last_authoritative_snapshot_at`, limpa stale marker e **não muda epoch/lease**.
+
+**Transition candidate**
+- client não envia próximo epoch/lease;
+- DB cria ambos server-side somente para winner;
+- snapshot + grant + metadata + history são um único commit;
+- loser não muda authority/snapshot nem recebe contexto transacional do winner.
+
+C3-B **não implementa timers/hysteresis C3-C**. Para testes estruturais de transition não-expirada, a tabela de heartbeat recebe um gate explícito de policy futura via reason `failover_granted`/`failback_granted`, com `heartbeat.updated_at > authority.updated_at`. Esse gate é apenas ponto de integração para a futura policy C3-C; não existe endpoint, timer ou scheduler de hysteresis neste checkpoint. Um current write vencedor atualiza authority state e invalida esse gate anterior; uma transition vencedora troca epoch e fenceia o current writer antigo.
+
+#### Lock order real
+
+A ordem canônica relativa usada nos RPCs C3-B é:
+
+`devices → CloudBinding (Cloud) → realm → owner membership → heartbeat (quando necessário) → device_source_authority`.
+
+- snapshot metadata vive na linha `devices` já lockada;
+- pre-read não-locking da authority no current Cloud path é somente locator de binding/realm; nenhuma decisão de aceite depende desse pre-read;
+- todas as decisões de authority são revalidadas após os locks;
+- bootstrap usa o subconjunto `devices → Desktop heartbeat → authority`;
+- current Desktop usa `devices → authority`;
+- current Cloud usa `devices → binding → realm → membership → authority`;
+- transition usa `devices → [Cloud auth rows] → heartbeat → authority`.
+
+Os testes concorrentes com conexões PostgreSQL independentes não observaram deadlock.
+
+#### Idempotência, ordering e fencing
+
+Provado em PostgreSQL real:
+- same grant/sequence/payload → `idempotent`;
+- same sequence com payload diferente → `sequence_reuse_mismatch`;
+- sequence menor → `snapshot_out_of_order`;
+- stale/wrong epoch → fenced;
+- wrong lease → fenced;
+- wrong instance / boot restart usando grant antigo → fenced;
+- writer antigo após novo winner → fenced;
+- rollback managed→legacy incrementa epoch, remove grant managed/metadata backend e restaura somente o caminho legacy.
+
+#### Side effects transacionais
+
+O result managed é decidido pelo commit vencedor:
+- Cloud accepted → `none`;
+- Cloud→Desktop → `baseline`;
+- Desktop→Desktop current continuity → `desktop_continuity` + previous snapshot capturado sob lock;
+- loser → nenhum side effect;
+- retry idempotente → nenhum side effect.
+
+Teste específico faz pre-read Desktop antigo, deixa Cloud vencer, depois faz failback Desktop; apesar do pre-read stale, o result transacional continua `baseline`, sem previous snapshot para side effects.
+
+Nenhum dispatch/event/push foi implementado no Cloud.
+
+#### Fencing administrativo estreito
+
+Migration 021 adiciona triggers estreitos:
+- `device.enabled true→false`: expira qualquer current grant do device;
+- CloudBinding `active→revoked`: expira somente Cloud grant daquele binding/device;
+- realm `active→inactive`: expira somente Cloud grants daquele realm;
+- owner membership revoke: expira somente o Cloud grant do mesmo device/realm.
+
+**Não existe trigger** em:
+- `webpilot_session_publishers`;
+- `webpilot_session_leases`.
+
+Reativação posterior não estende/resuscita lease antiga.
+
+SessionLease/auth continua lifecycle separado:
+- sem lease elegível, Cloud current write retorna `cloud_auth_unavailable`;
+- uma nova lease elegível pode restaurar auth e permitir write sob o **mesmo authority_epoch/lease**, sem source transition;
+- revoke de publisher não relacionado não fenceia source grant automaticamente quando outra lease elegível permanece.
+
+#### PostgreSQL real e concorrência
+
+RED comportamental inicial, após migration criada:
+- migration aplicou;
+- **9 failed / 1 passed**;
+- 9 falhas eram `AttributeError` porque os métodos C3-B ainda não existiam em `PostgresDeviceRepository`.
+
+Após adapter:
+- primeira passagem: **8/10**;
+- duas falhas expuseram que um loser fenced devolvia `previous_source` do snapshot vencedor, contradizendo o contrato C3-A;
+- SQL corrigido para losers não alegarem contexto transacional vencedor;
+- GREEN inicial: **10/10**.
+
+Cobertura final foi ampliada para:
+- dois current writers;
+- dois transition candidates;
+- recovery current-grant × transition candidate;
+- stale epoch/new winner;
+- wrong lease/instance/boot;
+- disable × Desktop write;
+- binding revoke × Cloud write;
+- realm deactivate × Cloud write;
+- membership revoke × Cloud write;
+- auth unavailable/recovery;
+- publisher alternativo;
+- cross-device isolation;
+- stale pre-read/side-effect baseline;
+- múltiplas conexões reais.
+
+GREEN final C3-B PostgreSQL: **19/19 passed**.
+
+Corridas administrativas usam advisory lock apenas no harness para pausar exatamente o snapshot UPDATE e comprovar serialização:
+- mudança administrativa concorrente não completa enquanto o write que já possui locks está pausado;
+- após liberar o write, admin change conclui e fenceia;
+- nenhuma corrida terminou com write autorizado “depois” de uma revogação já vencedora;
+- nenhum deadlock observado.
+
+Regressão conjunta PostgreSQL real:
+- `test_cloud_binding_postgres.py`;
+- `test_session_broker_postgres.py`;
+- `test_source_authority_postgres.py`;
+- resultado: **36/36 passed**.
+
+#### Supabase adapter — RED→GREEN
+
+Novo MockTransport test começou RED:
+- **6/6 failed** por métodos C3-B ausentes.
+
+Depois do adapter:
+- first pass **5/6**; única falha era fixture synthetic inconsistente (bootstrap `none` ainda carregava previous snapshot), corrigida no teste;
+- GREEN final: **6/6 passed**.
+
+Provas:
+- current-grant RPC envia epoch + lease;
+- transition-candidate RPC **não envia** futuro epoch/lease;
+- source authority/heartbeat/result mappers tipados;
+- malformed HTTP 200 vira `PersistenceUnavailableError` sanitizado;
+- payload/backend detail/server key não aparece no erro.
+
+#### Regressões API
+
+Conjunto focal C3-A/C3-B + C1/C2 relevante:
+- **114/114 passed**.
+
+Gate integral:
+- `make test-all`;
+- PostgreSQL 16 real efêmero;
+- **741 passed / 0 skipped / 0 failed**.
+
+#### Cadeia completa de migrations 001→021
+
+O harness normal `postgres:16-alpine` não possui `pg_cron`, dependência pré-existente da migration 015. Para provar a cadeia sem modificar migrations, foi usado um **container PostgreSQL Supabase totalmente efêmero** com suporte a `pg_cron`.
+
+Primeira tentativa em database temporário separado chegou até 014 e a 015 bloqueou corretamente porque o `pg_cron` da imagem estava configurado para o database `postgres`; nada de C3-B foi aplicado nessa tentativa.
+
+Execução válida foi então feita no database `postgres` do **mesmo container descartável**, conforme a configuração do `pg_cron`:
+- migrations **001→021 aplicadas em ordem**;
+- `schema_migrations`: **21** linhas;
+- último version: `021_source_authority_snapshots.sql`;
+- as três tabelas C3-B presentes;
+- segunda execução: todas 001→021 reportadas como **já aplicadas**;
+- saída final: `FULL_MIGRATION_001_021_PASS`;
+- container removido ao término.
+
+Nenhuma migration foi aplicada em Supabase/produção.
+
+`make migrate-list` também lista 001→021.
+
+#### PWA / contrato externo
+
+Nenhum arquivo frontend foi modificado.
+
+Testes:
+- contrato focado `contract.test.ts + snapshotClient.test.ts`: **29/29 passed**;
+- frontend completo: **295/295 passed / 50 files**;
+- warning React `act(...)` preexistente, sem falha.
+
+O GET PWA continua exatamente `{snapshot, meta}`; nenhum source/epoch/lease/instance foi adicionado ao envelope e nenhuma MobileSnapshot v3 foi criada.
+
+#### Segurança
+
+- `git diff --check` tracked: **PASS**;
+- todos os untracked com `git diff --no-index --check`: **PASS**;
+- security scan somente das linhas adicionadas de produção C3-B: **nenhuma ocorrência** de password/Bearer/Authorization/cookie/Device secret/Cloud credential/WebPilot secret/raw HTML/`source=cloud`;
+- grep amplo encontrou somente código C1/C2 já existente e valores sintéticos de testes;
+- transition history não armazena snapshot body, vessel rows ou material auth;
+- authority epoch/lease são fencing identifiers, não auth secrets;
+- nenhuma credencial nova foi criada ou logada.
+
+#### Estado Git/escopo ao entregar
+
+- HEAD API/Cloud ainda **`6806c4ae3a4f2c505c2e7eb8b774c7823e3ce4c7`**;
+- staged files: **0**;
+- commits C3-B: **0**;
+- push/merge/deploy: **0**;
+- migration 021 produção: **NÃO**;
+- Desktop SPEC027: limpo em `c8191bfe...`;
+- Shadow: PIDs **15175/15185** ativos e não manipulados;
+- containers de teste C3-B removidos ao final;
+- nenhum WebPilot real Cloud;
+- nenhum Northflank operacional;
+- nenhum Cloud writer;
+- nenhum endpoint heartbeat;
+- nenhum renewal scheduler;
+- nenhum timer/hysteresis operacional;
+- nenhum failover/failback operacional;
+- nenhum evento/push;
+- **C3-C NÃO INICIADO**.
+
+**PARECER SOLICITADO:** **R11 INDEPENDENTE** sobre migration 021, invariantes/locks/RPCs/adapters, fencing administrativo, PostgreSQL real/concorrência, legacy/PWA e segurança. Manter todo o working tree sem commit/stage até o parecer.
+
+
+### R11 independente — revisão do C3-B (2026-10-09)
+
+**Resultado:** CORREÇÕES OBRIGATÓRIAS. A arquitetura geral, migration additive, adapters, RLS/privileges, fencing administrativo estreito e boa parte das corridas estão corretos, porém seis pontos ainda permitem bypass/aceite incompatível com os contratos C3-P/C3-A e precisam ser fechados antes do commit.
+
+**Evidência independente**
+- base API/Cloud preservada em `6806c4ae3a4f2c505c2e7eb8b774c7823e3ce4c7`;
+- Desktop preservado em `c8191bfea696368a7698a08bea727811412c05fd`;
+- staged files: 0;
+- `make test-all`: **741 passed**;
+- frontend snapshot contract: **29 passed**;
+- `git diff --check`: PASS; untracked sem diagnóstico;
+- Shadow atual intacto nos PIDs **15175/15185**, iniciados em 2026-10-09 12:02:37;
+- nenhum deploy/push/merge/migration produção/C3-C observado.
+
+#### R11-F1 — race permite write legacy depois que bootstrap managed já venceu
+
+`accept_device_snapshot()` lê `device_source_authority.mode` **antes** de adquirir o lock de `devices`.
+
+Ordem atual:
+1. legacy request lê `mode='legacy'`;
+2. bootstrap concorrente locka `devices`, ativa managed, grava epoch/lease/metadata e commit;
+3. legacy request que estava aguardando adquire depois o lock de `devices`;
+4. não revalida mode;
+5. pode atualizar o snapshot pelo caminho legacy depois da ativação managed.
+
+Isso viola a promessa registrada na própria migration de que o legacy path não pode bypassar source authority quando o device estiver managed. Também pode deixar conteúdo novo no snapshot com metadata authority herdada do bootstrap.
+
+**Correção exigida**
+- usar lock order compatível: lockar `devices` primeiro e então ler/lockar source authority, ou revalidar source authority depois do lock de device;
+- a decisão legacy/managed deve nascer do mesmo estado serializado usado para o write;
+- se bootstrap venceu, legacy write retorna/falha como `managed_snapshot_required` sem tocar snapshot;
+- se legacy write venceu primeiro, bootstrap posterior pode avaliar o snapshot já atualizado;
+- adicionar PostgreSQL race real `accept_device_snapshot × bootstrap_managed_source_authority`, provando linearização e zero bypass.
+
+#### R11-F2 — bootstrap aceita Desktop/snapshot antigos e não cumpre healthy/fresh
+
+O C3-P aprovado exige:
+- heartbeat Desktop **recente e saudável**;
+- snapshot legacy Desktop atual, com `received_at` dentro da janela configurada;
+- boot coerente.
+
+O SQL atual verifica health flags/reason e boot, mas **não verifica idade de `last_heartbeat_at` nem idade de `devices.received_at`**.
+
+Assim, um heartbeat antigo ainda marcado `desktop_healthy` e um snapshot velho podem ativar managed epoch 1.
+
+**Correção exigida**
+- bootstrap deve usar clock server-side fresco e rejeitar heartbeat/snapshot fora das janelas aprovadas para bootstrap;
+- isso não exige scheduler/hysteresis C3-C: é apenas validação pontual da operação admin;
+- heartbeat saudável não substitui snapshot freshness;
+- adicionar boundaries pelo menos “fresh aceita / stale rejeita” para heartbeat e snapshot;
+- se a janela exata não puder ser definida sem ampliar arquitetura, **STOP arquitetura** em vez de aceitar stale.
+
+#### R11-F3 — bootstrap inicial também serve como reativação após rollback, contrariando C3-A
+
+O contrato C3-A aprovado fixa:
+`authority_epoch == 0  # initial bootstrap creates epoch 1; reactivation needs separate policy`.
+
+`return_source_authority_to_legacy()` incrementa o epoch e mantém o record legacy. Depois disso, `bootstrap_managed_source_authority()` atualmente aceita esse mesmo record e usa `authority_epoch + 1`, funcionando implicitamente como reativação.
+
+Isso congela uma policy de reativação que o C3-A explicitamente deixou separada.
+
+**Correção exigida**
+- `bootstrap_managed_source_authority` deve ser somente bootstrap inicial e exigir `authority_epoch=0`;
+- após rollback com epoch histórico >0, não reutilizar bootstrap inicial;
+- se C3-B realmente precisar de reativação, criar/planejar contrato separado e voltar para decisão arquitetural antes de implementá-lo;
+- adicionar teste rollback→tentativa de bootstrap inicial = fail-closed, sem mutação.
+
+#### R11-F4 — clock capturado antes dos locks pode aceitar lease/auth já expirados
+
+Nos RPCs managed, `v_now := clock_timestamp()` é capturado no início da função e usado depois de possíveis esperas por locks.
+
+No current-grant, por exemplo, a checagem:
+`v_authority.lease_expires_at <= v_now`
+pode usar um timestamp anterior à espera. Se a request ficar bloqueada até a lease expirar, ela ainda pode ser considerada válida e escrever depois da expiração real.
+
+No Cloud, o mesmo `v_now` antigo também é passado para `get_current_session_lease`, podendo avaliar auth contra tempo anterior à aquisição dos locks.
+
+**Correção exigida**
+- atualizar clock server-side **depois dos locks necessários** e imediatamente antes dos gates temporais;
+- lease/source/auth/freshness devem ser revalidados com esse clock sob state serializado;
+- nenhuma request pode ganhar validade por ter começado antes do expiry;
+- adicionar PostgreSQL race/boundary: segurar lock até authority lease expirar e provar que current write é rejeitado;
+- equivalente Cloud deve provar que SessionLease expirada durante espera não autoriza write.
+
+#### R11-F5 — expiry sozinho ignora o gate de policy em transition candidate
+
+O plano C3-B diz que, quando a decisão depender de liveness/freshness/hysteresis do C3-C, o caminho deve continuar bloqueado por gate explícito.
+
+Hoje:
+- se a authority lease ainda está válida, transition exige `v_gate_fresh`;
+- se a lease já expirou, o código pula esse gate e pode conceder nova authority somente com heartbeat/admin/auth verdes.
+
+Logo, uma lease expirada vira implicitamente autorização de failover/failback. Isso não existe no C3-P: expiry/fencing permite usar `transition_candidate` **quando a policy permitir**, não substitui a policy.
+
+**Correção exigida**
+- cross-source Desktop→Cloud e Cloud→Desktop devem continuar exigindo o gate de arbitragem aprovado mesmo quando a lease anterior expirou;
+- expiry só impede current-grant; não concede source transition sozinho;
+- separar, se necessário, same-source reacquisition de cross-source transition;
+- adicionar testes:
+  - lease expirada + sem gate de failover => Cloud não assume;
+  - lease expirada + sem gate de failback => Desktop não assume;
+  - gate explícito fresco => transition pode vencer conforme contrato.
+
+#### R11-F6 — RPC SQL não revalida coerência de `generated_at` do body
+
+C3-A fechou que metadata duplicada do candidate deve concordar com o body persistido:
+- boot_id;
+- sequence;
+- schema_version;
+- generated_at.
+
+Os RPCs C3-B SQL comparam os três primeiros, mas apenas verificam que `p_snapshot` contém `generated_at`; **não confirmam que o valor do body representa o mesmo instante de `p_generated_at`**.
+
+Os adapters Python normalmente passam por `ManagedSnapshotCandidate`, mas o PostgreSQL/RPC é a boundary atômica e o próprio plano exige revalidar candidate no DB.
+
+**Correção exigida**
+- current-grant e transition-candidate devem rejeitar body `generated_at` ausente, inválido/naive conforme representação aceita, ou diferente de `p_generated_at`;
+- mismatch deve retornar `snapshot_invalid` sem alterar snapshot/authority;
+- adicionar testes PostgreSQL diretos para mismatch, não somente teste Pydantic/adapters.
+
+**Pontos aprovados em R11**
+- migration 021 permanece additive e default legacy;
+- tabelas authority/heartbeat/transition e backend snapshot metadata estão no escopo correto;
+- `realm_epoch` não foi usado como source fencing;
+- authority continua por `device_id`;
+- RLS/revokes/grants estão alinhados ao padrão C1/C2;
+- fencing administrativo de device/binding/realm/owner membership tem predicados estreitos;
+- não há trigger amplo em SessionLease/publisher;
+- current-grant e transition-candidate permanecem RPCs distintos;
+- side-effect context nasce do resultado transacional;
+- PWA continua sem metadata C3;
+- C3-C/runtime Cloud não foi iniciado.
+
+**Próximo passo autorizado:** corrigir somente R11-F1..F6 no mesmo working tree C3-B, com TDD, sem commit/stage e sem iniciar C3-C. Repetir PostgreSQL real, corridas novas, `make test-all`, frontend contract, migration/security checks, `git diff --check` e staged=0. Atualizar este handoff e parar para **R11.1 independente**.
+
+
+### C3-B — correções R11-F1..F6 do Executor (2026-10-09)
+
+**Autorização:** corrigir somente **R11-F1..F6**, com TDD, no mesmo working tree C3-B; sem commit/stage; sem iniciar C3-C.
+
+**Base preservada**
+- API/PWA/Cloud: `feat/spec027-cloud@6806c4ae3a4f2c505c2e7eb8b774c7823e3ce4c7`;
+- Desktop SPEC027: `feat/spec027-cloud@c8191bfea696368a7698a08bea727811412c05fd`, limpo;
+- staged files na entrada: 0;
+- Shadow preservado nos PIDs **15175/15185**;
+- nenhum push/merge/deploy/migration de produção.
+
+#### RED R11
+
+Novas regressões foram adicionadas somente em
+`api/tests/integration/test_source_authority_postgres.py`, cobrindo diretamente R11-F1..F6.
+
+Comando:
+`pytest ... test_source_authority_postgres.py -k r11` em PostgreSQL 16 efêmero.
+
+Resultado RED:
+- **10 failed**;
+- **2 passed**;
+- **19 deselected**.
+
+Os 10 failures reproduziram exatamente:
+- F1 legacy write aceito após bootstrap managed concorrente;
+- F2 heartbeat stale aceito no bootstrap;
+- F2 snapshot stale aceito no bootstrap;
+- F3 bootstrap inicial reutilizado após rollback;
+- F4 authority lease expirada durante lock ainda aceita;
+- F4 SessionLease expirada durante lock ainda aceita Cloud write;
+- F5 failover sem gate após expiry aceito;
+- F5 failback sem gate após expiry aceito;
+- F6 current-grant com `generated_at` mismatch aceito;
+- F6 transition-candidate com `generated_at` inválido/mismatch aceito.
+
+Os 2 passes do RED eram os controles positivos:
+- bootstrap realmente fresh continua elegível;
+- transition com lease expirada **e gate explícito fresco** continua elegível.
+
+#### R11-F1 — legacy × bootstrap linearizado
+
+`accept_device_snapshot()` foi corrigido para:
+1. lockar primeiro a linha `devices`;
+2. somente então lockar/revalidar `device_source_authority`;
+3. decidir legacy/managed no mesmo estado serializado usado para o write.
+
+Se bootstrap managed vence antes:
+- legacy recebe `managed_snapshot_required`;
+- snapshot não é alterado.
+
+Race PostgreSQL real:
+- um blocker segura `devices`;
+- bootstrap entra primeiro na fila;
+- legacy lê/espera atrás;
+- blocker libera;
+- bootstrap vence e cria epoch 1;
+- legacy, ao adquirir o lock depois, revalida managed e falha fechado;
+- snapshot permanece no payload anterior.
+
+Isso elimina o bypass apontado em R11-F1 e mantém lock order `devices → authority`, compatível com C3-B.
+
+#### R11-F2 — bootstrap healthy/fresh pontual
+
+Sem criar timers/scheduler C3-C, o bootstrap agora usa `clock_timestamp()` **depois dos locks** e exige:
+- Desktop heartbeat age **< 90 s**;
+- snapshot legacy `received_at` age **< 120 s**;
+- process/collection healthy;
+- reason `desktop_healthy`;
+- heartbeat instance == snapshot boot;
+- device enabled.
+
+Janelas usadas são as já aprovadas no C3-P/C3-A:
+- Desktop HEALTHY: heartbeat age < 90 s;
+- authoritative/snapshot freshness Desktop: 120 s.
+
+Provas:
+- fresh heartbeat + fresh snapshot → accepted;
+- heartbeat 91 s → `bootstrap_not_eligible`;
+- snapshot 121 s → `bootstrap_not_eligible`.
+
+Nenhuma policy temporal de failover/failback foi criada.
+
+#### R11-F3 — bootstrap inicial não é reativação
+
+`bootstrap_managed_source_authority` agora exige:
+- `mode='legacy'`;
+- **`authority_epoch=0`**.
+
+Após `return_source_authority_to_legacy()`, o epoch histórico permanece >0.
+Nova tentativa de bootstrap inicial:
+- retorna `bootstrap_not_eligible`;
+- não muda mode;
+- não muda epoch;
+- não cria novo grant.
+
+Nenhum contrato de reativação foi criado. Reativação continua fora de C3-B.
+
+#### R11-F4 — clock reamostrado após locks
+
+Nos RPCs managed:
+- `v_now` não é mais capturado no início;
+- `clock_timestamp()` é lido **após todos os locks relevantes** e imediatamente antes dos gates temporais.
+
+Current-grant:
+- authority lease é revalidada contra clock pós-lock;
+- Cloud auth consulta `get_current_session_lease(..., v_now)` com clock pós-lock;
+- candidate skew/age também usa esse clock serializado.
+
+Transition-candidate:
+- clock também é reamostrado após locks de device/admin/heartbeat/authority, antes de auth/gates/candidate time.
+
+Provas PostgreSQL:
+- request começa antes do expiry, fica bloqueada > expiry e só então recebe lock → `authority_lease_expired`, zero write;
+- Cloud request começa antes do SessionLease expiry, fica bloqueada > expiry → `cloud_auth_unavailable`, zero write.
+
+Nenhuma request ganha validade apenas por ter iniciado antes da expiração.
+
+#### R11-F5 — expiry não concede cross-source transition
+
+O gate explícito de arbitration agora é exigido para **qualquer cross-source transition**, independentemente de a lease anterior ainda estar válida ou já ter expirado.
+
+Regra C3-B:
+- expiry impede current-grant;
+- expiry **não** autoriza failover/failback;
+- Desktop→Cloud sem `failover_granted` fresco → `failover_wait_hysteresis`;
+- Cloud→Desktop sem `failback_granted` fresco → `failback_wait_stable`;
+- cross-source com gate explícito fresco pode vencer e receber novo epoch/lease server-side.
+
+Same-source reacquisition não foi expandida nem redesenhada neste checkpoint.
+
+Provas:
+- Desktop lease expirada + Cloud healthy, sem gate → bloqueado;
+- Cloud lease expirada + Desktop healthy, sem gate → bloqueado;
+- lease expirada + gate explícito fresco → accepted conforme contrato.
+
+#### R11-F6 — `generated_at` revalidado no DB
+
+A migration 021 ganhou helper interno:
+`managed_snapshot_generated_at_matches(jsonb, timestamptz)`.
+
+Ele:
+- exige campo `generated_at`;
+- exige timezone explícita no texto (`Z` ou offset `±HH:MM`);
+- captura parse inválido e retorna false;
+- compara o **mesmo instante** com `p_generated_at`;
+- não deixa erro de cast escapar como erro backend;
+- tem EXECUTE revogado de PUBLIC/anon/authenticated.
+
+Tanto:
+- `accept_managed_snapshot_current_grant`;
+- `accept_managed_snapshot_transition_candidate`
+
+agora chamam essa validação dentro da boundary SQL atômica.
+
+Provas diretas por SQL, sem Pydantic/adapters:
+- body timestamp diferente → `snapshot_invalid`;
+- timestamp naive → `snapshot_invalid`;
+- timestamp inválido → `snapshot_invalid`;
+- snapshot/authority permanecem inalterados.
+
+#### GREEN R11
+
+Gate focado R11:
+- **12 passed / 19 deselected**.
+
+Regressão PostgreSQL conjunta:
+- `test_source_authority_postgres.py`;
+- `test_cloud_binding_postgres.py`;
+- `test_session_broker_postgres.py`;
+- **48/48 passed**.
+
+Gate integral:
+- `make test-all`;
+- **753 passed / 0 failed**.
+
+PWA snapshot contract:
+- `contract.test.ts + snapshotClient.test.ts`;
+- **29/29 passed**;
+- nenhum frontend alterado;
+- GET permanece `{snapshot, meta}`.
+
+#### Migration 001→021 pós-R11
+
+A cadeia completa foi repetida em container PostgreSQL Supabase efêmero.
+
+Duas tentativas de infraestrutura foram descartadas antes da prova final:
+1. database `postgres` preinstalado apresentou condição interna da imagem em `graphql.increment_schema_version`, antes de 021;
+2. database isolado sem preload explícito chegou a 015 e parou porque `pg_cron` exige `shared_preload_libraries`.
+
+Prova válida final:
+- database isolado `alertam_r111`;
+- `shared_preload_libraries=pg_cron`;
+- `cron.database_name=alertam_r111`;
+- migrations **001→021** aplicadas;
+- `schema_migrations count=21`;
+- last = `021_source_authority_snapshots.sql`;
+- três tabelas C3-B presentes;
+- reexecução reconheceu 021 como já aplicada;
+- `FULL_MIGRATION_001_021_R111_PASS`;
+- container removido ao final.
+
+Nenhum banco Supabase/produção foi tocado.
+
+#### Segurança/Git/escopo pós-R11
+
+Auditoria final:
+- branch: `feat/spec027-cloud`;
+- HEAD ainda `6806c4ae3a4f2c505c2e7eb8b774c7823e3ce4c7`;
+- C3-A base/ancestor: PASS;
+- staged files: **0**;
+- `git diff --check`: PASS;
+- todos os untracked por `git diff --no-index --check`: PASS;
+- migration 021 sem password/Bearer/Authorization/cookie/ciphertext/credential_hash/device_secret/WebPilot secret;
+- linhas de produção adicionadas nos repositories sem material sensível novo;
+- helper `generated_at` com revogação explícita: PASS;
+- Desktop SPEC027 limpo;
+- Shadow PIDs **15175/15185** intactos;
+- containers de teste removidos;
+- nenhum arquivo/endpoint/scheduler heartbeat C3-C adicionado;
+- nenhum Cloud writer operacional;
+- nenhum failover/failback operacional;
+- nenhum deploy/push/merge;
+- nenhum commit/stage.
+
+**PARECER SOLICITADO:** **R11.1 INDEPENDENTE**, exclusivamente sobre R11-F1..F6 e suas regressões. **C3-C permanece BLOQUEADO.**
+
+
+### R11.1 independente — revisão das correções R11-F1..F6 (2026-10-09)
+
+**Resultado:** CORREÇÃO OBRIGATÓRIA. R11-F1..F6 estão encerrados, mas a revisão do mesmo RPC de `transition_candidate` encontrou um bypass residual de same-source reacquisition que precisa ser fechado antes do commit C3-B.
+
+**Evidência independente**
+- base API/Cloud preservada em `6806c4ae3a4f2c505c2e7eb8b774c7823e3ce4c7`;
+- staged files: 0;
+- `make test-all`: **753 passed**;
+- PostgreSQL efêmero usado para probe independente foi removido ao final;
+- Shadow permaneceu intacto nos PIDs **15175/15185**;
+- nenhum C3-C/deploy/push/merge/migration produção observado.
+
+**R11-F1..F6 — ENCERRADOS**
+- legacy × bootstrap agora serializa por `devices -> authority` e não permite legacy write depois de bootstrap vencedor;
+- bootstrap valida heartbeat <90 s e snapshot `received_at` <120 s sob clock pós-lock;
+- bootstrap inicial exige `authority_epoch=0` e não reativa após rollback;
+- clocks temporais são reamostrados após os locks relevantes;
+- cross-source transition continua exigindo gate explícito mesmo com lease anterior expirada;
+- `generated_at` body × parâmetro é revalidado dentro do PostgreSQL para current-grant e transition-candidate.
+
+#### R11.1-F1 — same-source transition candidate pode substituir holder válido sem qualquer gate
+
+O RPC `accept_managed_snapshot_transition_candidate` aplica o gate `failover_granted/failback_granted` somente quando:
+
+`v_authority.active_source is distinct from p_source`.
+
+Quando o source é o mesmo, o caminho fica aberto.
+
+Cenário reproduzido independentemente em PostgreSQL real efêmero:
+1. Desktop BOOT_A é holder managed corrente, epoch 1, lease ainda válida;
+2. heartbeat Desktop para novo BOOT_B é inserido apenas como `desktop_healthy`, sem qualquer restart/reacquire gate;
+3. BOOT_B envia `transition_candidate` com `source=desktop`;
+4. resultado observado: **accepted**, novo `authority_epoch=2`, holder BOOT_B;
+5. a lease válida do BOOT_A é substituída imediatamente.
+
+Saída do probe:
+- old holder: BOOT_A / epoch 1;
+- result: `accepted`, reason `failback_granted`, epoch 2, holder BOOT_B.
+
+Isso contradiz o C3-P aprovado:
+- Desktop restart com novo `boot_id` não reutiliza nem toma authority imediatamente;
+- fast reacquire só ocorre depois de o holder anterior ser classificado não saudável conforme policy;
+- Cloud restart segue a mesma ideia: novo boot só adquire depois do stale/restart gate;
+- lease expirada/fencing apenas obriga usar `transition_candidate`; não concede novo grant sem policy.
+
+Também mostra uma inconsistência semântica: uma troca Desktop→Desktop está sendo registrada como `failback_granted` e Cloud→Cloud seria tratada como `failover_granted`, embora não exista source transition.
+
+**Correção exigida**
+- C3-B não deve inventar a policy de same-source restart/reacquisition;
+- enquanto C3-C não materializar esse gate, same-source `transition_candidate` que tentaria criar novo epoch/lease deve falhar fechado;
+- no mínimo, bloquear:
+  - mesmo source + holder instance diferente enquanto grant anterior ainda é válido;
+  - mesmo source + lease expirada/fenced sem gate de reacquisition explicitamente aprovado;
+  - mesmo source + mesmo holder tentando converter expiry em novo grant automaticamente;
+- não reutilizar `failover_granted`/`failback_granted` como reason para Desktop→Desktop ou Cloud→Cloud;
+- se for necessário introduzir reason/contrato específico de restart/reacquire, isso pertence ao desenho C3-C e deve voltar para decisão arquitetural antes de ampliar o C3-B;
+- adicionar PostgreSQL real:
+  1. Desktop BOOT_A válido + BOOT_B same-source candidate => bloqueado, authority/snapshot intactos;
+  2. Cloud holder válido + novo Cloud instance same-source candidate => bloqueado;
+  3. authority same-source expirada sem restart/reacquire gate => não cria novo epoch/lease;
+  4. old holder continua fenced somente depois de um futuro reacquire legitimamente aprovado, não por bypass C3-B.
+
+**Próximo passo autorizado:** corrigir somente **R11.1-F1**, com TDD, no mesmo working tree C3-B, sem commit/stage e sem iniciar C3-C. Não criar policy temporal nova; apenas fechar o caminho same-source até existir gate aprovado. Repetir testes PostgreSQL focados, `make test-all`, frontend snapshot contract, migration/security checks, `git diff --check` e staged=0; atualizar este handoff e parar para **R11.2 independente**.
+
+
+### C3-B — correção R11.1-F1 do Executor (2026-10-09)
+
+**Autorização:** corrigir somente **R11.1-F1**, com TDD, no mesmo working tree; sem commit/stage; sem iniciar C3-C.
+
+**Base preservada**
+- API/PWA/Cloud: `feat/spec027-cloud@6806c4ae3a4f2c505c2e7eb8b774c7823e3ce4c7`;
+- Desktop SPEC027: `c8191bfea696368a7698a08bea727811412c05fd`, limpo;
+- staged files: 0;
+- Shadow preservado nos PIDs **15175/15185**.
+
+#### RED — same-source reacquisition bypass
+
+Foram adicionadas regressões PostgreSQL reais para:
+1. Desktop BOOT_A holder válido + BOOT_B same-source candidate;
+2. Cloud holder válido + nova Cloud instance same-source candidate;
+3. Desktop authority expirada + mesmo holder tentando reacquire;
+4. Desktop authority expirada + nova instance tentando reacquire.
+
+Comando focado:
+`test_source_authority_postgres.py -k r111_f1`.
+
+RED observado:
+- **4 failed / 31 deselected**;
+- os quatro casos retornavam `accepted`;
+- Desktop→Desktop criava epoch novo e ainda retornava semântica `baseline`;
+- Cloud→Cloud criava epoch novo;
+- expiry, por si só, também permitia novo grant same-source.
+
+#### Correção mínima
+
+Nenhuma policy temporal/restart nova foi criada.
+
+Em `accept_managed_snapshot_transition_candidate`, após lock/revalidação de `device_source_authority`:
+
+- se `v_authority.active_source = p_source`, o RPC retorna imediatamente:
+  - status `ineligible`;
+  - reason `authority_fenced`;
+  - nenhum grant;
+  - nenhum source transition;
+  - side effect `none`.
+
+Isso bloqueia fail-closed todo same-source reacquisition no C3-B:
+- holder atual + nova instance;
+- holder atual + mesma instance;
+- lease válida;
+- lease expirada/fenced.
+
+O C3-B **não** reutiliza `failover_granted`/`failback_granted` para Desktop→Desktop ou Cloud→Cloud e **não** cria reason específico de restart/reacquire. Um gate específico continua pertencendo ao desenho futuro C3-C.
+
+O bloco anterior que só impedia same-source + same-holder + lease válida tornou-se redundante e foi removido.
+
+Cross-source transition permanece inalterada:
+- exige o gate explícito aprovado;
+- winner continua recebendo epoch/lease server-side;
+- R11-F5 permanece encerrado.
+
+#### GREEN
+
+Gate focado R11.1-F1:
+- **4/4 passed / 31 deselected**.
+
+As provas confirmam:
+- epoch não muda;
+- lease id não muda;
+- holder não muda;
+- snapshot não muda;
+- authority expirada continua expirada, sem criação automática de grant;
+- Cloud e Desktop são tratados fail-closed da mesma forma.
+
+Regressão PostgreSQL conjunta:
+- source authority + CloudBinding + SessionBroker;
+- **52/52 passed**.
+
+Gate integral:
+- `make test-all`;
+- **757 passed / 0 failed**.
+
+PWA snapshot contract:
+- `contract.test.ts + snapshotClient.test.ts`;
+- **29/29 passed**;
+- frontend não alterado.
+
+Migration chain:
+- PostgreSQL Supabase efêmero isolado;
+- migrations **001→021** aplicadas;
+- `schema_migrations count=21`;
+- last = `021_source_authority_snapshots.sql`;
+- reexecução reconheceu 021 como já aplicada;
+- `FULL_MIGRATION_001_021_R112_PASS`;
+- nenhuma migration de produção.
+
+#### Segurança/Git/escopo
+
+- branch `feat/spec027-cloud`;
+- HEAD ainda `6806c4ae3a4f2c505c2e7eb8b774c7823e3ce4c7`;
+- staged files: **0**;
+- `git diff --check`: PASS;
+- untracked diff check: PASS;
+- migration 021 sem material sensível novo;
+- Desktop SPEC027 limpo;
+- Shadow PIDs **15175/15185** intactos;
+- containers de teste removidos;
+- nenhum push/merge/deploy;
+- nenhum commit;
+- nenhum endpoint/scheduler/timer/restart policy C3-C;
+- **C3-C NÃO INICIADO**.
+
+**PARECER SOLICITADO:** **R11.2 INDEPENDENTE**, exclusivamente sobre R11.1-F1 e as regressões same-source. Manter sem commit/stage até o parecer.
+
+
+### R11.2 independente — encerramento do C3-B (2026-10-09)
+
+**Resultado:** APROVADO. R11-F1..F6 e R11.1-F1 estão encerrados. O diff C3-B revisado está aprovado para fechamento Git exato; C3-C continua bloqueado até autorização separada.
+
+**Evidência independente**
+- base API/Cloud preservada em `6806c4ae3a4f2c505c2e7eb8b774c7823e3ce4c7`;
+- Desktop preservado em `c8191bfea696368a7698a08bea727811412c05fd`;
+- staged files: 0;
+- `make test-all`: **757 passed**;
+- frontend snapshot contract: **29/29 passed**;
+- `git diff --check`: PASS; untracked sem diagnóstico;
+- nenhum container de teste residual;
+- Shadow intacto nos PIDs **15175/15185**;
+- nenhum push/merge/deploy/migration produção/C3-C observado.
+
+**R11.1-F1 — ENCERRADO**
+`accept_managed_snapshot_transition_candidate` agora falha fechado para qualquer candidate cujo `p_source` já seja o `active_source`. C3-B não cria policy de restart/reacquisition nem transforma expiry/restart em novo epoch/lease.
+
+Foram validados:
+- Desktop holder válido + nova Desktop instance: bloqueado, authority/snapshot intactos;
+- Cloud holder válido + nova Cloud instance: bloqueado;
+- same-source com lease expirada, mesma ou nova instance: bloqueado;
+- nenhuma emissão indevida de `failover_granted`/`failback_granted` para same-source;
+- cross-source continua no contrato anterior com gate explícito.
+
+**Fechamento C3-B**
+Permanecem aprovados:
+- migration 021 additive e local/efêmera;
+- default legacy;
+- bootstrap inicial Desktop epoch 1;
+- `authority_epoch` server-side por `device_id`;
+- current-grant e transition-candidate separados;
+- write eligibility distinta de renew eligibility;
+- lock order canônico;
+- fencing administrativo estreito;
+- revalidação de expiry/auth pós-lock;
+- candidate canonical também na boundary SQL;
+- side-effect context transacional;
+- RLS/privileges hardening;
+- PWA sem metadata C3;
+- nenhuma policy temporal C3-C/Cloud writer operacional antecipada.
+
+**Autorização Git**
+Está autorizado um único commit local contendo exatamente o diff C3-B revisado, incluindo migration 021, repositories/adapters, testes, plano dedicado e este handoff. Nenhuma alteração adicional deve entrar nesse commit.
+
+**Próximo checkpoint**
+C3-C não inicia automaticamente. Após o commit exato e working tree limpo, o próximo passo possível é **C3-C — heartbeat, freshness e hysteresis**, somente mediante autorização explícita do usuário. C3-C deverá terminar novamente sem commit/stage para R12 independente.
+
+Push, merge, deploy, migration 021 produção, managed mode real, Northflank operacional, WebPilot real no Cloud, Cloud writer real, failover/failback real e cutover continuam proibidos.

@@ -22,6 +22,14 @@ class SourceAuthorityRepository(Protocol):
 
     def get_source_authority(self, device_id: str) -> SourceAuthorityRecord | None: ...
 
+    def bootstrap_managed_source_authority(
+        self, device_id: str,
+    ) -> ManagedSnapshotAcceptanceResult: ...
+
+    def return_source_authority_to_legacy(
+        self, device_id: str,
+    ) -> SourceAuthorityRecord | None: ...
+
     def accept_current_grant_snapshot(
         self, command: PublishUnderCurrentGrant,
     ) -> ManagedSnapshotAcceptanceResult: ...
