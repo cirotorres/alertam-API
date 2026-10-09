@@ -1,7 +1,7 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** C2 **APROVADO EM R8.1 — C2-C AUTORIZADO PARA COMMIT EXATO**; Desktop C2-B permanece commitado/limpo; C3-P será o próximo checkpoint após o commit; C3 continua bloqueado
+**Status:** **C3-P APROVADO EM R9.2 — commit documental exato autorizado**; C1/C2 encerrados; C3-A ainda depende do commit exato e de autorização explícita de avanço
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
 **Base reconciliada:** API/PWA `feat/api-bootstrap@23a78bebdf46062eef937966101246567cd963de`; Desktop `develop@9e5b5e1a33cb7d61db200866aea683a6334de922`. **Feature:** `feat/spec027-cloud`, criada a partir de `23a78be` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`. **C1-A functional HEAD após correções R1:** `17afb4e19e21ce93e8eb1b8b0c8bfe47ebcf3364`; o commit documental deste registro será seu sucessor local.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
@@ -62,8 +62,8 @@
 | 3 | C1-C — Gate e isolamento | Fail-closed (enabled=false, indisponível), cross-device/cross-realm, tentativas indevidas, testes adversariais | R3 revisa proibições de bypass | **APROVADO EM R3 — commit 25485bba0143fd0c1659a88df89743db629951c2** |
 | 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | **APROVADO EM R4 — commit final C1 `61342b2ac47ffa48bfe90787b8aa2afb4bb4cda8`** |
 | 5 | C2-P — Plano Auth Broker | Desenhar reuso do coletor validado, contrato SessionLease, epoch, segurança, standby | R5/R5.1 (plano); **não** copiar parser/coletor | **APROVADO EM R5.1 — commit `7c9f19516673c80860b144b9f421aaea0810e423`** |
-| 6 | C2 — Execução em checkpoints próprios | Broker federado, anti-replay e core HTTP em standby headless sem source efetivo | R6/R7/R8; commit somente após cada aprovação | **APROVADO EM R8.1 — C2-C autorizado para commit exato; próximo passo C3-P, nunca C3 automático** |
-| 7 | C3-P / C3 — Autoridade e snapshots | Plano aprovado; lease/fencing, hysteresis, failover/failback, anti-split-brain; primeira versão só snapshots | Revisões por subtask, gate operacional explícito | BLOQUEADO |
+| 6 | C2 — Execução em checkpoints próprios | Broker federado, anti-replay e core HTTP em standby headless sem source efetivo | R6/R7/R8; commit somente após cada aprovação | **ENCERRADO — commit final C2 `b991ffb16d110c617c7c4bc90a842cc9abc22059`** |
+| 7 | C3-P / C3 — Autoridade e snapshots | Plano de authority epoch/fencing, heartbeat/freshness, hysteresis, snapshots state-only e persistência Cloud | R9/R9.1/R9.2 revisam somente o plano; C3-A..F exigem gates próprios | **C3-P APROVADO EM R9.2 — commit documental exato autorizado; C3-A aguarda autorização** |
 | 8 | C4 — Observabilidade | Status, logs sanitizados, smoke prolongado, degradação e reconciliação | Revisão operacional humana | BLOQUEADO |
 | 9 | C5 — Eventos/Push | Plano próprio de idempotência cross-source, sem duplicação | **Somente se autorizado separadamente** | FORA DA LIBERAÇÃO ATUAL |
 
@@ -2972,3 +2972,551 @@ O default atual do store é `/tmp/alertam-cloud/session-rejections.json`. O C2 a
 Após o commit exato do C2-C, o único avanço permitido é **C3-P — plano de autoridade/source/snapshots**. Não iniciar C3 funcional automaticamente. C3-P deve ser revisado independentemente antes de implementar source authority, snapshots, lease/fencing, hysteresis ou failover/failback.
 
 Push, merge, deploy, migration 020 em produção, Northflank operacional, WebPilot real no Cloud, SessionLease operacional real, `source=cloud`, failover/failback e cutover continuam proibidos sem autorização separada.
+
+
+### C3-P — Executor; plano de source authority e snapshots (2026-10-09)
+
+**Status:** **C3-P CORREÇÕES OBRIGATÓRIAS EM R9**. Quatro ajustes arquiteturais precisam ser fechados antes de liberar C3-A. Sessão continua estritamente documental; C3 funcional não foi iniciado.
+
+**Fechamento C2 / bases reais**
+- commit final C2 API/Cloud: **`b991ffb16d110c617c7c4bc90a842cc9abc22059`** — `test(cloud): close c2 multi-provider standby`;
+- base C3-P API/PWA/Cloud: `feat/spec027-cloud@b991ffb16d110c617c7c4bc90a842cc9abc22059`;
+- base Desktop: `feat/spec027-cloud@c8191bfea696368a7698a08bea727811412c05fd`;
+- ambos os working trees estavam limpos e sem stage na entrada;
+- Shadow original observado antes do planejamento nos PIDs 14865/14873, start time 2026-10-08 10:01:41; nenhum processo Shadow foi interrompido, reiniciado ou alterado.
+
+**Documentos relidos integralmente**
+1. este handoff central;
+2. `specs/027-alertam-cloud-continuity.md`;
+3. `docs/superpowers/strategy/2026-10-02-alertam-cloud-evolution-roadmap.md`;
+4. `docs/superpowers/plans/2026-10-08-spec027-c2-auth-broker-session-lease.md`;
+5. `docs/superpowers/plans/2026-10-06-pre-spec027-cloud-infra-spike.md`;
+6. `docs/superpowers/handoffs/2026-10-06-pre-spec027-cloud-infra-spike-handoff.md`.
+
+Também foram inspecionados os contratos atuais de snapshot API/Postgres, `MobileSnapshot`, leitura PWA, Desktop `MobileSyncCoordinator`/`SnapshotHttpClient` e container Cloud para que o plano preserve compatibilidade real.
+
+**Plano criado**
+- `docs/superpowers/plans/2026-10-09-spec027-c3-source-authority-snapshots.md`.
+
+#### Decisões arquiteturais C3-P
+
+1. **API/PostgreSQL é o único árbitro de source.**
+   - Desktop e Cloud nunca assumem authority por decisão local.
+   - DB indisponível => nenhuma nova aquisição/renovação/troca de authority e nenhum write managed.
+
+2. **Quatro lifecycles separados.**
+   - auth availability = SessionLease / broker / `realm_epoch`;
+   - source authority = holder efetivo por `device_id`;
+   - snapshot generation = authority grant + writer instance + sequence;
+   - source arbitration = política Desktop↔Cloud.
+   - `realm_epoch` **não** é reutilizado como fencing token de snapshot.
+
+3. **Fencing próprio por device.**
+   - novo `authority_epoch` bigint monotônico server-side;
+   - `authority_lease_id` + `holder_instance_id`;
+   - snapshot write managed exige epoch/lease/instance correntes;
+   - writer antigo é rejeitado mesmo que chegue atrasado.
+
+4. **Reuso do `boot_id` existente.**
+   - Desktop `MobileSnapshot.boot_id` é o holder instance id;
+   - Cloud terá boot/instance UUID próprio por processo;
+   - restart do writer exige grant novo antes de escrever;
+   - dentro do grant, `sequence` continua monotônica.
+
+5. **Migration proposta: `021_source_authority_snapshots.sql`.**
+   - somente local/efêmera durante desenvolvimento;
+   - nenhuma aplicação em produção sem gate separado;
+   - propõe:
+     - `device_source_authority`;
+     - `device_source_heartbeats`;
+     - `device_source_authority_transitions`;
+     - metadata backend de source/fence na linha `devices`.
+   - rollout default `legacy`; nenhuma ativação automática para managed.
+
+6. **Compatibilidade PWA preservada.**
+   - o GET atual de snapshot continua com **shape exato**;
+   - não adicionar `source`/epoch ao `SnapshotMetaResponse` em C3 v1 porque o frontend atual usa Zod `.strict()`;
+   - source status fica em endpoint separado Desktop/admin/support;
+   - PWA continua lendo apenas o único snapshot autoritativo em `devices.snapshot`.
+
+7. **Snapshot Cloud é state-only.**
+   - nenhum anchorage/maneuver/tracking event;
+   - nenhum push;
+   - primeiro Desktop snapshot após período Cloud é baseline para side effects da API, evitando inferência cross-source;
+   - eventos/push continuam fora de C3.
+
+8. **Heartbeat/freshness/hysteresis inicial proposta.**
+   Desktop:
+   - heartbeat esperado 60 s;
+   - HEALTHY <90 s;
+   - DEGRADED 90–120 s ou coleta degradada;
+   - STALE >=120 s;
+   - OFFLINE >=300 s, apenas classificação operacional;
+   - failover somente após STALE contínuo por mais 60 s;
+   - failover mais cedo ~180 s desde último heartbeat saudável.
+
+   Cloud:
+   - heartbeat alvo 30 s;
+   - heartbeat <60 s;
+   - standby OK <=90 s;
+   - auth/binding/realm/membership/provider-scope/persistent-state todos válidos.
+
+   Authority lease:
+   - TTL inicial 180 s;
+   - renew não incrementa epoch;
+   - troca de holder/source/processo incrementa epoch.
+
+9. **Failover/failback são transações junto ao snapshot vencedor.**
+   - Cloud não recebe authority “vazia”; a concessão Cloud e seu primeiro snapshot ocorrem atomicamente;
+   - failback Desktop também incrementa epoch e persiste o candidate Desktop na mesma transação;
+   - Cloud antigo/Desktop antigo recebem `authority_fenced`;
+   - nenhuma comparação de `generated_at` escolhe o vencedor.
+
+10. **Server clock governa authority.**
+    - heartbeat/stale/hysteresis/lease usam tempo server-side;
+    - `generated_at` é freshness do conteúdo, não fencing;
+    - limites iniciais planejados: >60 s no futuro => `snapshot_clock_ahead`; >300 s atrás => `snapshot_too_old`.
+
+11. **Precedência administrativa permanece fail-closed.**
+    - `enabled=false` sempre vence;
+    - revoke CloudBinding, deactivate realm e revoke membership fenceiam Cloud authority;
+    - C3-B deve fechar isso DB-side no mesmo lifecycle transacional, não apenas em checks Python;
+    - reativação nunca ressuscita token antigo.
+
+12. **Dois Desktops no mesmo realm não compartilham source authority.**
+    - auth realm pode ser comum;
+    - source authority continua estritamente por `device_id`;
+    - `realm_epoch` compartilhado não concede direito de snapshot em outro device.
+
+#### Persistência Cloud herdada de R8.1
+
+O default C2:
+`/tmp/alertam-cloud/session-rejections.json`
+
+fica explicitamente classificado como **somente desenvolvimento/standby não operacional**.
+
+Decisão C3-P para primeiro runtime operacional proposto:
+- alvo inicial continua Northflank, sujeito a gate humano;
+- **1 replica** no v1;
+- volume persistente Single Read/Write;
+- mount `/var/lib/alertam-cloud`;
+- `ALERTAM_CLOUD_STATE_DIR=/var/lib/alertam-cloud`;
+- `ALERTAM_CLOUD_SESSION_TOMBSTONES_PATH=/var/lib/alertam-cloud/session-rejections.json`;
+- runtime UID/GID permanece `10001:10001`;
+- diretório alvo 0700, arquivos 0600;
+- startup precisa provar read/write/fsync/atomic rename;
+- volume indisponível/corrompido => Cloud inelegível, **sem fallback para /tmp**.
+
+O store futuro distingue `pending` vs `confirmed` invalidations:
+- somente lease_id/realm_epoch/state/timestamps;
+- pending nunca é apagado só para cumprir limite;
+- limite inicial de pending = 256; overflow fail-closed;
+- confirmed pode ser limpo de forma bounded;
+- restart tenta retry bounded das pending;
+- perda/corrupção de volume exige recovery explícito e nova lease/epoch segura, nunca inicialização silenciosa como vazio.
+
+Nenhuma configuração Northflank foi alterada nesta sessão.
+
+#### Checkpoints futuros propostos
+
+- **C3-A / R10 — domínio, source metadata e contratos**
+  - modelos/interfaces/policy pure;
+  - prova de compatibilidade PWA;
+  - nenhum SQL/writer.
+
+- **C3-B / R11 — migration 021 + authority lease/fencing**
+  - PostgreSQL real;
+  - authority epoch/lease;
+  - managed snapshot RPC;
+  - concorrência e fencing administrativo.
+
+- **C3-C / R12 — heartbeat/freshness/hysteresis**
+  - Desktop/Cloud heartbeat;
+  - health state persistente;
+  - failover/failback eligibility;
+  - ainda sem Cloud snapshot writer.
+
+- **C3-D / R13 — writers controlados + persistent Cloud state**
+  - Desktop authority metadata;
+  - Cloud writer sintético/default OFF;
+  - persistent volume gate;
+  - fake WebPilot only.
+
+- **C3-E / R14 — sandbox failover/failback/split-brain**
+  - Desktop simulator + API/Postgres + fake WebPilot + Cloud + persistent volume + PWA-like reader;
+  - corridas reais, restart, DB outage, skew e snapshots atrasados;
+  - zero events/push.
+
+- **C3-F / R15 — integração e encerramento técnico**
+  - regressões completas;
+  - rollback;
+  - runbook;
+  - source status;
+  - writer ainda OFF e managed default legacy.
+
+Cada checkpoint continua usando TDD RED→GREEN, working tree sem commit/stage e revisão independente antes de qualquer commit.
+
+#### Gate humano posterior ao C3 técnico
+
+Mesmo R15 aprovado **não** libera produção.
+
+Antes do primeiro device real managed será necessário, separadamente:
+- autorização migration 021 produção;
+- deploy API compatível;
+- Desktop compatível;
+- persistent volume configurado e testado;
+- backup/restore runbook;
+- Cloud image com writer inicialmente OFF;
+- autorização explícita de SessionLease/WebPilot operacional real;
+- managed mode ligado explicitamente para device piloto;
+- writer Cloud ligado explicitamente;
+- smoke humano e rollback pronto.
+
+#### Riscos principais registrados
+
+- confundir `realm_epoch` com fencing de snapshot;
+- quebrar PWA strict ao adicionar source no envelope;
+- duplicar side effects atravessando source;
+- token antigo sobreviver a disable/revoke;
+- confiar em `/tmp`;
+- flapping por thresholds agressivos;
+- clock skew decidir authority;
+- duas replicas Cloud compartilharem estado local indevidamente.
+
+#### Fora de escopo mantido
+
+C3-P/C3 não inclui:
+- eventos/push Cloud;
+- idempotência cross-source de eventos;
+- login Cloud nativo com user/password;
+- refatoração ampla Desktop;
+- remoção Selenium;
+- novo device_id/pareamento;
+- HA multi-replica Cloud;
+- deploy/push/merge/cutover;
+- migration produção sem autorização.
+
+**Alterações desta sessão:** somente este handoff + novo plano C3-P. Nenhum arquivo funcional, migration, Desktop, Cloud runtime ou frontend foi modificado.
+
+**PARECER SOLICITADO:** **R9 independente** sobre o C3-P. **Não iniciar C3-A** antes de R9 aprovado e autorização explícita do próximo checkpoint.
+
+
+### R9 independente — revisão do C3-P (2026-10-09)
+
+**Resultado:** CORREÇÕES OBRIGATÓRIAS. O desenho geral está forte e preserva corretamente a separação `realm_epoch` × `authority_epoch`, API/PostgreSQL como árbitro único, PWA strict, fencing, persistência Cloud e rollout legacy→managed. Porém quatro pontos arquiteturais precisam ficar explícitos antes de C3-A, porque afetam diretamente os contratos de domínio e de RPC que C3-A pretende congelar.
+
+**Evidência independente**
+- API/Cloud HEAD/base: `b991ffb16d110c617c7c4bc90a842cc9abc22059`.
+- Desktop HEAD/base: `c8191bfea696368a7698a08bea727811412c05fd`.
+- alterações da sessão: somente handoff + novo plano C3-P; nenhum arquivo funcional/migration alterado.
+- staged files: 0.
+- `git diff --check`: PASS no tracked; plano untracked também sem diagnóstico.
+- contrato atual confirmado: `MobileSnapshot.boot_id` é UUID; snapshot atual é persistido em `devices`; `SnapshotService` hoje lê o previous antes de `accept_snapshot_atomic()` e despacha anchorage depois da aceitação.
+- GET PWA atual permanece strict e não deve receber source metadata em C3 v1.
+
+#### R9-F1 — liveness heartbeat não pode ser suficiente para manter authority se o snapshot autoritativo parou de ser aceito
+
+O plano separa heartbeat de snapshot, o que é correto, mas a política temporal Desktop e o renewal da authority lease usam essencialmente heartbeat/collection health. Isso deixa um buraco: o Desktop pode continuar enviando heartbeat saudável enquanto seu POST de snapshot está falhando/rejeitado. Nesse cenário, a API continuaria renovando Desktop authority e nunca liberaria Cloud, enquanto `devices.snapshot.received_at` envelhece e o PWA fica stale/offline.
+
+O mesmo princípio vale para Cloud já autoritativo: heartbeat sozinho não deve manter authority indefinidamente se nenhum snapshot Cloud vem sendo aceito.
+
+**Correção exigida**
+- distinguir **process liveness** de **authoritative snapshot freshness**;
+- persistir/derivar server-side `last_authoritative_snapshot_at` por source/holder (ou metadata equivalente transacional);
+- para holder atual, renewal e health efetivo devem exigir snapshot aceito recentemente dentro de janela definida, não apenas heartbeat;
+- Desktop failover eligibility deve poder ser atingida quando o authoritative snapshot fica stale mesmo se heartbeat ainda chega;
+- Cloud ativo também deve perder renovabilidade quando seu snapshot autoritativo deixa de ser aceito;
+- standby Cloud continua usando candidate freshness própria, pois ainda não é holder;
+- definir hysteresis para snapshot-stale para não transformar uma falha única de POST em failover imediato;
+- incluir reason codes distintos, por exemplo `desktop_snapshot_stale` / `cloud_snapshot_stale`.
+
+#### R9-F2 — protocolo de aquisição/transição de authority está incompleto e contradiz a exigência de fence obrigatório
+
+O plano diz que:
+- failover Cloud→authority ocorre **junto do primeiro snapshot Cloud vencedor**;
+- failback Desktop ocorre **junto do snapshot Desktop vencedor**;
+- porém a rota Cloud de snapshot declara `authority/fence obrigatório`, e o Desktop managed snapshot é descrito com headers de epoch/lease já existentes.
+
+O candidato que está tentando causar uma transição ainda **não possui** o novo `authority_epoch/authority_lease_id`. Falta separar formalmente:
+1. write do holder atual sob grant existente;
+2. candidate de transição que pede ao DB para arbitrar e, se vencer, criar o novo grant + aceitar o snapshot atomicamente.
+
+Também falta definir como o writer aprende o grant resultante.
+
+**Correção exigida**
+- definir contrato/RPC explícito para `publish_under_current_grant` versus `transition_candidate` (podem compartilhar endpoint, mas os modos e validações precisam ser inequívocos);
+- current-holder write exige epoch + lease + instance;
+- transition candidate é autenticado por Device/CloudBinding + instance e **não inventa** novo epoch/lease; o DB cria e retorna o grant somente se todos os gates vencerem;
+- resposta de grant deve devolver ao writer pelo menos `authority_epoch`, `authority_lease_id`, `holder_instance_id`, `lease_expires_at` e resultado/reason tipado;
+- heartbeat/renew/status contract deve deixar claro como o holder recupera/renova esses dados sem consultar PWA;
+- definir o **primeiro grant de legacy→managed**: a ativação não pode deixar ambiguidade sobre quem é holder inicial. Preferência recomendada: ativação managed transacional com Desktop saudável/fresh como primeiro holder/epoch 1; qualquer alternativa precisa ser explicitamente fail-closed.
+
+#### R9-F3 — escopo de fencing administrativo precisa respeitar a separação auth availability × source authority
+
+A seção de precedência administrativa lista realm/membership/binding como causas de fencing do grant corrente, enquanto outra seção afirma corretamente que realm disable não deve afetar a preferência Desktop local. Essas duas regras precisam ser conciliadas.
+
+**Correção exigida**
+- `device.enabled=false` fenceia qualquer source do device;
+- CloudBinding revoke fenceia somente authority `cloud` vinculada àquele binding/device;
+- membership do **device dono do CloudBinding** revogada torna o binding inutilizável e fenceia apenas esse Cloud grant;
+- realm inactive torna Cloud inelegível/fenceia Cloud grants ligados ao realm, mas não deve derrubar Desktop authority;
+- membership/revogação de um **publisher de SessionLease** não deve automaticamente ser tratada como source-authority revoke de todos os devices do realm; o broker/auth lifecycle deve primeiro determinar se existe outra SessionLease elegível. Enquanto auth estiver indisponível, Cloud não renova/não escreve;
+- triggers/RPCs da migration 021 devem documentar exatamente qual grant é afetado por cada mudança administrativa, sem trigger amplo que possa fencear Desktop por evento de auth Cloud.
+
+#### R9-F4 — baseline de side effects na troca Cloud→Desktop precisa ser decidido pela transação vencedora, não por pre-read
+
+Hoje o `SnapshotService` faz `get_snapshot()` antes do `accept_snapshot_atomic()` e usa esse previous depois para `detect_anchorage_entries()`. Em C3 haverá concorrência real entre writers. Um pre-read pode ficar stale antes da transação managed vencer.
+
+Para garantir a regra “primeiro Desktop depois de Cloud é baseline sem side effects”, não basta olhar o snapshot lido antes do write.
+
+**Correção exigida**
+- o RPC/result managed deve devolver contexto autoritativo da aceitação, por exemplo `previous_source`, `source_transition` e/ou `side_effect_policy`;
+- o service só pode despachar anchorage/event do caminho Desktop quando o resultado transacional afirmar continuidade Desktop→Desktop apropriada;
+- Cloud writes nunca despacham esses side effects;
+- failback Cloud→Desktop e primeiro Desktop managed após transição devem ser baseline, mesmo sob corrida;
+- adicionar esse contrato já em C3-A e teste PostgreSQL/concurrency correspondente em C3-B/C3-E.
+
+**Pontos aprovados em princípio**
+- `realm_epoch` separado de `authority_epoch`;
+- authority por `device_id`;
+- API/PostgreSQL como único árbitro;
+- fencing por epoch + lease + instance;
+- server clock para arbitration;
+- PWA GET sem alteração de shape;
+- migration 021 additive e default legacy;
+- Cloud state-only / C5 separado;
+- persistent volume obrigatório e `/tmp` proibido em runtime operacional;
+- uma réplica Cloud no v1;
+- checkpoints C3-A..F e gates independentes;
+- nenhum C3 funcional iniciado.
+
+**Próximo passo autorizado:** corrigir **somente o C3-P documentalmente** para fechar R9-F1..F4, mantendo o mesmo HEAD `b991ffb16d110c617c7c4bc90a842cc9abc22059`, sem commit/stage e sem tocar em código/migration. Atualizar o plano e este handoff e parar para **R9.1 independente**. C3-A permanece bloqueado até R9.1 APROVADO.
+
+### Correções R9-F1..R9-F4 — Executor; C3-P somente documental (2026-10-09)
+
+**Status:** **PRONTO PARA R9.1 INDEPENDENTE**. Foram corrigidos somente o plano C3-P e este handoff. Nenhum C3-A, código, migration funcional, frontend, Desktop runtime ou Cloud runtime foi iniciado/alterado.
+
+**Bases preservadas**
+- API/PWA/Cloud HEAD: `b991ffb16d110c617c7c4bc90a842cc9abc22059`;
+- Desktop HEAD: `c8191bfea696368a7698a08bea727811412c05fd`;
+- `realm_epoch` permanece exclusivo do lifecycle SessionLease/auth;
+- `authority_epoch` permanece fencing próprio por `device_id`;
+- migration 021 continua apenas **proposta**;
+- GET PWA continua com shape atual, sem source metadata;
+- Cloud writer permanece OFF e managed default `legacy`;
+- `/tmp` continua proibido para runtime Cloud operacional;
+- C3 continua state-only; C5/eventos/push permanece separado.
+
+#### R9-F1 — authoritative snapshot freshness — CORRIGIDO
+
+O plano agora separa explicitamente três sinais:
+1. process heartbeat/liveness;
+2. collection health;
+3. authoritative snapshot freshness.
+
+Foi formalizada metadata server-side `last_authoritative_snapshot_at` + `authoritative_snapshot_stale_since`, atualizada somente quando a transação aceita um snapshot do holder.
+
+Defaults iniciais configuráveis:
+- Desktop authoritative snapshot stale: 120 s;
+- Cloud authoritative snapshot stale: 90 s;
+- hysteresis adicional de snapshot stale: 60 s.
+
+Consequências:
+- uma falha isolada de POST não causa failover;
+- heartbeat saudável não mascara snapshot autoritativo stale;
+- Desktop holder com snapshot stale deixa de renovar e pode chegar a failover eligibility mesmo mantendo heartbeat;
+- Cloud holder segue a mesma regra e pode se tornar não renovável com `cloud_snapshot_stale`;
+- standby Cloud continua governado por candidate/standby freshness, não por `last_authoritative_snapshot_at`;
+- reason codes `desktop_snapshot_stale` e `cloud_snapshot_stale` foram adicionados;
+- boundaries e cenários foram adicionados a C3-C e C3-E.
+
+#### R9-F2 — current-holder write × transition candidate — CORRIGIDO
+
+O plano agora define dois comandos managed distintos:
+
+- `publish_under_current_grant`: exige source atual + `authority_epoch` + `authority_lease_id` + `holder_instance_id` + sequence válida;
+- `transition_candidate`: Device/CloudBinding auth + candidate + instance, sem fornecer/inventar o novo epoch/lease.
+
+O DB revalida todos os gates. Se o transition candidate vencer, cria o novo grant e persiste o snapshot na mesma transação; se perder, não altera authority nem snapshot.
+
+O resultado vencedor devolve ao menos:
+- `authority_epoch`;
+- `authority_lease_id`;
+- `holder_instance_id`;
+- `lease_expires_at`;
+- `status/reason_code`.
+
+Heartbeat/renew do holder confirma/devolve o grant corrente. O plano também fechou o bootstrap `legacy -> managed`: ativação v1 só ocorre transacionalmente com Desktop healthy/fresh como primeiro holder, `authority_epoch=1`; caso contrário o device permanece legacy, sem estado managed sem holder.
+
+#### R9-F3 — administrative fencing com escopo correto — CORRIGIDO
+
+A precedência ficou explícita:
+- `device.enabled=false` fenceia qualquer source do device;
+- CloudBinding revoked fenceia somente Cloud grant daquele binding/device;
+- membership revogada do device dono do binding fenceia somente o Cloud grant correspondente;
+- realm inactive fenceia somente Cloud grants ligados ao realm, sem derrubar Desktop;
+- revogação de publisher SessionLease não fenceia automaticamente todos os Cloud grants do realm;
+- se outra SessionLease elegível existir, Cloud pode recuperar auth sem source transition/novo `authority_epoch`;
+- enquanto auth estiver indisponível, Cloud não renova nem escreve.
+
+A migration 021 proposta passa a exigir helpers/triggers estreitos por device/binding/realm e proíbe trigger amplo em publisher/SessionLease que possa fencear Desktop ou outros devices por engano.
+
+#### R9-F4 — side effects decididos pela transação vencedora — CORRIGIDO
+
+O plano reconhece explicitamente o pre-read atual do `SnapshotService` e proíbe que esse pre-read decida side effects no managed path.
+
+O resultado managed passa a carregar contexto transacional:
+- `previous_source`;
+- `source_transition`;
+- `side_effect_policy = none | baseline | desktop_continuity`;
+- `previous_snapshot_for_side_effects` somente quando a continuidade Desktop→Desktop foi confirmada sob lock.
+
+Regras fechadas:
+- Cloud snapshot sempre `none`;
+- Cloud→Desktop failback sempre `baseline`;
+- primeiro Desktop aceito em source transition sempre `baseline`;
+- side effects Desktop só ocorrem quando o commit vencedor retorna `desktop_continuity`;
+- loser de corrida nunca produz side effect;
+- pre-read stale fora da transação não pode gerar evento cross-source.
+
+Esse contrato entrou no C3-A; C3-B agora exige testes PostgreSQL/concurrency do result transacional, inclusive corrida com pre-read stale; C3-E exige failback baseline e continuidade Desktop subsequente.
+
+**Verificação documental exigida antes de R9.1**
+- somente documentação deve permanecer alterada;
+- nenhum commit/stage;
+- `git diff --check` tracked: obrigatório PASS;
+- plano untracked: `git diff --no-index --check` obrigatório PASS;
+- Desktop deve permanecer limpo em `c8191bfe...`;
+- Shadow original deve permanecer intacto;
+- C3-A continua bloqueado.
+
+**PARECER SOLICITADO:** **R9.1 independente** sobre as correções R9-F1..R9-F4. Não iniciar C3-A antes de R9.1 APROVADO e autorização explícita.
+
+
+### R9.1 independente — revisão das correções R9-F1..R9-F4 (2026-10-09)
+
+**Resultado:** CORREÇÃO OBRIGATÓRIA. R9-F2, R9-F3 e R9-F4 estão encerrados, e R9-F1 foi estruturalmente corrigido, porém a combinação atual entre snapshot-stale e `publish_under_current_grant` cria um deadlock lógico de recuperação que precisa ser removido antes de congelar C3-A.
+
+**Evidência independente**
+- API/Cloud HEAD/base preservado: `b991ffb16d110c617c7c4bc90a842cc9abc22059`.
+- Desktop HEAD/base preservado: `c8191bfea696368a7698a08bea727811412c05fd`.
+- somente documentação alterada; nenhum arquivo funcional/migration/frontend/runtime modificado.
+- staged files: 0.
+- `git diff --check`: PASS; plano untracked também sem diagnóstico.
+- Shadow original permaneceu intacto nos PIDs 14865/14873.
+
+**R9-F2 — ENCERRADO**
+O plano agora distingue corretamente `publish_under_current_grant` de `transition_candidate`; candidate de transição não inventa epoch/lease, o DB cria o grant vencedor atomicamente, heartbeat/renew pode recuperar o grant corrente e o bootstrap `legacy -> managed` nasce com Desktop healthy/fresh como holder epoch 1.
+
+**R9-F3 — ENCERRADO**
+A matriz administrativa agora respeita o boundary auth × source: device disable fenceia qualquer source; binding/owner-membership/realm afetam Cloud de forma estreita; publisher SessionLease não fenceia source authority de outros devices por consequência indireta.
+
+**R9-F4 — ENCERRADO**
+Side effects managed passam a depender do resultado transacional vencedor, com `previous_source/source_transition/side_effect_policy`; pre-read externo não pode promover baseline para continuidade Desktop e loser de corrida não produz efeito.
+
+#### R9.1-F1 — snapshot stale torna o grant não renovável, mas o próprio contrato de current-grant exige que ele ainda seja renovável
+
+O plano agora define corretamente:
+- aos 120 s sem snapshot autoritativo Desktop, entra `desktop_snapshot_stale`;
+- somente **um novo snapshot autoritativo aceito** limpa `authoritative_snapshot_stale_since`;
+- o grant fica **não renovável** durante snapshot stale;
+- existe hysteresis adicional de 60 s para permitir recuperação antes de failover.
+
+Porém `publish_under_current_grant` atualmente exige:
+- lease não expirada **e ainda renovável**;
+- todos os gates de health/freshness aplicáveis.
+
+Isso cria um ciclo impossível entre 120 s e 180 s:
+1. snapshot fica stale;
+2. stale torna o grant não renovável;
+3. current-holder tenta publicar um snapshot novo para recuperar;
+4. o write é rejeitado porque o grant já não é renovável/fresh;
+5. o stale marker só poderia ser limpo por um snapshot aceito;
+6. portanto o holder não consegue se recuperar durante a própria hysteresis.
+
+A hysteresis de snapshot-stale perde sua função e uma interrupção de snapshot que ultrapasse o threshold força epoch/source reacquisition mesmo que o mesmo holder tenha voltado antes do failover.
+
+**Correção exigida**
+- separar formalmente **write eligibility** de **renew eligibility**;
+- `renew` continua exigindo authoritative snapshot freshness;
+- `publish_under_current_grant` deve poder aceitar um **recovery snapshot** do holder corrente quando:
+  - epoch/lease/instance ainda são exatamente os correntes;
+  - lease ainda não expirou;
+  - nenhum outro transition candidate venceu/fenceou o grant;
+  - gates administrativos permanecem válidos;
+  - candidate passa sequence, generated_at/freshness e demais validações próprias;
+- o write de recuperação **não deve exigir que o snapshot anterior ainda esteja fresh nem que o grant já seja renovável**, pois ele é justamente o ato que pode restaurar freshness;
+- se esse recovery snapshot for aceito antes do fim da hysteresis/antes de outro winner, atualizar `last_authoritative_snapshot_at`, limpar `authoritative_snapshot_stale_since` e restaurar renew eligibility se os demais gates estiverem verdes;
+- depois de lease expirar, authority epoch mudar ou grant ser fenced, current-grant não pode se recuperar: passa a `transition_candidate` somente se a policy permitir;
+- cobrir explicitamente Desktop e Cloud holders;
+- adicionar cenário/boundary obrigatório: snapshot stale aos 120 s → recovery snapshot aceito aos 150 s → mesmo epoch/lease permanece → hysteresis cancelada → nenhum failover;
+- adicionar corrida: recovery current-grant × transition-candidate; exatamente um commit vence sob lock, e loser é fenced/typed sem sobrescrever o winner.
+
+**Observação menor a alinhar junto da correção**
+Na seção de endpoints, deixar explícito que o header `X-Alertam-Authority-Operation` vale tanto para o endpoint Desktop quanto para o endpoint Cloud em managed mode; hoje a descrição dos dois modos está posicionada apenas sob o subtítulo Cloud e pode ser lida como Cloud-only.
+
+**Próximo passo autorizado:** corrigir somente R9.1-F1 e essa ambiguidade documental de endpoint no C3-P, sem código/migration/commit/stage, mantendo a mesma base. Atualizar plano + handoff e parar para **R9.2 independente**. C3-A continua bloqueado.
+
+### Correção R9.1-F1 — Executor (2026-10-09)
+
+**Status:** PRONTO PARA R9.2 INDEPENDENTE, sujeito à verificação Git final. Somente C3-P documental; C3-A permanece bloqueado.
+
+**R9.1-F1 — recovery sem deadlock:** o plano agora separa `write eligibility` de `renew eligibility`. Renewal continua exigindo snapshot autoritativo recente; `publish_under_current_grant` pode aceitar snapshot de recuperação Desktop ou Cloud mesmo com anterior stale, desde que grant ainda não expirado, epoch/lease/instance sejam correntes, não haja fencing/transição vencedora, gates administrativos estejam válidos e candidate passe sequence, `generated_at` e validações próprias. A transação vencedora atualiza `last_authoritative_snapshot_at`, limpa `authoritative_snapshot_stale_since` e restaura renovabilidade quando os demais gates estiverem saudáveis. Depois de expiry/fencing/novo epoch, não há recovery pelo grant antigo; nova aquisição exige `transition_candidate` e policy aplicável.
+
+**Provas previstas:** C3-C inclui boundary Desktop stale em 120 s → recovery em 150 s → mesmo epoch/lease, hysteresis cancelada e zero failover; cobre também recovery Cloud. C3-B exige concorrência PostgreSQL recovery current-grant × transition-candidate com winner único e loser tipado sem overwrite. C3-E inclui as duas situações e rejeição após expiry/fencing.
+
+**Ambiguidade de endpoint — corrigida:** a seção de endpoints agora afirma explicitamente que `X-Alertam-Authority-Operation` e os modos `current-grant`/`transition-candidate` valem para **ambos** os endpoints managed: Desktop Device e Cloud CloudBinding.
+
+**Fronteiras:** `realm_epoch != authority_epoch`, PWA GET strict inalterado, migration 021 somente proposta, Cloud writer OFF, managed default legacy, `/tmp` proibido operacionalmente, C3 state-only e C5 separado. Não iniciar C3-A. Nenhum commit/stage autorizado.
+
+**PARECER SOLICITADO:** R9.2 independente, exclusivamente sobre R9.1-F1 e a ambiguidade do endpoint.
+
+
+### R9.2 independente — encerramento do C3-P (2026-10-09)
+
+**Resultado:** APROVADO. R9.1-F1 e a ambiguidade documental do endpoint estão encerrados. O C3-P está tecnicamente aprovado.
+
+**Evidência independente**
+- API/Cloud HEAD/base preservado em `b991ffb16d110c617c7c4bc90a842cc9abc22059`.
+- Desktop preservado em `c8191bfea696368a7698a08bea727811412c05fd`.
+- somente documentação alterada; nenhum arquivo funcional, migration, frontend, Desktop runtime ou Cloud runtime modificado.
+- staged files: 0.
+- `git diff --check`: PASS; plano untracked também sem diagnóstico.
+- Shadow original permaneceu intacto nos PIDs 14865/14873.
+
+**R9.1-F1 — ENCERRADO**
+O plano agora separa corretamente **write eligibility** de **renew eligibility**:
+- snapshot autoritativo stale torna o grant não renovável;
+- o holder corrente ainda pode publicar um recovery snapshot sob o mesmo epoch/lease/instance enquanto a lease não expirou e o grant não foi fenced/substituído;
+- o recovery snapshot não depende da freshness do snapshot anterior;
+- a aceitação sob lock atualiza `last_authoritative_snapshot_at`, limpa o stale marker e restaura renew eligibility quando os demais gates estão saudáveis;
+- após expiry/fencing/epoch replacement, o grant antigo não pode se recuperar e nova aquisição exige `transition_candidate` conforme policy.
+
+O cenário 120 s → recovery aos 150 s preservando epoch/lease e cancelando hysteresis foi incorporado aos gates C3-C/C3-E. A corrida recovery current-grant × transition-candidate foi adicionada ao gate PostgreSQL real de C3-B e ao sandbox C3-E, exigindo vencedor único sob lock e loser tipado sem overwrite.
+
+**Ambiguidade de endpoint — ENCERRADA**
+O plano agora declara explicitamente que `X-Alertam-Authority-Operation` e os modos `current-grant` / `transition-candidate` são contrato comum aos endpoints managed Desktop Device e Cloud CloudBinding.
+
+**Arquitetura C3-P aprovada**
+Permanecem aprovados:
+- `realm_epoch` exclusivo de auth/SessionLease e `authority_epoch` exclusivo de source fencing;
+- authority por `device_id`;
+- API/PostgreSQL como único árbitro;
+- current-holder write e transition candidate como operações distintas;
+- authoritative snapshot freshness separada de heartbeat/liveness;
+- fencing administrativo com escopo Desktop/Cloud correto;
+- side effects decididos pelo resultado transacional managed;
+- bootstrap `legacy -> managed` com Desktop healthy/fresh como primeiro holder epoch 1;
+- GET PWA com shape atual sem source metadata;
+- migration 021 additive/proposta, nunca produção sem gate humano;
+- Cloud state-only, writer OFF por default, C5 separado;
+- persistent state Cloud fora de `/tmp` antes de qualquer operação real;
+- checkpoints C3-A..F com revisões independentes.
+
+**Autorização Git**
+Está autorizado um único commit local contendo exatamente o plano C3-P + handoff central revisados em R9/R9.1/R9.2. Nenhuma alteração funcional deve entrar nesse commit.
+
+**Próximo checkpoint**
+C3-A ainda não inicia automaticamente. Após o commit documental exato e working tree limpo, o próximo passo possível é **C3-A — domínio, source metadata e contratos**, somente mediante autorização explícita do usuário. C3-A deverá terminar sem commit/stage para R10 independente.
+
+Push, merge, deploy, migration 021 produção, Northflank operacional, WebPilot real no Cloud, snapshot Cloud operacional, `source=cloud`, failover/failback real e cutover continuam proibidos.
