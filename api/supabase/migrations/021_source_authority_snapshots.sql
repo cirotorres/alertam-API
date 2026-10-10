@@ -113,7 +113,7 @@ create table if not exists public.device_source_heartbeats (
     last_reason_code text null,
     persistent_state_ready boolean null,
     updated_at timestamptz not null default clock_timestamp(),
-    primary key (device_id, source),
+    primary key (device_id, source, instance_id),
     constraint device_source_heartbeats_source_check
         check (source in ('desktop', 'cloud')),
     constraint device_source_heartbeats_consecutive_check
@@ -270,6 +270,7 @@ begin
     select h.* into v_heartbeat
     from public.device_source_heartbeats h
     where h.device_id = p_device_id and h.source = 'desktop'
+      and h.instance_id = v_device.boot_id
     for update;
 
     select a.* into v_authority
@@ -679,6 +680,8 @@ declare
     v_realm public.webpilot_auth_realms%rowtype;
     v_membership public.webpilot_auth_realm_devices%rowtype;
     v_heartbeat public.device_source_heartbeats%rowtype;
+    v_locked_hb public.device_source_heartbeats%rowtype;
+    v_pre_authority public.device_source_authority%rowtype;
     v_authority public.device_source_authority%rowtype;
     v_now timestamptz;
     v_observed_realm_epoch bigint;
@@ -734,15 +737,50 @@ begin
         for update;
     end if;
 
-    select h.* into v_heartbeat
-    from public.device_source_heartbeats h
-    where h.device_id = p_device_id and h.source = p_source
-    for update;
+    -- Device lock serializes candidate/holder heartbeat changes. This pre-read
+    -- identifies lock keys only; it does NOT decide authority eligibility.
+    select a.* into v_pre_authority from public.device_source_authority a
+    where a.device_id=p_device_id;
+    if v_pre_authority.device_id is null then
+        return query select 'ineligible','db_unavailable',v_device.received_at,
+            p_device_id,p_source,null::bigint,null::uuid,null::uuid,
+            null::timestamptz,null::text,false,'none',null::jsonb;
+        return;
+    end if;
+
+    -- Acquire both heartbeat locks BEFORE authority, ordered across instances.
+    for v_locked_hb in
+        select h.* from public.device_source_heartbeats h
+        where h.device_id=p_device_id and (
+            (h.source=p_source and h.instance_id=p_holder_instance_id)
+            or (h.source=v_pre_authority.active_source
+                and h.instance_id=v_pre_authority.holder_instance_id)
+        )
+        order by h.source asc, h.instance_id asc for update
+    loop
+        if v_locked_hb.source=p_source
+           and v_locked_hb.instance_id=p_holder_instance_id then
+            v_heartbeat:=v_locked_hb;
+        end if;
+    end loop;
 
     select a.* into v_authority
     from public.device_source_authority a
     where a.device_id = p_device_id
     for update;
+
+    if v_authority.device_id is null
+       or v_authority.mode is distinct from v_pre_authority.mode
+       or v_authority.active_source is distinct from v_pre_authority.active_source
+       or v_authority.holder_instance_id is distinct from v_pre_authority.holder_instance_id
+       or v_authority.authority_epoch is distinct from v_pre_authority.authority_epoch
+       or v_authority.authority_lease_id is distinct from v_pre_authority.authority_lease_id
+       or v_authority.updated_at is distinct from v_pre_authority.updated_at then
+        return query select 'ineligible','authority_fenced',v_device.received_at,
+            p_device_id,p_source,null::bigint,null::uuid,null::uuid,
+            null::timestamptz,null::text,false,'none',null::jsonb;
+        return;
+    end if;
 
     v_now := clock_timestamp();
 
@@ -763,13 +801,6 @@ begin
     -- C3-B has no approved same-source restart/reacquisition policy.
     -- Fail closed until C3-C defines an explicit gate; transition_candidate
     -- must never turn expiry/restart alone into a fresh epoch/lease.
-    if v_authority.active_source = p_source then
-        return query select 'ineligible', 'authority_fenced', v_device.received_at,
-            p_device_id, p_source, null::bigint, null::uuid, null::uuid,
-            null::timestamptz, null::text, false, 'none', null::jsonb;
-        return;
-    end if;
-
     if v_heartbeat.device_id is null
        or v_heartbeat.instance_id <> p_holder_instance_id
        or v_heartbeat.process_healthy is not true
@@ -853,13 +884,36 @@ begin
         and v_heartbeat.updated_at > v_authority.updated_at
     );
 
-    if v_authority.active_source is distinct from p_source
-       and not v_gate_fresh then
+    -- The server computes the gate from timestamped state under the device
+    -- transaction lock. Client-supplied heartbeat reasons are never authority.
+    v_gate_reason := public.source_candidate_reason(
+        p_device_id, p_source, p_holder_instance_id, v_now
+    );
+    if v_gate_reason not in (
+        'failover_granted','failback_granted',
+        'desktop_reacquire_granted','cloud_reacquire_granted'
+    ) then
+        -- Existing C3-B semantic: all denied same-source reacquisitions
+        -- are authority_fenced, even when the candidate is unhealthy/stale.
+        if v_authority.active_source=p_source then
+            v_gate_reason := 'authority_fenced';
+        end if;
+        return query select 'ineligible', v_gate_reason, v_device.received_at,
+            p_device_id, p_source, null::bigint, null::uuid, null::uuid,
+            null::timestamptz, null::text, false, 'none', null::jsonb;
+        return;
+    end if;
+
+    if (
+        (p_source='cloud' and p_generated_at < v_now - interval '90 seconds')
+        or (p_source='desktop' and p_generated_at < v_now - interval '120 seconds')
+    ) then
         return query select 'ineligible',
-            case when p_source = 'cloud' then 'failover_wait_hysteresis' else 'failback_wait_stable' end,
-            v_device.received_at, p_device_id, p_source,
-            null::bigint, null::uuid, null::uuid, null::timestamptz,
-            null::text, false, 'none', null::jsonb;
+            case when p_source='cloud' then 'cloud_standby_stale'
+                 else 'failback_wait_stable' end,
+            v_device.received_at,p_device_id,p_source,
+            null::bigint,null::uuid,null::uuid,
+            null::timestamptz,null::text,false,'none',null::jsonb;
         return;
     end if;
 
@@ -882,10 +936,7 @@ begin
         granted_at = v_now,
         last_renewed_at = v_now,
         last_transition_at = v_now,
-        transition_reason = case
-            when p_source = 'cloud' then 'failover_granted'
-            else 'failback_granted'
-        end,
+        transition_reason = v_gate_reason,
         last_authoritative_snapshot_at = v_now,
         authoritative_snapshot_stale_since = null,
         cloud_binding_id = case when p_source = 'cloud' then v_binding.cloud_binding_id else null end,
@@ -915,12 +966,11 @@ begin
     ) values (
         p_device_id, v_epoch, v_previous_source, p_source,
         v_previous_instance, p_holder_instance_id,
-        case when p_source = 'cloud' then 'failover_granted' else 'failback_granted' end,
+        v_gate_reason,
         v_now
     );
 
-    return query select 'accepted',
-        case when p_source = 'cloud' then 'failover_granted' else 'failback_granted' end,
+    return query select 'accepted', v_gate_reason,
         v_now, p_device_id, p_source, v_epoch, v_lease, p_holder_instance_id,
         v_authority.lease_expires_at, v_previous_source, v_transition,
         v_policy, null::jsonb;
@@ -1215,3 +1265,413 @@ grant execute on function public.accept_managed_snapshot_transition_candidate(
 ) to service_role;
 grant execute on function public.return_source_authority_to_legacy(text)
     to service_role;
+
+-- C3-C: deterministic policy over persisted, server-timestamped state.
+-- Caller must already hold the device transaction lock for any authority mutation.
+-- This function never creates a grant; a transition RPC rechecks it under locks.
+create or replace function public.source_candidate_reason(
+    p_device_id text,
+    p_source text,
+    p_instance_id uuid,
+    p_now timestamptz
+)
+returns text
+language plpgsql
+volatile
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+    v_authority public.device_source_authority%rowtype;
+    v_candidate public.device_source_heartbeats%rowtype;
+    v_holder_hb public.device_source_heartbeats%rowtype;
+    v_candidate_fresh boolean;
+    v_auth_ready boolean := false;
+    v_restart_threshold interval;
+begin
+    select a.* into v_authority
+    from public.device_source_authority a
+    where a.device_id=p_device_id;
+    if v_authority.device_id is null or v_authority.mode <> 'managed' then
+        return 'legacy_mode';
+    end if;
+
+    if not exists (
+        select 1 from public.devices d
+        where d.device_id=p_device_id and d.enabled=true
+    ) then
+        return 'device_disabled';
+    end if;
+
+    select h.* into v_candidate
+    from public.device_source_heartbeats h
+    where h.device_id=p_device_id and h.source=p_source
+      and h.instance_id=p_instance_id;
+    if v_candidate.device_id is null
+       or v_candidate.instance_id is distinct from p_instance_id
+       or v_candidate.process_healthy is not true
+       or v_candidate.collection_healthy is not true then
+        return case when p_source='cloud'
+            then 'cloud_standby_stale' else 'failback_wait_stable' end;
+    end if;
+
+    v_candidate_fresh := case when p_source='desktop'
+        then v_candidate.last_heartbeat_at > p_now - interval '90 seconds'
+        else v_candidate.last_heartbeat_at > p_now - interval '60 seconds'
+    end;
+    if not v_candidate_fresh then
+        return case when p_source='cloud'
+            then 'cloud_standby_stale' else 'failback_wait_stable' end;
+    end if;
+
+    if p_source='cloud' then
+        if v_candidate.persistent_state_ready is not true then
+            return 'cloud_persistent_state_unavailable';
+        end if;
+        if v_candidate.last_candidate_generated_at is null
+           or v_candidate.last_candidate_generated_at < p_now - interval '90 seconds'
+           or v_candidate.last_candidate_generated_at > p_now + interval '60 seconds' then
+            return 'cloud_standby_stale';
+        end if;
+
+        select exists (
+            select 1
+            from public.cloud_bindings b
+            join public.webpilot_auth_realms r on r.realm_id=b.realm_id
+            join public.webpilot_auth_realm_devices m
+                on m.realm_id=b.realm_id and m.device_id=b.device_id
+            where b.device_id=p_device_id and b.status='active'
+              and r.active=true and m.revoked_at is null
+              and exists (
+                  select 1 from public.get_current_session_lease(b.realm_id, p_now) l
+              )
+        ) into v_auth_ready;
+        if not v_auth_ready then
+            return 'cloud_auth_unavailable';
+        end if;
+    end if;
+
+    if v_authority.active_source=p_source then
+        v_restart_threshold := case when p_source='desktop'
+            then interval '90 seconds' else interval '60 seconds' end;
+        -- Holder activity is independently persisted: candidate heartbeats
+        -- can never substitute for the holder's own liveness.
+        select h.* into v_holder_hb
+        from public.device_source_heartbeats h
+        where h.device_id=p_device_id
+          and h.source=v_authority.active_source
+          and h.instance_id=v_authority.holder_instance_id;
+        if p_instance_id is distinct from v_authority.holder_instance_id
+           and v_holder_hb.device_id is not null
+           and v_authority.last_authoritative_snapshot_at is not null
+           and greatest(
+               v_holder_hb.last_heartbeat_at,
+               v_authority.last_authoritative_snapshot_at
+           ) <= p_now - v_restart_threshold then
+            return case when p_source='desktop' then 'desktop_reacquire_granted'
+                        else 'cloud_reacquire_granted' end;
+        end if;
+        return 'authority_fenced';
+    end if;
+
+    if v_authority.active_source='desktop' and p_source='cloud' then
+        select h.* into v_holder_hb
+        from public.device_source_heartbeats h
+        where h.device_id=p_device_id and h.source='desktop'
+          and h.instance_id=v_authority.holder_instance_id;
+        if (
+            (v_holder_hb.device_id is not null
+             and v_holder_hb.last_heartbeat_at <= p_now - interval '180 seconds')
+            or (v_authority.last_authoritative_snapshot_at is not null
+                and v_authority.last_authoritative_snapshot_at <= p_now - interval '180 seconds')
+        ) then
+            return 'failover_granted';
+        end if;
+        return 'failover_wait_hysteresis';
+    end if;
+
+    if v_authority.active_source='cloud' and p_source='desktop' then
+        if v_candidate.consecutive_healthy >= 3
+           and v_candidate.healthy_since <= p_now - interval '120 seconds'
+           and v_authority.granted_at <= p_now - interval '120 seconds' then
+            return 'failback_granted';
+        end if;
+        return 'failback_wait_stable';
+    end if;
+    return 'authority_fenced';
+end;
+$$;
+
+-- C3-C: one atomic server-owned heartbeat + optional current-holder renewal.
+-- The caller is authenticated at the API boundary; Cloud binding identity is
+-- also checked under transaction lock before any state is updated.
+create or replace function public.record_source_heartbeat(
+    p_device_id text,
+    p_source text,
+    p_instance_id uuid,
+    p_process_healthy boolean,
+    p_collection_healthy boolean,
+    p_last_reported_generated_at timestamptz,
+    p_last_candidate_generated_at timestamptz,
+    p_persistent_state_ready boolean,
+    p_cloud_binding_id uuid default null
+)
+returns table(
+    status text,
+    reason_code text,
+    authority_epoch bigint,
+    authority_lease_id uuid,
+    holder_instance_id uuid,
+    lease_expires_at timestamptz,
+    renewed boolean
+)
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+    v_device public.devices%rowtype;
+    v_authority public.device_source_authority%rowtype;
+    v_heartbeat public.device_source_heartbeats%rowtype;
+    v_holder_hb public.device_source_heartbeats%rowtype;
+    v_locked_hb public.device_source_heartbeats%rowtype;
+    v_pre_authority public.device_source_authority%rowtype;
+    v_binding public.cloud_bindings%rowtype;
+    v_realm public.webpilot_auth_realms%rowtype;
+    v_membership public.webpilot_auth_realm_devices%rowtype;
+    v_now timestamptz;
+    v_healthy boolean;
+    v_reason text;
+    v_snapshot_fresh boolean;
+    v_cloud_auth_ready boolean := false;
+    v_is_holder boolean := false;
+    v_renewed boolean := false;
+    v_restart_threshold interval;
+    v_snapshot_threshold interval;
+begin
+    if p_source not in ('desktop','cloud')
+       or p_instance_id is null
+       or p_process_healthy is null
+       or p_collection_healthy is null
+       or (p_source='desktop'
+           and (p_persistent_state_ready is not null or p_cloud_binding_id is not null))
+       or (p_source='cloud' and p_cloud_binding_id is null) then
+        return query select 'rejected'::text,'snapshot_invalid'::text,
+           null::bigint,null::uuid,null::uuid,null::timestamptz,false;
+        return;
+    end if;
+
+    select d.* into v_device from public.devices d
+    where d.device_id=p_device_id for update;
+    if v_device.device_id is null or v_device.enabled is not true then
+        return query select 'ineligible'::text,'device_disabled'::text,
+           null::bigint,null::uuid,null::uuid,null::timestamptz,false;
+        return;
+    end if;
+
+    if p_source='cloud' then
+        select b.* into v_binding from public.cloud_bindings b
+        where b.cloud_binding_id=p_cloud_binding_id and b.device_id=p_device_id
+        for update;
+        if v_binding.cloud_binding_id is null or v_binding.status <> 'active' then
+            return query select 'ineligible'::text,'cloud_binding_unusable'::text,
+                null::bigint,null::uuid,null::uuid,null::timestamptz,false;
+            return;
+        end if;
+        select r.* into v_realm from public.webpilot_auth_realms r
+        where r.realm_id=v_binding.realm_id for update;
+        select m.* into v_membership from public.webpilot_auth_realm_devices m
+        where m.realm_id=v_binding.realm_id and m.device_id=p_device_id for update;
+        if v_realm.realm_id is null or v_realm.active is not true
+           or v_membership.device_id is null or v_membership.revoked_at is not null then
+            return query select 'ineligible'::text,'cloud_binding_unusable'::text,
+                null::bigint,null::uuid,null::uuid,null::timestamptz,false;
+            return;
+        end if;
+    end if;
+
+    -- Discover keys under the device lock; this pre-read never authorizes a grant.
+    select a.* into v_pre_authority from public.device_source_authority a
+    where a.device_id=p_device_id;
+    if v_pre_authority.device_id is null then
+        return query select 'ineligible'::text,'db_unavailable'::text,
+            null::bigint,null::uuid,null::uuid,null::timestamptz,false;
+        return;
+    end if;
+    -- Lock both identities in a deterministic order, before authority.
+    -- Device row serializes concurrent INSERTs for the same device.
+    for v_locked_hb in
+        select h.* from public.device_source_heartbeats h
+        where h.device_id=p_device_id and (
+            (h.source=p_source and h.instance_id=p_instance_id)
+            or (h.source=v_pre_authority.active_source
+                and h.instance_id=v_pre_authority.holder_instance_id)
+        )
+        order by h.source asc,h.instance_id asc for update
+    loop
+        if v_locked_hb.source=p_source and v_locked_hb.instance_id=p_instance_id then
+            v_heartbeat := v_locked_hb;
+        end if;
+        if v_locked_hb.source=v_pre_authority.active_source
+           and v_locked_hb.instance_id=v_pre_authority.holder_instance_id then
+            v_holder_hb := v_locked_hb;
+        end if;
+    end loop;
+
+    select a.* into v_authority from public.device_source_authority a
+    where a.device_id=p_device_id for update;
+    if v_authority.device_id is null
+       or v_authority.mode is distinct from v_pre_authority.mode
+       or v_authority.active_source is distinct from v_pre_authority.active_source
+       or v_authority.holder_instance_id is distinct from v_pre_authority.holder_instance_id
+       or v_authority.authority_epoch is distinct from v_pre_authority.authority_epoch
+       or v_authority.authority_lease_id is distinct from v_pre_authority.authority_lease_id
+       or v_authority.updated_at is distinct from v_pre_authority.updated_at then
+        return query select 'ineligible'::text,'authority_fenced'::text,
+            null::bigint,null::uuid,null::uuid,null::timestamptz,false;
+        return;
+    end if;
+
+    v_now := clock_timestamp();
+    v_restart_threshold := case when p_source='desktop'
+        then interval '90 seconds' else interval '60 seconds' end;
+    v_snapshot_threshold := case when v_authority.active_source='desktop'
+        then interval '120 seconds' else interval '90 seconds' end;
+    v_healthy := p_process_healthy and p_collection_healthy;
+    v_is_holder := (
+        v_authority.mode='managed'
+        and v_authority.active_source=p_source
+        and v_authority.holder_instance_id=p_instance_id
+    );
+
+    insert into public.device_source_heartbeats(
+        device_id,source,instance_id,last_heartbeat_at,process_healthy,
+        collection_healthy,healthy_since,consecutive_healthy,last_collection_ok_at,
+        last_reported_generated_at,last_candidate_generated_at,last_reason_code,
+        persistent_state_ready,updated_at
+    ) values (
+        p_device_id,p_source,p_instance_id,v_now,p_process_healthy,
+        p_collection_healthy,case when v_healthy then v_now else null end,
+        case when v_healthy then 1 else 0 end,
+        case when v_healthy then v_now else null end,
+        p_last_reported_generated_at,p_last_candidate_generated_at,
+        null,
+        case when p_source='cloud' then p_persistent_state_ready else null end,
+        v_now
+    ) on conflict (device_id,source,instance_id) do update
+    set last_heartbeat_at=v_now,
+        process_healthy=p_process_healthy,
+        collection_healthy=p_collection_healthy,
+        healthy_since=case
+            when v_healthy
+                 and v_heartbeat.instance_id=p_instance_id
+                 and v_heartbeat.process_healthy
+                 and v_heartbeat.collection_healthy
+                 and v_heartbeat.last_heartbeat_at > v_now - v_restart_threshold
+            then v_heartbeat.healthy_since
+            when v_healthy then v_now else null end,
+        consecutive_healthy=case
+            when v_healthy
+                 and v_heartbeat.instance_id=p_instance_id
+                 and v_heartbeat.process_healthy
+                 and v_heartbeat.collection_healthy
+                 and v_heartbeat.last_heartbeat_at > v_now - v_restart_threshold
+            then v_heartbeat.consecutive_healthy+1
+            when v_healthy then 1 else 0 end,
+        last_collection_ok_at=case when v_healthy then v_now
+            else v_heartbeat.last_collection_ok_at end,
+        last_reported_generated_at=p_last_reported_generated_at,
+        last_candidate_generated_at=p_last_candidate_generated_at,
+        last_reason_code=null,
+        persistent_state_ready=case when p_source='cloud'
+            then p_persistent_state_ready else null end,
+        updated_at=v_now;
+
+    -- Stale marker is anchored to the REAL threshold, not the time this
+    -- request happens to notice it, and survives API restart.
+    if v_authority.mode='managed' and
+       v_authority.last_authoritative_snapshot_at is not null
+       and v_authority.last_authoritative_snapshot_at <= v_now - v_snapshot_threshold then
+        update public.device_source_authority a
+        set authoritative_snapshot_stale_since =
+          v_authority.last_authoritative_snapshot_at
+              + case when v_authority.active_source='desktop'
+                     then interval '120 seconds' else interval '90 seconds' end
+        where a.device_id=p_device_id
+          and a.authoritative_snapshot_stale_since is null;
+    end if;
+
+    if p_source='cloud' then
+        select exists (
+            select 1 from public.get_current_session_lease(v_binding.realm_id,v_now) l
+        ) into v_cloud_auth_ready;
+    end if;
+
+    v_snapshot_fresh := (
+        v_authority.last_authoritative_snapshot_at is not null
+        and v_authority.last_authoritative_snapshot_at > v_now
+            - case when p_source='desktop'
+                   then interval '120 seconds' else interval '90 seconds' end
+    );
+
+    if v_is_holder then
+        if v_authority.lease_expires_at <= v_now then
+            v_reason := 'authority_lease_expired';
+        elsif not v_healthy then
+            v_reason := case when p_source='desktop'
+                then 'desktop_degraded' else 'cloud_standby_stale' end;
+        elsif p_source='cloud' and p_persistent_state_ready is not true then
+            v_reason := 'cloud_persistent_state_unavailable';
+        elsif p_source='cloud' and (
+            v_authority.cloud_binding_id is distinct from p_cloud_binding_id
+            or not v_cloud_auth_ready
+        ) then
+            v_reason := 'cloud_auth_unavailable';
+        elsif not v_snapshot_fresh then
+            v_reason := case when p_source='desktop'
+                then 'desktop_snapshot_stale' else 'cloud_snapshot_stale' end;
+        else
+            update public.device_source_authority a
+            set lease_expires_at=v_now+interval '180 seconds',
+                last_renewed_at=v_now,
+                updated_at=v_now
+            where a.device_id=p_device_id;
+            v_renewed := true;
+            v_reason := case when p_source='desktop' then 'desktop_healthy' else null end;
+        end if;
+    else
+        v_reason := public.source_candidate_reason(
+            p_device_id,p_source,p_instance_id,v_now
+        );
+
+    end if;
+
+    -- Diagnostic reason belongs exclusively to the reporting instance.
+    update public.device_source_heartbeats h
+    set last_reason_code=v_reason
+    where h.device_id=p_device_id and h.source=p_source
+      and h.instance_id=p_instance_id;
+
+    -- Only the authenticated CURRENT holder can receive its actual grant.
+    -- Non-holders never get future authority credentials.
+    if v_is_holder and v_authority.lease_expires_at > v_now then
+        return query select 'accepted'::text,v_reason,
+            v_authority.authority_epoch,v_authority.authority_lease_id,
+            v_authority.holder_instance_id,
+            case when v_renewed then v_now+interval '180 seconds'
+                 else v_authority.lease_expires_at end,v_renewed;
+        return;
+    end if;
+    return query select 'accepted'::text,v_reason,
+        null::bigint,null::uuid,null::uuid,null::timestamptz,false;
+end;
+$$;
+
+revoke all on function public.source_candidate_reason(text,text,uuid,timestamptz)
+    from public, anon, authenticated;
+revoke all on function public.record_source_heartbeat(
+    text,text,uuid,boolean,boolean,timestamptz,timestamptz,boolean,uuid
+) from public, anon, authenticated;
+grant execute on function public.record_source_heartbeat(
+    text,text,uuid,boolean,boolean,timestamptz,timestamptz,boolean,uuid
+) to service_role;

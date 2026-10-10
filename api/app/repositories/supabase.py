@@ -20,6 +20,7 @@ from app.models.source_authority import (
     SourceHeartbeatRecord,
     TransitionCandidate,
 )
+from app.models.source_heartbeat import SourceHeartbeatRequest, SourceHeartbeatResponse
 from app.models.vessel_tracking_event import VesselTrackingEventIn
 from app.repositories.cloud_bindings import (
     CloudBindingAuthorityRecord,
@@ -137,6 +138,7 @@ class SupabaseDeviceRepository:
         self,
         device_id: str,
         source: Source,
+        instance_id: UUID,
     ) -> SourceHeartbeatRecord | None:
         try:
             response = self._client.get(
@@ -152,6 +154,7 @@ class SupabaseDeviceRepository:
                     ),
                     "device_id": f"eq.{device_id}",
                     "source": f"eq.{source.value}",
+                    "instance_id": f"eq.{instance_id}",
                     "limit": "1",
                 },
             )
@@ -171,6 +174,64 @@ class SupabaseDeviceRepository:
             ValueError,
         ) as exc:
             raise PersistenceUnavailableError() from exc
+
+    def record_source_heartbeat(
+        self,
+        device_id: str,
+        source: Source,
+        request: SourceHeartbeatRequest,
+        *,
+        cloud_binding_id: UUID | None = None,
+    ) -> SourceHeartbeatResponse:
+        payload = {
+            "p_device_id": device_id,
+            "p_source": source.value,
+            "p_instance_id": str(request.instance_id),
+            "p_process_healthy": request.process_healthy,
+            "p_collection_healthy": request.collection_healthy,
+            "p_last_reported_generated_at": (
+                None if request.last_reported_generated_at is None
+                else request.last_reported_generated_at.isoformat()
+            ),
+            "p_last_candidate_generated_at": (
+                None if request.last_candidate_generated_at is None
+                else request.last_candidate_generated_at.isoformat()
+            ),
+            "p_persistent_state_ready": request.persistent_state_ready,
+            "p_cloud_binding_id": None if cloud_binding_id is None else str(cloud_binding_id),
+        }
+        def mapper(row: Any) -> SourceHeartbeatResponse:
+            if not isinstance(row, dict):
+                raise TypeError("invalid heartbeat RPC row")
+            values = tuple(row[key] for key in (
+                "status","reason_code","authority_epoch","authority_lease_id",
+                "holder_instance_id","lease_expires_at","renewed",
+            ))
+            grant = None
+            if all(values[i] is not None for i in (2,3,4,5)):
+                expires_at = self._parse_datetime(values[5])
+                if expires_at is None:
+                    raise ValueError("missing grant expiry")
+                grant = AuthorityGrantView(
+                    device_id=device_id,source=source,authority_epoch=int(values[2]),
+                    authority_lease_id=UUID(str(values[3])),
+                    holder_instance_id=UUID(str(values[4])),
+                    lease_expires_at=expires_at,
+                )
+            if not isinstance(values[6],bool):
+                raise TypeError("invalid renewed")
+            return SourceHeartbeatResponse(
+                status=AuthorityStatus(str(values[0])),
+                reason_code=(
+                    None if values[1] is None else AuthorityReasonCode(str(values[1]))
+                ),
+                source=source,instance_id=request.instance_id,
+                grant=grant,renewed=values[6],
+            )
+        response = self._mapped_cloud_rpc("record_source_heartbeat",payload,mapper)
+        if response is None:
+            raise PersistenceUnavailableError()
+        return response
 
     def bootstrap_managed_source_authority(
         self,

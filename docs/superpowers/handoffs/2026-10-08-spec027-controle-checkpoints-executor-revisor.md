@@ -1,7 +1,7 @@
 # SPEC 027 — Controle de checkpoints Executor ↔ Revisor
 
 **Data de abertura:** 2026-10-08
-**Status:** **C3-B APROVADO EM R11.2 — commit exato autorizado; R11-F1..F6 e R11.1-F1 encerrados; base C3-A `6806c4a` preservada; C3-C bloqueado até autorização explícita**
+**Status:** **R12.2 INDEPENDENTE APROVADA — C3-C/R12-F1 encerrado tecnicamente; autorizado commit local exato e push de `feat/spec027-cloud` como base comum Oak/Elm; C3-D BLOQUEADO**
 **Repositório coordenador:** /home/ciro/dev/prog/alertamaritimoAPI
 **Base reconciliada:** API/PWA `feat/api-bootstrap@23a78bebdf46062eef937966101246567cd963de`; Desktop `develop@9e5b5e1a33cb7d61db200866aea683a6334de922`. **Feature:** `feat/spec027-cloud`, criada a partir de `23a78be` em `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`. **C1-A functional HEAD após correções R1:** `17afb4e19e21ce93e8eb1b8b0c8bfe47ebcf3364`; o commit documental deste registro será seu sucessor local.
 **Integração autoritativa API/PWA:** feat/api-bootstrap; **Desktop:** develop
@@ -63,7 +63,7 @@
 | 4 | C1-D — Integração/encerramento | Testes completos, documentação, mocks API e contratos Desktop, smoke local sem WebPilot real | R4 revisa regressão e segurança; gate humano para merge/deploy separado | **APROVADO EM R4 — commit final C1 `61342b2ac47ffa48bfe90787b8aa2afb4bb4cda8`** |
 | 5 | C2-P — Plano Auth Broker | Desenhar reuso do coletor validado, contrato SessionLease, epoch, segurança, standby | R5/R5.1 (plano); **não** copiar parser/coletor | **APROVADO EM R5.1 — commit `7c9f19516673c80860b144b9f421aaea0810e423`** |
 | 6 | C2 — Execução em checkpoints próprios | Broker federado, anti-replay e core HTTP em standby headless sem source efetivo | R6/R7/R8; commit somente após cada aprovação | **ENCERRADO — commit final C2 `b991ffb16d110c617c7c4bc90a842cc9abc22059`** |
-| 7 | C3-P / C3 — Autoridade e snapshots | Plano de authority epoch/fencing, heartbeat/freshness, hysteresis, snapshots state-only e persistência Cloud | R9/R9.1/R9.2 revisam plano; C3-A..F exigem gates próprios | **C3-P COMMITADO `7e22a7c`; C3-A COMMITADO `6806c4a`; C3-B APROVADO EM R11.2 — commit exato autorizado; C3-C BLOQUEADO** |
+| 7 | C3-P / C3 — Autoridade e snapshots | Plano de authority epoch/fencing, heartbeat/freshness, hysteresis, snapshots state-only e persistência Cloud | R9/R9.1/R9.2 revisam plano; C3-A..F exigem gates próprios | **C3-P `7e22a7c`; C3-A `6806c4a`; C3-B `4691c24`; C3-C CORREÇÃO ARQUITETURAL OBRIGATÓRIA EM R12; C3-D BLOQUEADO** |
 | 8 | C4 — Observabilidade | Status, logs sanitizados, smoke prolongado, degradação e reconciliação | Revisão operacional humana | BLOQUEADO |
 | 9 | C5 — Eventos/Push | Plano próprio de idempotência cross-source, sem duplicação | **Somente se autorizado separadamente** | FORA DA LIBERAÇÃO ATUAL |
 
@@ -4800,3 +4800,461 @@ Está autorizado um único commit local contendo exatamente o diff C3-B revisado
 C3-C não inicia automaticamente. Após o commit exato e working tree limpo, o próximo passo possível é **C3-C — heartbeat, freshness e hysteresis**, somente mediante autorização explícita do usuário. C3-C deverá terminar novamente sem commit/stage para R12 independente.
 
 Push, merge, deploy, migration 021 produção, managed mode real, Northflank operacional, WebPilot real no Cloud, Cloud writer real, failover/failback real e cutover continuam proibidos.
+
+
+### C3-C — plano dedicado preparado após fechamento C3-B (2026-10-09)
+
+**Base funcional aprovada**
+- API/PWA/Cloud: `feat/spec027-cloud@4691c2476d70311a60ecb392c858bfa1cac3699b` (`feat(spec027): add C3-B authority lease fencing`).
+- C3-A: `6806c4ae3a4f2c505c2e7eb8b774c7823e3ce4c7`.
+- C3-P: `7e22a7c66149e10cef155ca7458fffd6cb74fc9c`.
+- Desktop preservado: `feat/spec027-cloud@c8191bfea696368a7698a08bea727811412c05fd`.
+- Shadow preservado nos PIDs 15175/15185 no momento da preparação.
+
+**Plano executivo dedicado**
+`docs/superpowers/plans/2026-10-09-spec027-c3c-heartbeat-freshness-hysteresis.md`
+
+O plano C3-C transforma a policy temporal aprovada em execução controlada, cobrindo:
+- endpoints heartbeat Desktop/Cloud server-side;
+- persistência de health/continuity;
+- thresholds e boundaries com clock server-side;
+- authoritative snapshot freshness independente de heartbeat;
+- authority renewal sem trocar epoch/lease;
+- failover eligibility com hysteresis;
+- failback >=3 heartbeats e >=120 s estáveis;
+- same-source Desktop/Cloud restart/reacquisition, fechando a lacuna fail-closed deixada em R11.1;
+- anti-spoof: client não escolhe `failover_granted/failback_granted`;
+- restart safety/API stateless;
+- PostgreSQL real/concurrency;
+- PWA strict preservado;
+- nenhuma integração operacional de writer.
+
+**Fronteira**
+C3-C pode determinar/persistir eligibility e renovar current authority, mas não liga Desktop heartbeat adapter real, SnapshotHttpClient authority headers, Cloud snapshot writer, Northflank, failover/failback real ou WebPilot real no Cloud. Esses itens permanecem posteriores.
+
+**Git desta preparação**
+Somente documentação foi alterada nesta preparação: novo plano C3-C + este handoff. O commit funcional C3-B `4691c24` permanece intacto.
+
+**Próxima sessão**
+O Executor deve ler o handoff, C3-P, plano C3-B e plano C3-C antes de programar. A execução deve terminar sem commit/stage com:
+
+**C3-C PRONTO PARA R12 INDEPENDENTE**
+
+e parar. C3-D não inicia automaticamente.
+
+### C3-C — Gate de entrada do Executor (2026-10-09)
+
+**Autorização explícita:** executar integralmente e somente C3-C (heartbeat/freshness/hysteresis/renewal), sem stage/commit e sem C3-D. Nenhuma operação de produção, WebPilot real, Cloud writer, Desktop heartbeat operacional, failover/failback real ou eventos/push.
+
+**Leitura obrigatória integral e na ordem:** handoff central (4843 linhas), C3-P (1779 linhas), C3-B (744 linhas), plano dedicado C3-C (924 linhas), SPEC 027 (406 linhas). Decisões R9..R11.2 prevalecem.
+
+**SHA real de entrada API/PWA/Cloud:** `feat/spec027-cloud@4691c2476d70311a60ecb392c858bfa1cac3699b`, HEAD exato = commit C3-B aprovado em R11.2 e ancestral confirmado. Staged = 0. **Únicos diffs de entrada:** este handoff tracked modificado e o plano dedicado C3-C untracked, ambos documentais esperados/autorizados. Nenhum diff funcional inesperado.
+
+**Desktop SPEC027:** `feat/spec027-cloud@c8191bfea696368a7698a08bea727811412c05fd`, worktree limpo. **Shadow original:** checkout `/home/ciro/dev/prog/alertamaritimo`, branch `feat/spec025-plan5-shadow-evidence-gate`, processos `15175/15185` ativos sem intervenção, iniciados 2026-10-09 12:02:37.
+
+**Gate:** PASS. Iniciar TDD C3-C. Caso seja necessário 022, arquitetura nova ou 90 s Desktop seja inseguro, STOP arquitetura e registrar bloqueio.
+
+
+### C3-C — entrega do Executor; heartbeat, freshness, hysteresis e renewal (2026-10-09)
+
+**Status:** **PRONTO PARA R12 INDEPENDENTE**, working tree sem stage/commit. **C3-D BLOQUEADO.**
+
+#### Base e inventário
+
+- API/PWA/Cloud `feat/spec027-cloud@4691c2476d70311a60ecb392c858bfa1cac3699b`, HEAD real de entrada e final; C3-B aprovado em R11.2.
+- Docs de entrada esperados/autorizados: este handoff modificado; novo plano C3-C untracked.
+- Desktop `feat/spec027-cloud@c8191bfea696368a7698a08bea727811412c05fd`, limpo e não alterado.
+- Shadow original em `feat/spec025-plan5-shadow-evidence-gate`, PIDs 15175/15185 preservados.
+- Nenhum diff funcional preexistente. Nenhuma reconciliação Git.
+
+**Arquivos C3-C alterados/adicionados (além das duas docs de entrada):**
+- `api/supabase/migrations/021_source_authority_snapshots.sql` — funções C3-C e integração da policy ao transition RPC já versionado, somente local/efêmero.
+- `api/app/models/source_authority.py` — reasons `desktop_reacquire_granted` e `cloud_reacquire_granted`.
+- `api/app/models/source_heartbeat.py` — requests/responses frozen `extra=forbid`.
+- `api/app/services/source_timing_policy.py` — boundaries puros de classification/freshness/hysteresis/failback.
+- `api/app/api/v1/source_heartbeat.py` e `api/app/api/v1/router.py` — rotas somente de heartbeat.
+- `api/app/repositories/source_authority.py`, `events.py`, `postgres.py`, `supabase.py`, `memory.py` — contrato, adapters e fail-closed explícito Memory.
+- `api/tests/unit/test_source_timing_policy.py`, `test_supabase_source_authority_repository.py`, `api/tests/integration/test_source_heartbeat_api.py`, `test_source_authority_postgres.py` — RED/GREEN, PostgreSQL real e compatibilidade regressiva.
+
+#### TDD — RED → GREEN observado
+
+1. Novo teste de policy puro: RED `ModuleNotFoundError: app.services.source_timing_policy`; GREEN com limites unitários e clock injetado.
+2. Novo PostgreSQL `record_source_heartbeat`: RED `UndefinedFunction`; GREEN no SQL local, com renewal/health/continuity calculados server-side.
+3. Contratos de API: RED **3 falhas 404** para rotas Desktop/Cloud inexistentes e erro de persistência; GREEN após router+auth.
+4. Primeiro runner PostgreSQL pós SQL: RED de sintaxe SQL; GREEN após correção de expressões condicionais PL/pgSQL, validado reexecutando migration 021 local.
+5. Reasons específicos same-source: RED mapper Python para `desktop_reacquire_granted` ausente; GREEN enum+reason explícitos.
+6. Migração das regressões C3-B ao gate server-side: **15 falhas**, majoritariamente fixtures históricas que injetavam `failover_granted/failback_granted` diretamente; novos helpers preparam freshness/health sintéticos mas deixam **o banco calcular** a decisão. GREEN **40/40** do arquivo C3-B+C3-C naquele gate.
+7. Regressões C3-C expandidas: **17/17 passed**, incluindo Cloud auth recovery, administrative disable, snapshot recovery × transition, restart e privileges; PostgreSQL C1+C2+C3-B+C3-C **69/69 passed**.
+8. Validação adicional da leitura no primeiro heartbeat e restart da API: **2/2 passed** em PostgreSQL real; a função `source_candidate_reason` ficou explicitamente `VOLATILE`, exigindo snapshot de dados atual sob lock. Repetição integral final **801 passed / 0 failed**.
+
+#### Contratos HTTP e anti-spoof
+
+- `POST /api/v1/devices/{device_id}/source-heartbeat`: **Device auth**; source Desktop inferida pelo endpoint; rejeita campos Cloud e authority reasons extras.
+- `POST /api/v1/cloud-bindings/{cloud_binding_id}/source-heartbeat`: **CloudBinding auth** verificando device, binding, realm e membership; source Cloud inferida pelo endpoint, exige `persistent_state_ready`.
+- Request `extra=forbid`, sem `failover_granted`, `failback_granted`, epoch, lease id, renew_allowed ou future grant fornecidos pelo client.
+- Response sanitizada com `Cache-Control: no-store`; somente holder atual com lease válida recebe o **grant já existente**; standby/non-holder recebe status/reason sem grant futuro.
+- Memory backend não pode arbitrar entre processos: falha fechada com 503 sanitizado.
+- Supabase RPC mapper de heartbeat valida shape, tipa grant e sanitiza erros. Testes MockTransport cobrem payload anti-spoof e resposta malformada sem vazamento.
+
+#### Timing e continuidade
+
+Defaults aplicados usando **clock server-side** e revalidação pós-lock:
+- Desktop heartbeat HEALTHY age **<90 s**; DEGRADED `90<=age<120 s`; STALE `>=120 s`; OFFLINE classificação `>=300 s`.
+- Cloud heartbeat válido **<60 s**; candidate/cycle Cloud recente **<=90 s**.
+- Desktop authoritative snapshot fresh **<120 s**, Cloud fresh **<90 s**.
+- Liveness stale e snapshot stale separados, com **hysteresis 60 s**: failover elegível aos 180 s do último heartbeat Desktop ou snapshot Desktop autoritativo; um heartbeat saudável não mascara snapshot stale.
+- Failback exige **>=3** heartbeats Desktop saudáveis consecutivos, `healthy_since` **>=120 s**, e Cloud current ativo **>=120 s**.
+- Troca de `instance_id`, heartbeat degradado e intervalo de heartbeat além do threshold quebram continuidade; marker e contagem persistidos.
+- Candidate future skew 60 s e idade máxima 300 s continuam validados pelo RPC C3-B; candidate cross-source recebe gate temporal server-side revalidado sob lock.
+- `last_authoritative_snapshot_at` só muda por **snapshot aceito**, nunca heartbeat; `authoritative_snapshot_stale_since` é derivado da hora de entrada em stale e persistido, não da hora de observação. Recuperação aceita no current grant limpa stale marker.
+- Reinício da API/repository não zera `healthy_since`, contador, stale marker, epoch nem lease.
+
+#### Authority renewal, recovery e same-source
+
+- Renewal de holder corrente requer device enabled, source/instance correspondente, lease não expirada, heartbeat process+collection saudáveis e snapshot atual fresh; Cloud adiciona binding/realm/membership, SessionLease utilizável e persistent state ready.
+- **Renewal apenas estende `lease_expires_at = now+180 s`**, atualiza `last_renewed_at`, sem mudar epoch/lease/holder. Clock reamostrado **após locks**. Request presa até expiry não ressuscita grant.
+- **Write eligibility != renew eligibility:** snapshot stale bloqueia renewal, mas um recovery snapshot do holder sob lease ainda válida pode ser aceito. Cenários Desktop snapshot age 150 s e Cloud age 95 s provam recovery mesmo epoch/lease, reset stale e renewed novamente.
+- Cross-source policy usa **somente** `source_candidate_reason(..., server_now)` sobre state PostgreSQL transacional; reasons forjados no heartbeat não concedem transition. Desktop→Cloud `failover_granted`, Cloud→Desktop `failback_granted`, nunca inferidos de expiry isoladamente.
+- Same-source Desktop→Desktop e Cloud→Cloud têm reasons **distintos**; nova instance só é elegível depois de holder anterior stale **>=90 s Desktop / >=60 s Cloud**, com candidate saudável, identidade correspondente e gates administrativos; novos epoch/lease **sempre server-side**. Antes disso fail-closed; old writer após grant novo é fenced. Provas com clocks de banco sintéticos sem Desktop/Cloud operacionais.
+- API/DB indisponíveis não produzem renew nem transitions por inferência; auth Cloud totalmente indisponível bloqueia renew; uma nova SessionLease elegível restaura renew no **mesmo authority_epoch** se a source lease ainda vale.
+- Não houve evidência nos testes sintéticos que obrigasse ampliar/reduzir o boundary Desktop 90 s; integração e cadência no Desktop real continuam fora de C3-C. Revisor R12 deve avaliar segurança dessa premissa antes da ativação operacional.
+
+#### PostgreSQL real, concorrência e segurança
+
+- Heartbeat upsert concorrente, renewal vs expiry aguardando lock, renewal vs admin disable, recovery current-grant × Cloud transition e isolation cross-device: PASS, sem deadlock observado.
+- Regras administrativas C1/C2 e regressões C3-B preservadas: `test_source_authority_postgres.py + test_cloud_binding_postgres.py + test_session_broker_postgres.py` **69/69 passed** antes dos dois testes novos finais.
+- RLS 021 preservado; `SECURITY DEFINER` com `SET search_path = pg_catalog, public`; funções C3-C com EXECUTE revogado de PUBLIC/anon/authenticated, `record_source_heartbeat` somente `service_role`; privileges verificados em PostgreSQL. No source secret, cookie, ciphertext, session plaintext ou WebPilot real nos novos bodies/responses.
+- Admin/authorization Cloud checados server-side sob device→CloudBinding→realm→membership→heartbeat→authority locks; clock pós-lock.
+- Nenhum endpoint para writer Cloud ou Desktop authority headers; nenhuma chamada operacional Northflank/Cloud.
+
+#### Gates finais
+
+- `make test-all` **801 passed, 0 failed** (após o ajuste SQL final).
+- Testes unit+API+Supabase C3-C local: **31/31 passed** no gate dirigido.
+- PWA contract `contract.test.ts + snapshotClient.test.ts`: **29/29 passed**; GET externo continua estritamente `{snapshot, meta}`; MobileSnapshot v1/v2 intacto, nenhuma v3 e frontend não modificado.
+- Migration chain **001→021** em PostgreSQL Supabase efêmero isolado: **21 migrations**, last `021_source_authority_snapshots.sql`, **2 funções policy C3-C**, reexecução idempotente. Após ajuste final, retestado: `FULL_001_021_FINAL_PASS`, `source_candidate_reason.provolatile='v'`, sem 022. A primeira tentativa deste último script faltou montar `migrate.sh` no container; repetição válida com mount completo PASS; container descartado.
+- `git diff --check`: PASS; check nos untracked com `git diff --no-index --check`: PASS.
+- staged files = **0**; HEAD API/PWA/Cloud inalterado `4691c2476d70311a60ecb392c858bfa1cac3699b`; Desktop SPEC027 limpo; Shadow original intacto nos PIDs **15175/15185**.
+- Nenhum commit, stage, push, merge, deploy, migration produção, WebPilot real Cloud, writer Cloud, heartbeat adapter Desktop real, SnapshotHttpClient authority headers Desktop, failover/failback operacional, Northflank operacional ou eventos/push.
+
+**PARECER SOLICITADO:** **R12 INDEPENDENTE**, revisão integral de C3-C. **C3-D BLOQUEADO**, nenhum commit até aprovação independente.
+
+
+### R12 independente — revisão integral do C3-C (2026-10-09)
+
+**Resultado:** CORREÇÃO ARQUITETURAL OBRIGATÓRIA. A implementação cobre heartbeat, freshness, renewal, hysteresis, failover/failback eligibility e anti-spoof com boa disciplina transacional, porém o modelo atual de uma única linha `device_source_heartbeats(device_id, source)` não consegue representar simultaneamente a liveness do holder corrente e a health do candidate same-source. Isso causa perda de verdade temporal e quebra duas guarantees aprovadas.
+
+**Evidência independente**
+- base API/Cloud preservada em `4691c2476d70311a60ecb392c858bfa1cac3699b`;
+- Desktop preservado em `c8191bfea696368a7698a08bea727811412c05fd`;
+- staged files: 0;
+- `make test-all`: **801 passed**;
+- Shadow preservado nos PIDs **15175/15185**;
+- nenhum push/merge/deploy/migration produção/C3-D observado;
+- PostgreSQL efêmero dos probes independentes removido ao final.
+
+**Pontos aprovados em R12**
+- heartbeat Desktop/Cloud autenticado e server-timestamped;
+- client não controla `failover_granted`, `failback_granted`, epoch ou lease;
+- heartbeat e authoritative snapshot freshness permanecem independentes;
+- renewal preserva epoch/lease/holder e falha após expiry;
+- recovery current-grant continua separado de renew eligibility;
+- failover cross-source reavalia gates server-side;
+- failback exige 3 heartbeats + 120 s + Cloud ativo 120 s;
+- Cloud auth/binding/realm/membership e persistent state gates estão presentes;
+- same-source reasons são distintos de failover/failback;
+- API restart não depende de memória FastAPI;
+- PWA não recebeu metadata C3;
+- C3-D/runtime writer não foi iniciado.
+
+#### R12-F1 — uma única heartbeat row por source perde a liveness do holder quando entra candidate same-source
+
+O C3-P/C3-C exige duas verdades simultâneas:
+1. liveness do **current holder**;
+2. health/freshness de um **candidate same-source** com outra instance.
+
+O schema atual possui apenas uma linha por `device_id + source`.
+
+Quando o holder A fica stale o suficiente e uma nova instance B envia heartbeat, `record_source_heartbeat` substitui a linha A pela linha B. A partir daí o banco deixa de possuir o timestamp de heartbeat do holder A.
+
+Isso produz dois erros independentes.
+
+##### R12-F1a — non-holder heartbeat pode mascarar liveness stale do current holder e bloquear failover
+
+Probe independente em PostgreSQL real:
+1. Desktop A é holder corrente;
+2. snapshot autoritativo de A permanece fresh;
+3. heartbeat de A é envelhecido para **181 s**;
+4. Desktop B envia heartbeat same-source e recebe `desktop_reacquire_granted`;
+5. a única linha Desktop passa a representar B, fresh;
+6. Cloud standby healthy/fresh solicita avaliação.
+
+Resultado observado:
+- B heartbeat: `accepted / desktop_reacquire_granted`;
+- decisão Cloud: **`failover_wait_hysteresis`**.
+
+Pelo contrato aprovado, o holder A já estava sem heartbeat por 181 s, portanto a liveness hysteresis Desktop estava completa. O heartbeat de um non-holder B não pode ser usado como prova de liveness do holder A.
+
+Isso viola a separação entre holder liveness e candidate health e pode impedir indefinidamente o failover por liveness enquanto B continuar heartbeating e A continuar produzindo snapshots fresh.
+
+##### R12-F1b — gate same-source pode virar um estado sem caminho de recuperação
+
+Probe independente Desktop:
+1. A holder;
+2. heartbeat A stale 91 s;
+3. B heartbeat => `desktop_reacquire_granted`;
+4. A publica um current-grant snapshot válido;
+5. `authority.updated_at` fica mais novo que o marker de B e invalida o gate;
+6. B heartbeats novamente;
+7. depois de mais 91 s sem qualquer heartbeat/activity de A, B continua `authority_fenced`.
+
+Saída observada:
+- primeiro B: `accepted / desktop_reacquire_granted`;
+- snapshot A: `accepted`;
+- B após atividade A: `accepted / authority_fenced`;
+- B após outros 91 s com A silencioso: **`accepted / authority_fenced`**.
+
+A causa é que a linha original de heartbeat do holder A já foi sobrescrita por B; depois que o marker de reacquire é invalidado, não existe mais timestamp persistido do holder A a partir do qual reavaliar os 90 s.
+
+Probe equivalente Cloud reproduziu o mesmo comportamento com threshold 60 s:
+- primeiro novo Cloud instance: `cloud_reacquire_granted`;
+- old Cloud current-grant snapshot: accepted;
+- candidate perde gate;
+- após outros 61 s sem old-holder heartbeat, continua `authority_fenced`.
+
+**Conclusão arquitetural**
+A mesma linha não pode simultaneamente significar:
+- “último heartbeat do current holder”; e
+- “último heartbeat/health do same-source candidate”.
+
+O bug não deve ser corrigido com reason client-side, memória FastAPI ou marker que apague a proveniência temporal do holder.
+
+**Correção exigida**
+Antes de ampliar código, definir documentalmente uma representação server-side que preserve as duas identidades/lifecycles ao mesmo tempo.
+
+A solução deve provar:
+- heartbeat de non-holder nunca altera a evidência de liveness do current holder;
+- cross-source failover continua enxergando o holder real mesmo com candidate same-source ativo;
+- same-source candidate health fica vinculada à sua própria `instance_id`;
+- atividade posterior do holder pode invalidar um gate antigo;
+- depois dessa invalidação, se o holder voltar a ficar stale pelo threshold completo, o candidate consegue tornar-se elegível novamente;
+- API restart preserva ambas as verdades;
+- nenhuma decisão depende de memória local;
+- nenhum client escolhe reason/grant;
+- Desktop e Cloud possuem comportamento simétrico nos respectivos thresholds 90/60.
+
+Se isso exigir alterar a estrutura de heartbeat ou adicionar estado de holder/candidate que o schema 021 atual não representa, aplicar a regra do plano C3-C: **STOP arquitetura antes de implementar**. Não criar migration 022 nem escolher silenciosamente uma nova semântica.
+
+**Próximo passo autorizado:** documentação apenas para resolver R12-F1. Atualizar o C3-P e/ou plano C3-C com a representação escolhida, invariantes, lock order e cenários RED obrigatórios. Não fazer correção funcional, migration nova, commit/stage nem iniciar C3-D até nova revisão **R12.1 independente** da correção arquitetural.
+
+
+### R12 — complemento de verificação independente (2026-10-09)
+
+Esta sessão confrontou o parecer R12 já registrado com o estado real de Git, plano C3-P, plano C3-B, plano C3-C, SPEC 027, migration 021 e o teste PostgreSQL de reacquisition. O resultado anterior **CORREÇÃO ARQUITETURAL OBRIGATÓRIA / R12-F1** fica mantido, sem ampliar a lista de achados.
+
+- Gate: API/PWA/Cloud `feat/spec027-cloud@4691c2476d70311a60ecb392c858bfa1cac3699b`; staged = 0; Desktop `c8191bfea696368a7698a08bea727811412c05fd` limpo; Shadow original PIDs 15175/15185 ativos e sem intervenção.
+- Regressão integral repetida nesta sessão: `make test-all` em Docker/PostgreSQL efêmero: **801 passed, 0 failed, exit code 0** (`57.30s` de pytest); container de teste removido ao final.
+- `git diff --check`: PASS. Nenhum código funcional alterado nesta verificação; nenhum stage, commit, push, merge, deploy ou migration de produção.
+- Causa de R12-F1 confirmada diretamente na migration 021: `device_source_heartbeats` possui `PRIMARY KEY (device_id, source)` e `record_source_heartbeat` faz `ON CONFLICT ... DO UPDATE` substituindo `instance_id`, `last_heartbeat_at` e campos de continuidade do holder pela amostra do candidate; `source_candidate_reason` busca liveness do holder nessa mesma linha já substituível.
+- Lacuna da suíte: `test_r12_same_source_restart_waits_old_holder_liveness_threshold` valida a primeira elegibilidade de BOOT_B após 91 s, mas não cobre atividade posterior de BOOT_A, invalidação do gate e a reaquisição futura de BOOT_B após novo intervalo stale. O fato de 801 testes passarem não prova a propriedade temporal requerida.
+- O R12-F1 previamente documentado permanece **ABERTO**. Exigir prova de liveness do holder corrente independente do heartbeat de candidate same-source, além de RED PostgreSQL para as duas reproduções Desktop/Cloud já descritas em R12. Escolha arquitetural e lock order primeiro em plano/handoff, para R12.1 independente, antes de qualquer correção funcional.
+
+**Parecer ratificado:** **R12 — CORREÇÃO ARQUITETURAL OBRIGATÓRIA**. **Sem autorização de commit ou C3-D.** Próximo passo: **somente documentação arquitetural de R12-F1 para R12.1 independente**, conforme decisão R12 anterior.
+
+
+### R12-F1 — solução arquitetural SOMENTE DOCUMENTAL do Executor, para R12.1 independente (2026-10-09)
+
+**Autorização recebida:** corrigir **somente o desenho documental** de R12-F1: representação holder/candidate, invariantes, lock order e casos RED PostgreSQL **a serem executados após R12.1**. Proibidos: implementação funcional, testes executáveis novos, migration 022, commit, stage, push, merge, deploy, C3-D ou alterações no Shadow.
+
+**Gate inicial reconfirmado:**
+- API/PWA/Cloud worktree `/home/ciro/dev/prog/alertamaritimoAPI/.worktrees/spec027-cloud`, branch `feat/spec027-cloud`, HEAD **`4691c2476d70311a60ecb392c858bfa1cac3699b`**, base C3-B preservada.
+- C3-C funcional anterior a R12 continua em diff local **não aprovado**. Nenhum arquivo funcional foi tocado nesta retomada R12-F1.
+- Desktop SPEC027 `feat/spec027-cloud@c8191bfea696368a7698a08bea727811412c05fd`: limpo.
+- Shadow original, PIDs **15175/15185** ativos sem intervenção.
+- staged=0.
+
+#### Diagnóstico de R12-F1 confirmado por inspeção (não por uma nova correção funcional)
+
+A migration 021 atual contém `PRIMARY KEY(device_id,source)` em `device_source_heartbeats`. `record_source_heartbeat` executa `ON CONFLICT (device_id,source) DO UPDATE`, substituindo a `instance_id`, `last_heartbeat_at` e continuidade do holder pela amostra do candidate. `source_candidate_reason` consulta a mesma row como liveness do holder e do candidate.
+
+- **R12-F1a:** o heartbeat B pode esconder A stale 181 s e bloquear um failover Desktop→Cloud legítimo mesmo com snapshot A fresh.
+- **R12-F1b:** quando A publica current-grant snapshot depois de B receber gate, `authority.updated_at` invalida o marcador B, mas a antiga prova de A sumiu; B fica sem caminho para reeligibilidade após outro threshold (Desktop 90 / Cloud 60).
+- Os **801 testes verdes** anteriores não cobrem as duas sequências. Não são evidência de fechamento de R12-F1. O achado permanece **ABERTO**.
+
+#### Decisão proposta — R12.1 deve aprovar antes da implementação
+
+**Documentos atualizados exclusivamente nesta etapa:**
+1. `docs/superpowers/plans/2026-10-09-spec027-c3-source-authority-snapshots.md` — adendo R12-F1 ao contrato de heartbeat/authority e restart semantics.
+2. `docs/superpowers/plans/2026-10-09-spec027-c3c-heartbeat-freshness-hysteresis.md` — **§28 completa** com representação, regras, locks, matriz RED e gate R12.1.
+3. Este handoff central — status e pedido R12.1.
+
+**Modelo proposto:** modificar futuramente, **somente se R12.1 aprovar**, a definição local da migration 021 (não aplicada em produção), trocando a PK heartbeat para **`(device_id,source,instance_id)`**. Nenhuma coluna/tabela nova é proposta. Cada processo passa a possuir heartbeat imutavelmente associado à sua instance. `device_source_authority(device_id)` é o único ponteiro válido ao holder, por `active_source + holder_instance_id`; candidate/standby tem heartbeat próprio, não substitui holder. Nenhuma query source-only pode decidir liveness/authority. Postgres/Supabase Protocols, bootstrap legacy por `boot_id`, fixtures e diagnósticos exigirão adaptação após aprovação; não foram alterados agora.
+
+**Invariantes propostos:** B heartbeat não muda row A; failover cross-source usa **somente heartbeat da instance holder real** e avalia snapshot freshness de modo independente (Desktop liveness stale 120+60=180 s não é mascarada por snapshot fresh). Same-source candidate exige nova instance saudável/fresh, autenticação e silêncio do holder durante os **90 s Desktop / 60 s Cloud** aprovados. Para que current-grant write de A invalide gate antigo e não seja imediatamente contornado, a proposta conservadora mede o último **heartbeat A ou snapshot autoritativo aceito de A (o mais recente)** **apenas na política same-source**; o tempo reinicia após atividade A e B volta a ser elegível quando completa novamente o threshold. Renewal nunca troca epoch/lease, transition winner decide novo grant exclusivamente server-side. Reason antigo é diagnóstico, **não token válido**; gate deve ser reavaliado no transition RPC sob locks. Se R12.1 rejeitar o guarda de atividade, exige nova decisão arquitetural — não alterar limiar silenciosamente.
+
+**Lock order proposto:** `devices FOR UPDATE → [CloudBinding → realm → membership] → heartbeat rows relevantes em ordem (source,instance_id) → device_source_authority FOR UPDATE`. Após device lock, uma leitura não autoritativa inicial da authority serve somente para localizar chaves das heartbeat rows; revalidar source/holder/epoch/lease/updated_at após trancar authority. Ler clock do servidor depois dos locks. Se a leitura preliminar ficou obsoleta por trigger/admin, abortar/reiniciar em nova transação; não adquirir novas heartbeat rows após travar authority. `devices` serializa INSERT de heartbeat da mesma device. Snapshot current-grant não precisa lockar candidate, mas deve invalidar gate de B via alteração versionada da authority e a avaliação deve sempre consultar atividade atual A.
+
+**RED PostgreSQL especificados — NÃO executados nesta etapa documental:**
+- F1a Desktop A heartbeat 181 s stale + snapshot fresh + B candidate heartbeat + Cloud standby elegível: row A retida, Cloud `failover_granted`; variante Cloud inelegível.
+- F1b Desktop: A age 91 s, snapshot age 100 s (initial B eligible), A current write, B bloqueado em <90 s desde A e reelegível em >=90 s; novo epoch, writer A fenced; A/B em rows distintas.
+- F1b Cloud: A heartbeat age 61 s, snapshot age 70 s (initial B eligible), A current write, B bloqueado <60 e reelegível >=60 s com Cloud auth/persistent gates.
+- Candidate B repetido não reescreve A; holder A heartbeat invalida gate; corrida A recovery vs B transition; dois candidates B/C simultâneos; missing holder fail-closed.
+- Bootstrap legacy exige heartbeat da mesma `boot_id`, mesmo que B tenha heartbeat mais recente; restart API preserva ambas as rows; cross-device, admin fencing, expiry e privilege/RLS permanecem corretos.
+- Repetir PostgreSQL real com duas connections, todas as regressões C3-B, `make test-all`, frontend `{snapshot,meta}` contract e migrations efêmeras 001→021 sem 022. Assert de rows/epoch/lease/snapshot, não só reason. Toda essa execução fica **condicionada a R12.1 aprovar**.
+
+**Pendências deliberadas para o Revisor R12.1:** aprovação da PK por instância sobre 021 não aplicada em produção; compatibilidade do guarda de último snapshot aceito (somente same-source) com política 90/60; ordem dos locks com triggers administrativos; existência de evidência suficiente para missing holder e bootstrap. Qualquer necessidade de 022 ou arquitetura alternativa permanece STOP.
+
+**Gates documentais:** `git diff --check` (tracked) e `git diff --no-index --check` (untracked); staged=0; HEAD original preservado; Desktop limpo; Shadow intacto. Não há RED→GREEN novo de runtime por proibição expressa.
+
+**Pedido formal:** **R12.1 INDEPENDENTE — REVISÃO SOMENTE DA SOLUÇÃO ARQUITETURAL R12-F1**. Até aprovação expressa, o C3-C permanece **NÃO APROVADO PARA COMMIT**, R12-F1 **ABERTO**, e C3-D **BLOQUEADO**. O Revisor não deve confundir a proposta documental com correção funcional entregue.
+
+
+### R12.1 independente — revisão da solução arquitetural R12-F1 (2026-10-09)
+
+**Resultado:** **APROVADA A SOLUÇÃO ARQUITETURAL DOCUMENTAL.** R12-F1 continua funcionalmente aberto até implementação e nova revisão, mas o desenho proposto está autorizado para TDD restrito. C3-C permanece **NÃO APROVADO PARA COMMIT** e C3-D permanece **BLOQUEADO**.
+
+**Gate independente**
+- API/PWA/Cloud: `feat/spec027-cloud@4691c2476d70311a60ecb392c858bfa1cac3699b`; base C3-B preservada.
+- staged files: **0**.
+- Desktop SPEC027: `c8191bfea696368a7698a08bea727811412c05fd`, limpo.
+- Shadow original: PIDs **15175/15185** ativos e sem intervenção.
+- `git diff --check`: PASS; plano C3-C untracked também passou `git diff --no-index --check`.
+- Nenhuma alteração funcional, migration 022, commit, push, merge, deploy ou operação de produção foi feita pelo Revisor.
+
+**Documentos revisados**
+- adendo R12-F1 do C3-P;
+- C3-C §28 completo;
+- proposta registrada neste handoff;
+- migration 021 atual e seus locks/triggers apenas para validar compatibilidade do desenho.
+
+#### Decisão R12.1-A — identidade persistente por instance: APROVADA
+
+A futura PK `(device_id, source, instance_id)` na definição local da migration 021 resolve diretamente a raiz de R12-F1: holder e candidate same-source deixam de competir pela mesma heartbeat row. `device_source_authority` permanece a única fonte de identidade do holder; heartbeat não ganha semântica de authority e nenhuma linha “mais recente” pode substituir o ponteiro autoritativo.
+
+A estratégia de modificar a migration 021 **antes de qualquer aplicação em produção**, recriando migrations 001→021 em PostgreSQL efêmero limpo e sem criar 022, é compatível com o estágio atual. Se surgir necessidade de migrar um ambiente persistente já contendo a 021, nova coluna/tabela ou 022, volta a valer STOP arquitetura.
+
+#### Decisão R12.1-B — guarda de atividade do holder para same-source: APROVADA
+
+Para **same-source reacquisition apenas**, usar `max(holder.last_heartbeat_at, authority.last_authoritative_snapshot_at)` como última atividade server-side do holder é uma correção conservadora e justificada por R12-F1b.
+
+Um current-grant snapshot aceito prova que o writer antigo ainda está operacional; portanto, permitir takeover de outra instance imediatamente porque somente o heartbeat ultrapassou 90/60 s recriaria a corrida que R12 encontrou. O write do holder reinicia a janela de reacquisition, e o candidate pode voltar a ser elegível após novo período completo de 90 s Desktop / 60 s Cloud.
+
+Essa regra fica **expressamente limitada a same-source reacquisition**. Ela não altera o contrato cross-source: failover Desktop→Cloud continua avaliando liveness do heartbeat do holder e authoritative snapshot freshness como sinais independentes; heartbeat do candidate B não mascara A stale e snapshot A fresh não redefine a janela de liveness aprovada de 120+60 s.
+
+#### Decisão R12.1-C — lock order: APROVADO
+
+A ordem proposta fica autorizada:
+
+`devices → [CloudBinding → realm → membership] → heartbeat row(s) por (source, instance_id) em ordem determinística → device_source_authority → clock pós-lock`.
+
+Ela preserva a disciplina já usada no C3-B. Os triggers administrativos atuais modificam authority enquanto detêm sua própria linha administrativa, mas não passam a adquirir heartbeat depois de authority; portanto não foi encontrada inversão estrutural nova no desenho proposto. O device row continua serializando requests operacionais do mesmo device. A implementação deve manter a regra documental de que qualquer pre-read de authority serve **somente para descobrir chaves** e precisa ser revalidado após todos os locks; estado obsoleto deve rejeitar/reiniciar a transação, nunca buscar uma nova heartbeat row depois de authority já travada.
+
+Current-grant write não precisa adquirir candidate heartbeat apenas para “invalidar” um gate: a nova decisão de transition deve ser recalculada a partir da activity atual do holder e da authority corrente. Nenhum `last_reason_code` ou `updated_at` isolado pode funcionar como capability/token de reacquisition.
+
+#### Decisão R12.1-D — matriz RED: APROVADA
+
+A matriz §28.4 cobre os dois defeitos reais de R12-F1 e os riscos de regressão necessários: F1a Desktop, F1b Desktop, equivalente Cloud, candidate repetido, holder recovery/heartbeat × transition, candidates concorrentes, missing holder fail-closed, bootstrap por boot_id, API restart, admin/TTL/cross-device, privileges/RLS e regressões C1+C2+C3-B+C3-C/PWA.
+
+Os asserts devem verificar **rows, holder instance, epoch, lease e snapshot**, não apenas reason strings. Os RED devem ser executados contra o C3-C atual antes do GREEN e registrados no handoff.
+
+**Observação não bloqueante:** a PK por instance permite acumular heartbeat rows históricas após muitos restarts. Nenhum cleanup/retention novo está autorizado em R12-F1; isso não bloqueia C3-C e não deve ampliar o escopo. Qualquer limpeza futura deverá preservar obrigatoriamente holder/current candidates e receber plano próprio se necessária.
+
+### Parecer formal R12.1
+
+- Proposta documental R12-F1: **APROVADA**.
+- R12-F1 funcional: **AINDA ABERTO**.
+- C3-C: **AINDA NÃO APROVADO PARA COMMIT**.
+- C3-D: **BLOQUEADO**.
+- Migration 022: **PROIBIDA**.
+
+**Próximo passo autorizado ao Executor:** implementar **somente R12-F1** conforme C3-P adendo + C3-C §28, começando pelos RED PostgreSQL especificados; adaptar a definição local da 021 e os repositories/adapters/fixtures estritamente necessários; repetir PostgreSQL real, concorrência, migrations 001→021, `make test-all`, PWA contract, security/privilege e hygiene. Manter tudo **sem commit/stage** e parar para **R12.2 INDEPENDENTE**. Não iniciar C3-D.
+
+
+### R12-F1 — correção funcional do Executor após R12.1 (2026-10-09)
+
+**Status para revisão:** **R12-F1 CORRIGIDO — C3-C PRONTO PARA R12.2 INDEPENDENTE**, pendente de aprovação independente. **Sem commit/stage; C3-D BLOQUEADO.**
+
+#### Gate de entrada e escopo preservado
+
+- Parecer R12.1 integralmente lido: **APROVADA** a chave heartbeat por `(device_id,source,instance_id)`, o guarda conservador da última atividade do holder **apenas em reacquisition**, o lock order `devices → Cloud auth quando aplicável → heartbeat(s) ordenados → authority → clock pós-lock`, e a matriz RED §28.4.
+- Repositório API/PWA/Cloud: `feat/spec027-cloud@4691c2476d70311a60ecb392c858bfa1cac3699b` em entrada e saída, base funcional C3-B intacta; diffs C3-C pré-existentes mantidos. Nenhum diff funcional inesperado.
+- Desktop SPEC027: `feat/spec027-cloud@c8191bfea696368a7698a08bea727811412c05fd`, worktree limpo, nenhum código Desktop alterado.
+- Shadow real no Desktop principal preservado, PIDs `15175/15185` (iniciados 2026-10-09 12:02:37), sem intervenção.
+- Somente R12-F1 implementado: **migration local 021**, repository/protocol Postgres+Supabase e fixtures/testes PostgreSQL existentes. Nenhuma migration 022, nenhuma mudança de esquema além da PK heartbeat aprovada, nenhum Cloud writer, Desktop adapter, deploy, prod ou C3-D.
+
+#### RED real em PostgreSQL, antes do GREEN
+
+No C3-C original, testes adicionados em `api/tests/integration/test_source_authority_postgres.py`, executados em PostgreSQL Docker efêmero com migration 021 anterior:
+
+1. `test_r12f1_red_a_desktop_candidate_does_not_mask_holder_failover_liveness`: **FAILED**; a tabela continha só BOOT_B após B heartbeat, perdendo BOOT_A com heartbeat age 181 s, embora snapshot A estivesse fresh.
+2. `test_r12f1_red_b_desktop_gate_invalidates_then_reacquires_after_new_activity_window`: **FAILED**; linha BOOT_A substituída por BOOT_B; invalidação por write do holder A não tinha proveniência de holder para reeligibilidade Desktop 90 s.
+3. `test_r12f1_red_b_cloud_gate_invalidates_then_reacquires_after_new_activity_window`: **FAILED**; equivalente Cloud A/B, timestamp do holder A desapareceu; reeligibilidade Cloud 60 s sem prova.
+
+**RED inicial: 3 failed, 54 deselected**, SQL antigo executando em banco real. Os três asserts comparam identities/rows, não somente `reason_code`.
+
+Durante o audit de fim de etapa, também foi escrito **antes da correção** `test_r12f1_candidate_reason_update_never_mutates_holder_row`: RED **1 failed, 66 deselected** com `holder.last_reason_code` mudando de `desktop_healthy` para `authority_fenced` após heartbeat do candidate. Esse teste revelou um UPDATE residual por source, que também violava R12-F1.
+
+#### GREEN — modelo e invariantes de authority
+
+**Migration 021 local (único schema alterado):**
+- `device_source_heartbeats` agora tem `PRIMARY KEY (device_id,source,instance_id)`, sem coluna/tabela nova. Cada instance retém `last_heartbeat_at`, `healthy_since`, `consecutive_healthy`, `last_reason_code`, health e timestamps próprios. `ON CONFLICT` altera somente a instance exata; `instance_id` não é substituído.
+- `device_source_authority` permanece **única fonte da identidade do holder**: `active_source + holder_instance_id + authority_epoch + authority_lease_id`. Candidate/standby não torna-se holder por enviar heartbeat.
+- `bootstrap_managed_source_authority` consulta **heartbeat da mesma `devices.boot_id`** do snapshot legado, mesmo quando há candidate com heartbeat mais novo. Se a linha correta falta, bootstrap é INELIGIBLE.
+- `accept_managed_snapshot_transition_candidate` trava heartbeat(s) do holder corrente e candidate específico (identidades obtidas da authority pré-lida apenas para descobrir chaves), na ordem determinística `source ASC,instance_id ASC` **antes do lock de authority**; revalida `mode,source,instance,epoch,lease,updated_at` após lock e lê `clock_timestamp()` depois. Qualquer mudança incompatível => fail-closed. Recalcula o gate na transação do winner, sem confiar em `last_reason_code`.
+- `record_source_heartbeat` trava `devices → [CloudBinding,realm,membership] → holder/candidate heartbeat(s) ordenadas → authority → clock`. Faz upsert e atualiza reason **somente em `(device_id,source,instance_id)`**. Non-holder pode ter heartbeat health/continuity sem receber grant nem renovar holder.
+- `source_candidate_reason` resolve candidate pela instance solicitante e, para failover Desktop→Cloud, resolve **heartbeat somente do holder Desktop da authority**, nunca o candidato Desktop mais recente. Snapshot freshness segue independente: Desktop liveness age >=180 s concede failover com Cloud gates verdes, mesmo se snapshot Desktop fresh; candidate Desktop B nunca mascara A stale.
+- Para **same-source apenas**, reaquisição exige candidate distinto, authenticated/healthy/fresh, holder heartbeat row inequívoca, e `greatest(holder.last_heartbeat_at, authority.last_authoritative_snapshot_at)` stale por **>=90 s Desktop / >=60 s Cloud**. Write/heartbeat posterior de A invalida gate antigo imediatamente; depois de nova janela completa, B pode assumir via novo epoch/lease transacional. Missing holder => fail-closed. Cloud conserva binding, realm, membership, SessionLease/provider, candidate freshness e persistent readiness.
+- `get_source_heartbeat` no Protocol e em Postgres/Supabase recebe `instance_id` obrigatório. Supabase REST filtra `instance_id=eq.<uuid>`, não seleciona heartbeat por source apenas ou pela row mais recente. Fixtures C3-B/C3-C foram adaptadas para a chave composta. Os dois testes C3-C que antes rejeitavam o heartbeat de candidate quando holder healthy passaram a verificar **heartbeat aceito SEM authority grant**, `reason=authority_fenced` e posterior eligibility dependente da atividade real do holder.
+
+#### GREEN e cobertura PostgreSQL real
+
+- Primeiros três RED → **3 passed, 54 deselected** depois do SQL por instance.
+- Regressões C1+C2+C3-B+C3-C logo após a atualização dos testes de standby: **74 passed** em PostgreSQL real.
+- Matriz expandida R12-F1: **12 passed**, testando F1a/F1b Desktop e Cloud, Cloud standby inelegível, holder heartbeat invalidando gate, missing-holder fail-closed, bootstrap com duas instances e bootstrap sem holder, B/C race com winner único/epoch monotônico, recovery A × transition B com winner único e snapshot winner persistido, restart de novo repository mantendo A/B, e PK física composta.
+- Audit de reason residual: **RED 1 failed**, `reason_code` de A indevidamente modificado por B; UPDATE estreitado à instance reportante; GREEN **13 passed, 54 deselected** na matriz R12-F1.
+- Boundaries e segurança R12-F1 validados sem sleeps de 60/90/180 s: clocks/ages de teste ajustados no banco PostgreSQL, comparação de rows, leases, epochs, holders e snapshots. Concorrências usam dois clientes PostgreSQL distintos (ThreadPoolExecutor) e garantem winner único sem deadlock observado.
+- `make test-all` **814 passed, 0 failed, exit code 0** (RUN FINAL **após** a última correção de `last_reason_code`); C1/C2, C3-B e C3-C restantes preservados. Nenhum skip usado para encobrir regressão na execução Docker/PG.
+- Endpoint auth/policy anti-spoof C3-C, expiry/renew, 3 heartbeats/120 s de failback, Cloud auth, fencing/admin, API restart e current-grant recovery continuam cobertos pelos testes integrais.
+
+#### Migrations, PWA, privilégios, higiene, produção
+
+- Migrator 001→021 em PostgreSQL Supabase descartável, **21/21 migrations**, última `021_source_authority_snapshots.sql`, reexecução **idempotente**; PK real `device_id,source,instance_id`, policy `VOLATILE` validada.
+- Repetição **FINAL** após última alteração: `FINAL_R12_F1_MIGRATIONS_PASS count=21 last=021_source_authority_snapshots.sql pk=device_id,source,instance_id policy=v privileges=f|f|t idempotent=yes`. `has_function_privilege(record_source_heartbeat, EXECUTE)`: **anon=false, authenticated=false, service_role=true**. `SECURITY DEFINER` com search_path seguro, RLS de heartbeat preservada. Nenhum cookie/SessionLease plaintext/credential/secret foi acrescentado ao payload/status.
+- PWA frontend `npm test -- --run src/api/contract.test.ts src/api/snapshotClient.test.ts`: **29 passed**; contrato GET externo permanece estritamente `{snapshot,meta}`, sem MobileSnapshot v3 nem alteração frontend.
+- `git diff --check` PASS, todos untracked via `git diff --no-index --check` PASS, staged=**0**, HEAD API/PWA/Cloud **`4691c2476d70311a60ecb392c858bfa1cac3699b`**, Desktop SPEC027 limpo, Shadow PIDs **15175/15185** intactos, containers PG efêmeros removidos (`R12_F1_FINAL_AUDIT_PASS`).
+- **Nenhum commit, stage, migration 022, push, merge, deploy, Cloud writer/WebPilot real/Northflank operacional, Desktop heartbeat adapter/SnapshotHttpClient headers, failover/failback operacional, evento/push ou C3-D.**
+
+**Pedido formal:** **R12.2 INDEPENDENTE** sobre o diff completo C3-C incluindo a correção R12-F1. Exigir revisão explícita de lock order/PLpgSQL under races, PK per-instance, candidate vs holder proof, same-source vs cross-source separation, privileges, bootstrap e RED→GREEN. Até **R12.2 APROVADA**, C3-C segue **NÃO AUTORIZADO PARA COMMIT** e **C3-D BLOQUEADO**.
+
+
+### R12.2 independente — parecer de encerramento técnico integral C3-C/R12-F1 (2026-10-09)
+
+**PARECER FORMAL: APROVADA INTEGRALMENTE.** Revisor auditou diff funcional e documentos C3-P/C3-C §28, confrontou R12-F1 com SQL e testes PostgreSQL, repetiu gates de teste, migração, autorização e Git. **Nenhum finding bloqueante de R12.2 foi identificado.** A implementação local está **AUTORIZADA para um commit exato de encerramento C3-C e push de `feat/spec027-cloud` para `origin`**, somente após gates finais, para criar base comum imutável Oak/Elm. C3-D permanece bloqueado; worktrees/branches Oak/Elm NÃO devem ser criadas neste checkpoint.
+
+#### Gate de entrada e escopo auditado
+
+- Base API/PWA/Cloud: `feat/spec027-cloud@4691c2476d70311a60ecb392c858bfa1cac3699b` (C3-B aprovado), staged=0, alterações funcionais somente C3-C/R12-F1.
+- Desktop SPEC027: `c8191bfea696368a7698a08bea727811412c05fd`, limpo; Shadow original PIDs `15175/15185` ativo e intocado.
+- Inventário exato C3-C: **18 arquivos** (migration 021 local, heartbeat API/model/service, adapters/protocol, testes, plano C3-P, plano C3-C e handoff). Nenhum arquivo do Desktop ou frontend mudou, migration 022 inexistente, nenhum deploy/Cloud writer/Northflank/WebPilot real.
+- Branch `origin/feat/spec027-cloud` não existia no remote antes deste fechamento (`git ls-remote --heads origin feat/spec027-cloud` vazio); criação remota explicitamente autorizada pelo usuário **apenas** após aprovação.
+
+#### R12-F1 RED → GREEN conferido
+
+- A evidência de RED original está registrada imediatamente acima neste handoff: PostgreSQL real com **3 falhas**, reproduzindo R12-F1a (Desktop A stale 181 s + B heartbeat mascarando failover com snapshot A fresh), R12-F1b Desktop (gate invalidado por write do holder e sem reeligibilidade), R12-F1b Cloud (mesma falha, limiar 60 s). RED adicional independente do Executor capturou `last_reason_code` de holder A sobrescrito por B.
+- Implementação revisada corrige a raiz: PK `(device_id,source,instance_id)` na migration **021 não aplicada em produção**; UPSERT e UPDATE de reason usam chave completa, sem transferir health/heartbeat da instance A para B. Repositories Postgres/Supabase exigem `instance_id` explícita. Bootstrap busca heartbeat da `devices.boot_id`.
+- `source_candidate_reason` usa `authority.active_source+holder_instance_id` para liveness do holder, candidata por `p_source+p_instance_id`. Cross-source failover usa heartbeat do **holder real** e snapshot freshness independente; same-source mede `greatest(holder.last_heartbeat_at, authority.last_authoritative_snapshot_at)` somente na reacquisition, com limites Desktop 90 s / Cloud 60 s e sem reaproveitar reason como grant.
+- `accept_managed_snapshot_transition_candidate` e `record_source_heartbeat` seguem `devices → [CloudBinding/realm/membership] → heartbeat holder+candidate ordenadas `(source,instance_id)` → authority → server clock`; pre-read de authority só descobre lock keys, seguido de revalidação dos atributos/epoch/lease/updated_at. A única transação vencedora define novo epoch/lease; old writer fenced. Renovação continua exclusiva do holder e não altera epoch/lease/instance.
+- TDD GREEN registrado: 13/13 testes PostgreSQL R12-F1, contemplando F1a/F1b Desktop e Cloud, não-mascaramento, missing holder fail-closed, bootstrap correto e ausente, duas candidatas concorrentes com winner único, recovery/write A × B, invalidation por heartbeat A, restart persistente, isolamento de reason, PK/RLS/privileges.
+- Sem desvio na regra `write eligibility != renew eligibility`, fencing administrativo e Cloud auth/SessionLease; as regressões C1/C2/C3-B e C3-C permanecem cobertas pela suíte completa.
+
+#### Gates independentes repetidos nesta revisão
+
+- `make test-all`: **814 passed, exit 0** em Docker/PostgreSQL real, runtime pytest 53.09 s; execução independente de R12.2, distinta das evidências do Executor.
+- PWA: `npm test -- --run src/api/contract.test.ts src/api/snapshotClient.test.ts`: **29 passed**, `{snapshot, meta}` mantido, MobileSnapshot v1/v2 intacto.
+- PostgreSQL efêmero Supabase: migrations **001→021 / 21 aplicadas**, última `021_source_authority_snapshots.sql`, reexecução idempotente. PK verificada `device_id,source,instance_id`; RLS `relrowsecurity=true`; RPC `record_source_heartbeat` EXECUTE **anon=false, authenticated=false, service_role=true**. Banco descartável removido, sem produção.
+- Segurança: autenticação Device e CloudBinding no HTTP; reason/grant/epoch/lease não são campos aceitos do request (`extra=forbid`); apenas holder atual com lease válida recebe grant existente; Cloud binding/realm/membership/persistent state e SessionLease revalidados no servidor; SQL `SECURITY DEFINER` com `search_path=pg_catalog,public`, sem mudança de payload PWA nem segredos retornados.
+- Hygiene: `git diff --check` PASS, `git diff --no-index --check` para untracked PASS, staged=0 antes do fechamento, HEAD base inalterado, 18 arquivos identificados e dentro do escopo, sem migration 022. Desktop limpo e Shadow intacto.
+
+#### Decisão e fechamento Git
+
+**R12.2 APROVADA.** Autorizado **um único commit de encerramento C3-C** com os 18 arquivos C3-C/R12-F1 e este parecer; depois **push `feat/spec027-cloud` para `origin` com upstream**, verificando SHA remoto igual ao local e working tree limpo. A identidade do commit que contém este próprio texto é autorreferente; portanto o SHA literal será comprovado no Git e informado no parecer final da sessão, enquanto este handoff estabelece a verificação obrigatória `git rev-parse HEAD == git ls-remote origin refs/heads/feat/spec027-cloud`. Não alterar arquivo versionado depois do commit. **C3-D continua BLOQUEADO** e não criar branches/worktrees Oak/Elm ainda.

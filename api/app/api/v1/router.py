@@ -19,6 +19,7 @@ from app.api.v1.mobile_session import create_mobile_session_router
 from app.api.v1.push import create_push_router
 from app.api.v1.snapshots import create_snapshot_router
 from app.api.v1.session_broker import create_session_broker_router
+from app.api.v1.source_heartbeat import create_source_heartbeat_router
 from app.api.v1.vessel_photos import create_vessel_photo_router
 from app.api.v1.vessel_tracking_events import create_vessel_tracking_event_router
 from app.api.v1.tracked_vessels import create_tracked_vessels_router
@@ -55,6 +56,7 @@ def create_v1_router(
     router.include_router(create_health_router())
     router.include_router(create_device_status_router(repository))
     router.include_router(create_cloud_binding_router(repository))
+    router.include_router(create_source_heartbeat_router(repository))
     router.include_router(
         create_session_broker_router(
             repository,

@@ -22,6 +22,7 @@ from app.models.source_authority import (
     SourceHeartbeatRecord,
     TransitionCandidate,
 )
+from app.models.source_heartbeat import SourceHeartbeatRequest, SourceHeartbeatResponse
 from app.models.vessel_tracking_event import VesselTrackingEventIn
 from app.repositories.cloud_bindings import (
     CloudBindingAuthorityRecord,
@@ -137,6 +138,7 @@ class PostgresDeviceRepository:
         self,
         device_id: str,
         source: Source,
+        instance_id: UUID,
     ) -> SourceHeartbeatRecord | None:
         try:
             with psycopg.connect(self._database_url, autocommit=True) as conn:
@@ -149,13 +151,59 @@ class PostgresDeviceRepository:
                            last_candidate_generated_at, last_reason_code,
                            persistent_state_ready, updated_at
                     from public.device_source_heartbeats
-                    where device_id=%s and source=%s
+                    where device_id=%s and source=%s and instance_id=%s
                     """,
-                    (device_id, source.value),
+                    (device_id, source.value, instance_id),
                 ).fetchone()
         except psycopg.Error as exc:
             raise PersistenceUnavailableError() from exc
         return self._source_heartbeat_from_row(row)
+
+    def record_source_heartbeat(
+        self,
+        device_id: str,
+        source: Source,
+        request: SourceHeartbeatRequest,
+        *,
+        cloud_binding_id: UUID | None = None,
+    ) -> SourceHeartbeatResponse:
+        try:
+            with psycopg.connect(self._database_url, autocommit=True) as conn:
+                row = conn.execute(
+                    """
+                    select status,reason_code,authority_epoch,authority_lease_id,
+                           holder_instance_id,lease_expires_at,renewed
+                    from public.record_source_heartbeat(
+                        %s,%s,%s,%s,%s,%s,%s,%s,%s
+                    )
+                    """,
+                    (
+                        device_id,source.value,request.instance_id,
+                        request.process_healthy,request.collection_healthy,
+                        request.last_reported_generated_at,
+                        request.last_candidate_generated_at,
+                        request.persistent_state_ready,
+                        cloud_binding_id,
+                    ),
+                ).fetchone()
+            if row is None:
+                raise PersistenceUnavailableError()
+            grant = None
+            if all(row[i] is not None for i in (2,3,4,5)):
+                grant = AuthorityGrantView(
+                    device_id=device_id,source=source,authority_epoch=int(row[2]),
+                    authority_lease_id=UUID(str(row[3])),
+                    holder_instance_id=UUID(str(row[4])),
+                    lease_expires_at=self._aware_datetime(row[5]),
+                )
+            return SourceHeartbeatResponse(
+                status=AuthorityStatus(str(row[0])),
+                reason_code=None if row[1] is None else AuthorityReasonCode(str(row[1])),
+                source=source,instance_id=request.instance_id,
+                grant=grant,renewed=bool(row[6]),
+            )
+        except (psycopg.Error, TypeError, ValueError) as exc:
+            raise PersistenceUnavailableError() from exc
 
     def bootstrap_managed_source_authority(
         self,

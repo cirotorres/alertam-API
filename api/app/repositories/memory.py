@@ -17,6 +17,7 @@ from app.repositories.cloud_bindings import (
     WebPilotAuthRealmRecord,
 )
 from app.repositories.devices import (
+    PersistenceUnavailableError,
     AcceptSnapshotResult,
     AcceptSnapshotStatus,
     DeviceAlreadyExistsError,
@@ -109,6 +110,10 @@ class MemoryDeviceRepository:
         ] = {}
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._lock = Lock()
+
+    def record_source_heartbeat(self, *args: object, **kwargs: object) -> None:
+        """Fail closed: in-memory storage cannot arbitrate cross-process authority."""
+        raise PersistenceUnavailableError()
 
     def create_device(self, record: DeviceAuthRecord) -> None:
         if record.device_id in self._devices:

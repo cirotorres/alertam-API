@@ -172,7 +172,7 @@ def test_supabase_source_authority_rpc_payloads_and_mappers():
     assert authority is not None
     assert authority.mode is AuthorityMode.MANAGED
     assert repo.get_current_grant("pecem-a").authority_epoch == 1
-    heartbeat = repo.get_source_heartbeat("pecem-a", Source.DESKTOP)
+    heartbeat = repo.get_source_heartbeat("pecem-a", Source.DESKTOP, BOOT)
     assert heartbeat is not None and heartbeat.instance_id == BOOT
 
     bootstrapped = repo.bootstrap_managed_source_authority("pecem-a")
@@ -260,4 +260,59 @@ def test_supabase_source_authority_malformed_200_is_sanitized(suffix, operation)
     with pytest.raises(PersistenceUnavailableError) as exc:
         operation(repo)
     assert backend_detail not in str(exc.value)
+    assert "sb_secret_backend" not in str(exc.value)
+
+
+def test_r12_supabase_heartbeat_rpc_payload_has_no_client_authority_decision():
+    from app.models.source_heartbeat import SourceHeartbeatRequest
+    from app.models.source_authority import Source
+
+    received = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        received.append(request)
+        assert request.url.path.endswith("/rpc/record_source_heartbeat")
+        return httpx.Response(200, json=[{
+            "status": "accepted",
+            "reason_code": "desktop_healthy",
+            "authority_epoch": 1,
+            "authority_lease_id": str(LEASE),
+            "holder_instance_id": str(BOOT),
+            "lease_expires_at": "2026-10-09T15:03:00Z",
+            "renewed": True,
+        }])
+
+    repo = _repo(handler)
+    response = repo.record_source_heartbeat(
+        "pecem-a", Source.DESKTOP,
+        SourceHeartbeatRequest(instance_id=BOOT, collection_healthy=True),
+    )
+    assert response.renewed
+    assert response.grant is not None
+    assert response.grant.authority_epoch == 1
+    payload = json.loads(received[0].content)
+    assert payload["p_instance_id"] == str(BOOT)
+    assert payload["p_source"] == "desktop"
+    assert payload["p_cloud_binding_id"] is None
+    assert "failover_granted" not in json.dumps(payload)
+    assert "p_reason" not in payload
+    assert "p_authority_epoch" not in payload
+    assert "p_authority_lease_id" not in payload
+
+
+def test_r12_supabase_heartbeat_malformed_rpc_result_fail_closed_and_sanitized():
+    from app.models.source_heartbeat import SourceHeartbeatRequest
+    from app.models.source_authority import Source
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/rpc/record_source_heartbeat")
+        return httpx.Response(200, json=[{"unexpected": "private-leak"}])
+
+    repo = _repo(handler)
+    with pytest.raises(PersistenceUnavailableError) as exc:
+        repo.record_source_heartbeat(
+            "pecem-a", Source.DESKTOP,
+            SourceHeartbeatRequest(instance_id=BOOT, collection_healthy=True),
+        )
+    assert "private-leak" not in str(exc.value)
     assert "sb_secret_backend" not in str(exc.value)

@@ -152,9 +152,8 @@ def _heartbeat(
                 clock_timestamp(), 3, clock_timestamp(), %s, %s,
                 clock_timestamp()
             )
-            on conflict (device_id, source) do update
-            set instance_id = excluded.instance_id,
-                last_heartbeat_at = clock_timestamp(),
+            on conflict (device_id, source, instance_id) do update
+            set last_heartbeat_at = clock_timestamp(),
                 process_healthy = true,
                 collection_healthy = true,
                 healthy_since = clock_timestamp(),
@@ -274,19 +273,44 @@ def _seed_cloud_auth(
     return binding, accepted
 
 
+
+
+def _prepare_server_failover_gate() -> None:
+    """Only test state setup is synthetic; the gate itself is DB-computed."""
+    _age_authoritative_snapshot("pecem-a", 181)
+    result = _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A,
+        candidate_at=_now(), ready=True,
+    )
+    assert result[0] == "accepted"
+    assert _source_decision_rpc("pecem-a", Source.CLOUD, CLOUD_A) == "failover_granted"
+
+
+def _prepare_server_failback_gate() -> None:
+    assert DSN is not None
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute("""
+            update public.device_source_authority
+            set granted_at=clock_timestamp()-interval '121 seconds'
+            where device_id='pecem-a'
+        """)
+    for _ in range(3):
+        _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_A)
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute("""
+            update public.device_source_heartbeats
+            set healthy_since=clock_timestamp()-interval '121 seconds'
+            where device_id='pecem-a' and source='desktop'
+        """)
+    assert _source_decision_rpc("pecem-a", Source.DESKTOP, BOOT_A) == "failback_granted"
+
 def _transition_cloud(
     repo: PostgresDeviceRepository,
     *,
     sequence: int = 1,
     marker: str = "cloud",
 ):
-    _heartbeat(
-        "pecem-a",
-        Source.CLOUD,
-        CLOUD_A,
-        reason=AuthorityReasonCode.FAILOVER_GRANTED,
-        persistent_state_ready=True,
-    )
+    _prepare_server_failover_gate()
     return repo.accept_transition_candidate(
         TransitionCandidate(
             candidate=_candidate(
@@ -500,12 +524,7 @@ def test_c3b_cloud_to_desktop_transition_is_baseline_then_continuity_uses_transa
     cloud = _transition_cloud(repo)
     assert cloud.status is AuthorityStatus.ACCEPTED
 
-    _heartbeat(
-        "pecem-a",
-        Source.DESKTOP,
-        BOOT_A,
-        reason=AuthorityReasonCode.FAILBACK_GRANTED,
-    )
+    _prepare_server_failback_gate()
     desktop_candidate = _candidate(
         "pecem-a", Source.DESKTOP, BOOT_A, sequence=3, marker="desktop-back"
     )
@@ -545,13 +564,7 @@ def test_c3b_recovery_current_grant_racing_transition_has_exactly_one_winner_wit
     desktop = _bootstrap(repo)
     assert desktop.grant is not None
     _seed_cloud_auth(repo)
-    _heartbeat(
-        "pecem-a",
-        Source.CLOUD,
-        CLOUD_A,
-        reason=AuthorityReasonCode.FAILOVER_GRANTED,
-        persistent_state_ready=True,
-    )
+    _prepare_server_failover_gate()
 
     current = PublishUnderCurrentGrant(
         candidate=_candidate(
@@ -641,13 +654,7 @@ def test_c3b_administrative_fencing_is_narrow_and_reactivation_does_not_resurrec
     assert desktop_after_realm.lease_expires_at == before.lease_expires_at
 
     repo.set_webpilot_auth_realm_active("webpilot-pecem", True)
-    _heartbeat(
-        "pecem-a",
-        Source.CLOUD,
-        CLOUD_A,
-        reason=AuthorityReasonCode.FAILOVER_GRANTED,
-        persistent_state_ready=True,
-    )
+    _prepare_server_failover_gate()
     cloud = repo.accept_transition_candidate(
         TransitionCandidate(
             candidate=_candidate(
@@ -849,13 +856,7 @@ def test_c3b_two_transition_candidates_have_single_epoch_winner():
     _legacy_snapshot(repo, "pecem-a")
     _bootstrap(repo)
     _seed_cloud_auth(repo)
-    _heartbeat(
-        "pecem-a",
-        Source.CLOUD,
-        CLOUD_A,
-        reason=AuthorityReasonCode.FAILOVER_GRANTED,
-        persistent_state_ready=True,
-    )
+    _prepare_server_failover_gate()
 
     def attempt(marker: str):
         return repo.accept_transition_candidate(
@@ -1131,12 +1132,7 @@ def test_c3b_stale_external_preread_cannot_promote_failback_baseline_to_continui
     cloud = _transition_cloud(repo, marker="cloud-winner")
     assert cloud.status is AuthorityStatus.ACCEPTED
 
-    _heartbeat(
-        "pecem-a",
-        Source.DESKTOP,
-        BOOT_A,
-        reason=AuthorityReasonCode.FAILBACK_GRANTED,
-    )
+    _prepare_server_failback_gate()
     back = repo.accept_transition_candidate(
         TransitionCandidate(
             candidate=_candidate(
@@ -1548,12 +1544,9 @@ def test_r11_f5_expired_desktop_lease_without_failover_gate_does_not_grant_cloud
     _bootstrap(repo)
     _seed_cloud_auth(repo)
     _set_authority_expiry("pecem-a", _now() - timedelta(seconds=1))
-    _heartbeat(
-        "pecem-a",
-        Source.CLOUD,
-        CLOUD_A,
-        reason=AuthorityReasonCode.CLOUD_STANDBY_STALE,
-        persistent_state_ready=True,
+    _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A,
+        candidate_at=_now(), ready=True,
     )
 
     result = repo.accept_transition_candidate(
@@ -1612,14 +1605,9 @@ def test_r11_f5_expired_lease_with_fresh_explicit_cross_source_gate_can_transiti
     _legacy_snapshot(repo, "pecem-a")
     _bootstrap(repo)
     _seed_cloud_auth(repo)
+    _age_authoritative_snapshot('pecem-a', 181)
     _set_authority_expiry("pecem-a", _now() - timedelta(seconds=1))
-    _heartbeat(
-        "pecem-a",
-        Source.CLOUD,
-        CLOUD_A,
-        reason=AuthorityReasonCode.FAILOVER_GRANTED,
-        persistent_state_ready=True,
-    )
+    _prepare_server_failover_gate()
 
     result = repo.accept_transition_candidate(
         TransitionCandidate(
@@ -1669,13 +1657,7 @@ def test_r11_f6_transition_rpc_rejects_invalid_or_mismatched_generated_at_before
     _legacy_snapshot(repo, "pecem-a")
     _bootstrap(repo)
     _seed_cloud_auth(repo)
-    _heartbeat(
-        "pecem-a",
-        Source.CLOUD,
-        CLOUD_A,
-        reason=AuthorityReasonCode.FAILOVER_GRANTED,
-        persistent_state_ready=True,
-    )
+    _prepare_server_failover_gate()
 
     param_generated_at = _now()
     for bad_value in (
@@ -1825,3 +1807,997 @@ def test_r111_f1_expired_desktop_same_source_candidate_cannot_create_new_grant(
     assert authority.lease_expires_at <= _now()
     assert stored.sequence == 1
     assert stored.snapshot["marker"] == "legacy"
+
+
+# SPEC 027 C3-C: server-owned heartbeat, renewal and temporal arbitration.
+
+
+def _source_heartbeat_rpc(
+    device_id: str,
+    source: Source,
+    instance_id: UUID,
+    *,
+    process: bool = True,
+    collection: bool = True,
+    candidate_at: datetime | None = None,
+    ready: bool | None = None,
+):
+    assert DSN is not None
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        binding_id = None
+        if source is Source.CLOUD:
+            row = conn.execute(
+                "select cloud_binding_id from public.cloud_bindings                 where device_id=%s and status='active'", (device_id,)
+            ).fetchone()
+            binding_id = None if row is None else row[0]
+        return conn.execute(
+            """
+            select status, reason_code, authority_epoch, authority_lease_id,
+                   holder_instance_id, lease_expires_at, renewed
+            from public.record_source_heartbeat(
+                %s,%s,%s,%s,%s,%s,%s,%s,%s
+            )
+            """,
+            (
+                device_id, source.value, instance_id,
+                process, collection,
+                candidate_at if source is Source.DESKTOP else None,
+                candidate_at if source is Source.CLOUD else None,
+                ready if source is Source.CLOUD else None,
+                binding_id,
+            ),
+        ).fetchone()
+
+
+def _age_heartbeat(
+    device_id: str, source: Source, *, seconds: float, instance_id: UUID | None = None
+) -> None:
+    assert DSN is not None
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(
+            """
+            update public.device_source_heartbeats
+            set last_heartbeat_at=clock_timestamp()-(%s * interval '1 second')
+            where device_id=%s and source=%s
+              and (%s::uuid is null or instance_id=%s)
+            """, (seconds, device_id, source.value, instance_id, instance_id),
+        )
+
+
+def _age_authoritative_snapshot(device_id: str, seconds: float) -> None:
+    assert DSN is not None
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(
+            """
+            update public.device_source_authority
+            set last_authoritative_snapshot_at=clock_timestamp()-(%s * interval '1 second')
+            where device_id=%s
+            """, (seconds, device_id),
+        )
+
+
+def _source_decision_rpc(
+    device_id: str, source: Source, instance_id: UUID,
+):
+    assert DSN is not None
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        return conn.execute(
+            """
+            select public.source_candidate_reason(
+                %s,%s,%s,clock_timestamp()
+            )
+            """,
+            (device_id, source.value, instance_id),
+        ).fetchone()[0]
+
+
+def test_r12_server_heartbeat_continuity_and_stale_snapshot_no_renewal():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    initial = _bootstrap(repo)
+    assert initial.grant is not None
+
+    assert _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_A)[-1] is True
+    state = repo.get_source_heartbeat("pecem-a", Source.DESKTOP, BOOT_A)
+    assert state is not None and state.consecutive_healthy >= 2
+    epoch = repo.get_source_authority("pecem-a")
+    assert epoch is not None
+    assert epoch.authority_epoch == initial.grant.authority_epoch
+    assert epoch.authority_lease_id == initial.grant.authority_lease_id
+
+    _age_authoritative_snapshot("pecem-a", 121)
+    blocked = _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_A)
+    assert blocked[-1] is False
+    assert blocked[1] == "desktop_snapshot_stale"
+    authority = repo.get_source_authority("pecem-a")
+    assert authority is not None
+    assert authority.authoritative_snapshot_stale_since is not None
+    assert authority.authority_epoch == initial.grant.authority_epoch
+
+
+def test_r12_healthy_desktop_heartbeat_cannot_mask_snapshot_stale_hysteresis():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    _bootstrap(repo)
+    _seed_cloud_auth(repo)
+    _age_authoritative_snapshot("pecem-a", 179)
+    _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_A)
+    _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A,
+        candidate_at=_now(), ready=True,
+    )
+    assert _source_decision_rpc("pecem-a", Source.CLOUD, CLOUD_A) == "failover_wait_hysteresis"
+
+    _age_authoritative_snapshot("pecem-a", 181)
+    _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A,
+        candidate_at=_now(), ready=True,
+    )
+    assert _source_decision_rpc("pecem-a", Source.CLOUD, CLOUD_A) == "failover_granted"
+
+
+def test_r12_desktop_failback_requires_three_heartbeats_120s_cloud_active():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    _bootstrap(repo)
+    _seed_cloud_auth(repo)
+    _age_authoritative_snapshot("pecem-a", 181)
+    _source_heartbeat_rpc("pecem-a", Source.CLOUD, CLOUD_A, candidate_at=_now(), ready=True)
+    transition = _transition_cloud(repo)
+    assert transition.status is AuthorityStatus.ACCEPTED
+    assert DSN is not None
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(
+            """
+            update public.device_source_authority
+            set granted_at=clock_timestamp()-interval '121 seconds'
+            where device_id='pecem-a'
+            """
+        )
+    _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_A)
+    assert _source_decision_rpc("pecem-a", Source.DESKTOP, BOOT_A) == "failback_wait_stable"
+    _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_A)
+    assert _source_decision_rpc("pecem-a", Source.DESKTOP, BOOT_A) == "failback_wait_stable"
+    assert DSN is not None
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(
+            """
+            update public.device_source_heartbeats
+            set healthy_since=clock_timestamp()-interval '121 seconds'
+            where device_id='pecem-a' and source='desktop'
+            """
+        )
+    _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_A)
+    assert _source_decision_rpc("pecem-a", Source.DESKTOP, BOOT_A) == "failback_granted"
+    assert repo.get_source_authority("pecem-a").active_source is Source.CLOUD
+
+
+def test_r12_same_source_restart_waits_old_holder_liveness_threshold():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    initial = _bootstrap(repo)
+    assert initial.grant is not None
+
+    blocked = _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_B)
+    assert blocked[0] == "accepted"
+    assert blocked[1] == "authority_fenced"
+    assert blocked[3] is None
+
+    _age_heartbeat("pecem-a", Source.DESKTOP, seconds=101, instance_id=BOOT_A)
+    _age_authoritative_snapshot("pecem-a", 101)
+    permitted = _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_B)
+    assert permitted[0] == "accepted"
+    assert permitted[1] == "desktop_reacquire_granted"
+
+    won = repo.accept_transition_candidate(
+        TransitionCandidate(
+            candidate=_candidate(
+                "pecem-a", Source.DESKTOP, BOOT_B,
+                sequence=2, marker="reacquired",
+            )
+        )
+    )
+    assert won.status is AuthorityStatus.ACCEPTED
+    assert won.grant is not None
+    assert won.grant.authority_epoch == initial.grant.authority_epoch + 1
+    assert won.grant.authority_lease_id != initial.grant.authority_lease_id
+
+
+def test_r12_client_cannot_set_server_grant_via_reason_in_heartbeat_sql_signature():
+    assert DSN is not None
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        names = conn.execute(
+            """
+            select pg_get_function_arguments(p.oid)
+            from pg_proc p
+            join pg_namespace n on n.oid=p.pronamespace
+            where n.nspname='public' and p.proname='record_source_heartbeat'
+            """
+        ).fetchall()
+        assert len(names) == 1
+        assert "p_reason" not in names[0][0]
+        assert "p_authority_epoch" not in names[0][0]
+        assert "p_authority_lease_id" not in names[0][0]
+
+
+def test_r12_desktop_stale_recovery_keeps_grant_and_cancels_hysteresis():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    original = _bootstrap(repo).grant
+    assert original is not None
+    _seed_cloud_auth(repo)
+    _age_authoritative_snapshot("pecem-a", 150)
+    stale = _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_A)
+    assert stale[1] == "desktop_snapshot_stale" and stale[-1] is False
+
+    ready = _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A, candidate_at=_now(), ready=True,
+    )
+    assert ready[1] == "failover_wait_hysteresis"
+
+    candidate = _candidate(
+        "pecem-a", Source.DESKTOP, BOOT_A, sequence=2, marker="recovery",
+    )
+    recovered = repo.accept_current_grant_snapshot(
+        PublishUnderCurrentGrant(
+            candidate=candidate, authority_epoch=original.authority_epoch,
+            authority_lease_id=original.authority_lease_id,
+            holder_instance_id=BOOT_A,
+        )
+    )
+    assert recovered.status is AuthorityStatus.ACCEPTED
+    renewed = _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_A)
+    assert renewed[-1] is True
+    updated = repo.get_source_authority("pecem-a")
+    assert updated is not None
+    assert updated.authority_epoch == original.authority_epoch
+    assert updated.authority_lease_id == original.authority_lease_id
+    assert updated.authoritative_snapshot_stale_since is None
+    assert _source_decision_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A
+    ) == "failover_wait_hysteresis"
+
+
+def test_r12_cloud_holder_snapshot_stale_does_not_renew_but_can_recover():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    _bootstrap(repo)
+    _seed_cloud_auth(repo)
+    cloud = _transition_cloud(repo)
+    assert cloud.grant is not None
+    _age_authoritative_snapshot("pecem-a", 95)
+    blocked = _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A, candidate_at=_now(), ready=True,
+    )
+    assert blocked[-1] is False
+    assert blocked[1] == "cloud_snapshot_stale"
+
+    recovery = repo.accept_current_grant_snapshot(
+        PublishUnderCurrentGrant(
+            candidate=_candidate(
+                "pecem-a", Source.CLOUD, CLOUD_A,
+                sequence=2, marker="cloud-recovered",
+            ),
+            authority_epoch=cloud.grant.authority_epoch,
+            authority_lease_id=cloud.grant.authority_lease_id,
+            holder_instance_id=CLOUD_A,
+        )
+    )
+    assert recovery.status is AuthorityStatus.ACCEPTED
+    renewed = _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A, candidate_at=_now(), ready=True,
+    )
+    assert renewed[-1] is True
+    authority = repo.get_source_authority("pecem-a")
+    assert authority is not None
+    assert authority.authority_epoch == cloud.grant.authority_epoch
+    assert authority.authority_lease_id == cloud.grant.authority_lease_id
+    assert authority.authoritative_snapshot_stale_since is None
+
+
+def test_r12_cloud_standby_59_60s_boundaries_and_auth_availability():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    _bootstrap(repo)
+    _, session = _seed_cloud_auth(repo)
+    _age_authoritative_snapshot("pecem-a", 181)
+    _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A, candidate_at=_now(), ready=True,
+    )
+    _age_heartbeat("pecem-a", Source.CLOUD, seconds=59)
+    assert _source_decision_rpc("pecem-a", Source.CLOUD, CLOUD_A) == "failover_granted"
+    _age_heartbeat("pecem-a", Source.CLOUD, seconds=61)
+    assert _source_decision_rpc("pecem-a", Source.CLOUD, CLOUD_A) == "cloud_standby_stale"
+    _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A, candidate_at=_now(), ready=False,
+    )
+    assert _source_decision_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A
+    ) == "cloud_persistent_state_unavailable"
+    _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A, candidate_at=_now(), ready=True,
+    )
+    repo.invalidate_session_lease(
+        realm_id="webpilot-pecem",
+        lease_id=session.lease_id,
+        realm_epoch=session.realm_epoch,
+    )
+    assert _source_decision_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A
+    ) == "cloud_auth_unavailable"
+
+
+def test_r12_failback_continuity_breaks_on_instance_change_and_degradation():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    _bootstrap(repo)
+    _seed_cloud_auth(repo)
+    cloud = _transition_cloud(repo)
+    assert cloud.grant is not None
+    _prepare_server_failback_gate()
+    assert _source_decision_rpc(
+        "pecem-a", Source.DESKTOP, BOOT_A
+    ) == "failback_granted"
+
+    _source_heartbeat_rpc(
+        "pecem-a", Source.DESKTOP, BOOT_B, process=True, collection=True,
+    )
+    changed = repo.get_source_heartbeat("pecem-a", Source.DESKTOP, BOOT_B)
+    assert changed is not None
+    assert changed.instance_id == BOOT_B
+    assert changed.consecutive_healthy == 1
+    assert _source_decision_rpc(
+        "pecem-a", Source.DESKTOP, BOOT_B
+    ) == "failback_wait_stable"
+    _source_heartbeat_rpc(
+        "pecem-a", Source.DESKTOP, BOOT_B, process=True, collection=False,
+    )
+    degraded = repo.get_source_heartbeat("pecem-a", Source.DESKTOP, BOOT_B)
+    assert degraded is not None
+    assert degraded.consecutive_healthy == 0
+    assert degraded.healthy_since is None
+    _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_B)
+    resumed = repo.get_source_heartbeat("pecem-a", Source.DESKTOP, BOOT_B)
+    assert resumed is not None
+    assert resumed.consecutive_healthy == 1
+
+
+def test_r12_continuity_breaks_after_missing_heartbeat_interval():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    _bootstrap(repo)
+    for _ in range(3):
+        _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_A)
+    _age_heartbeat("pecem-a", Source.DESKTOP, seconds=95)
+    _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_A)
+    hb=repo.get_source_heartbeat("pecem-a", Source.DESKTOP, BOOT_A)
+    assert hb is not None
+    assert hb.consecutive_healthy == 1
+
+
+def test_r12_cloud_restart_60s_reacquire_and_old_holder_fenced():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    _bootstrap(repo)
+    _seed_cloud_auth(repo)
+    cloud = _transition_cloud(repo)
+    assert cloud.grant is not None
+    original = cloud.grant
+    blocked = _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, BOOT_B, candidate_at=_now(), ready=True,
+    )
+    assert blocked[0] == "accepted"
+    assert blocked[1] == "authority_fenced"
+    _age_heartbeat("pecem-a", Source.CLOUD, seconds=71, instance_id=CLOUD_A)
+    _age_authoritative_snapshot("pecem-a", 71)
+    permitted = _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, BOOT_B, candidate_at=_now(), ready=True,
+    )
+    assert permitted[1] == "cloud_reacquire_granted"
+    won=repo.accept_transition_candidate(
+        TransitionCandidate(
+            candidate=_candidate(
+                "pecem-a", Source.CLOUD, BOOT_B, sequence=1, marker="cloud-new",
+            )
+        )
+    )
+    assert won.status is AuthorityStatus.ACCEPTED
+    assert won.grant is not None
+    assert won.grant.authority_epoch == original.authority_epoch+1
+    old=repo.accept_current_grant_snapshot(
+        PublishUnderCurrentGrant(
+            candidate=_candidate(
+                "pecem-a", Source.CLOUD, CLOUD_A, sequence=2, marker="old-cloud",
+            ),
+            authority_epoch=original.authority_epoch,
+            authority_lease_id=original.authority_lease_id,
+            holder_instance_id=CLOUD_A,
+        )
+    )
+    assert old.status is AuthorityStatus.FENCED
+
+
+def test_r12_renewal_expiry_waiting_on_lock_never_resurrects_grant():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    original = _bootstrap(repo).grant
+    assert original is not None
+    _set_authority_expiry("pecem-a", _now()+timedelta(milliseconds=650))
+    assert DSN is not None
+    blocker=psycopg.connect(DSN, autocommit=False)
+    blocker.execute(
+        "select device_id from public.devices where device_id='pecem-a' for update"
+    )
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future=pool.submit(_source_heartbeat_rpc, "pecem-a", Source.DESKTOP, BOOT_A)
+            time.sleep(.9)
+            blocker.commit()
+            row=future.result(timeout=10)
+    finally:
+        if not blocker.closed:
+            blocker.rollback()
+            blocker.close()
+    assert row[-1] is False
+    assert row[2] is None and row[3] is None
+    assert row[1] == "authority_lease_expired"
+    authority=repo.get_source_authority("pecem-a")
+    assert authority is not None
+    assert authority.authority_epoch == original.authority_epoch
+    assert authority.lease_expires_at <= _now()
+
+
+def test_r12_concurrent_heartbeats_and_other_device_isolation():
+    repo=_repo()
+    for device, boot in (("pecem-a", BOOT_A), ("pecem-b", BOOT_B)):
+        _create_device(repo,device)
+        _legacy_snapshot(repo,device,boot_id=boot)
+        _bootstrap(repo,device,boot_id=boot)
+    previous=repo.get_source_heartbeat("pecem-b", Source.DESKTOP, BOOT_B)
+    assert previous is not None
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures=[
+            pool.submit(_source_heartbeat_rpc,"pecem-a",Source.DESKTOP,BOOT_A)
+            for _ in range(2)
+        ]
+        results=[f.result(timeout=10) for f in futures]
+    assert all(row[-1] is True for row in results)
+    a=repo.get_source_heartbeat("pecem-a",Source.DESKTOP,BOOT_A)
+    b=repo.get_source_heartbeat("pecem-b",Source.DESKTOP,BOOT_B)
+    assert a is not None and b is not None
+    assert a.consecutive_healthy >= 3
+    assert b.consecutive_healthy == previous.consecutive_healthy
+    assert b.last_heartbeat_at == previous.last_heartbeat_at
+
+
+def test_r12_cloud_renewal_auth_outage_and_recovery_uses_existing_epoch():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    _bootstrap(repo)
+    _, session_a = _seed_cloud_auth(repo)
+    cloud = _transition_cloud(repo)
+    assert cloud.grant is not None
+    grant = cloud.grant
+    first = _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A, candidate_at=_now(), ready=True,
+    )
+    assert first[-1] is True
+    repo.invalidate_session_lease(
+        realm_id="webpilot-pecem", lease_id=session_a.lease_id,
+        realm_epoch=session_a.realm_epoch,
+    )
+    blocked = _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A, candidate_at=_now(), ready=True,
+    )
+    assert blocked[-1] is False
+    assert blocked[1] == "cloud_auth_unavailable"
+
+    _create_device(repo, "pecem-b")
+    _, session_b = _seed_cloud_auth(
+        repo, owner_device="pecem-a", provider_device="pecem-b",
+        publisher_id=PUB_B, session_id=SESSION_B,
+    )
+    assert session_b.realm_epoch > session_a.realm_epoch
+    recovered = _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A, candidate_at=_now(), ready=True,
+    )
+    assert recovered[-1] is True
+    authority = repo.get_source_authority("pecem-a")
+    assert authority is not None
+    assert authority.authority_epoch == grant.authority_epoch
+    assert authority.authority_lease_id == grant.authority_lease_id
+
+
+def test_r12_renewal_admin_disable_race_never_resurrects_source_lease():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    _bootstrap(repo)
+
+    assert DSN is not None
+    blocker = psycopg.connect(DSN, autocommit=False)
+    blocker.execute(
+        "select device_id from public.devices where device_id='pecem-a' for update"
+    )
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            renewal = pool.submit(
+                _source_heartbeat_rpc, "pecem-a", Source.DESKTOP, BOOT_A
+            )
+            def disable():
+                with psycopg.connect(DSN, autocommit=True) as conn:
+                    conn.execute(
+                        "update public.devices set enabled=false where device_id='pecem-a'"
+                    )
+                return True
+            admin = pool.submit(disable)
+            blocker.commit()
+            hb = renewal.result(timeout=10)
+            assert admin.result(timeout=10) is True
+    finally:
+        if not blocker.closed:
+            blocker.rollback()
+            blocker.close()
+
+    authority = repo.get_source_authority("pecem-a")
+    assert authority is not None
+    assert authority.lease_expires_at <= _now()
+    assert authority.transition_reason is AuthorityReasonCode.DEVICE_DISABLED
+    assert hb[0] in ("accepted", "ineligible")
+
+
+def test_r12_server_policy_race_snapshot_recovery_vs_cloud_transition_one_winner():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    initial = _bootstrap(repo).grant
+    assert initial is not None
+    _seed_cloud_auth(repo)
+    _prepare_server_failover_gate()
+
+    current = PublishUnderCurrentGrant(
+        candidate=_candidate(
+            "pecem-a", Source.DESKTOP, BOOT_A,
+            sequence=2, marker="desktop-recovery-winner",
+        ),
+        authority_epoch=initial.authority_epoch,
+        authority_lease_id=initial.authority_lease_id,
+        holder_instance_id=BOOT_A,
+    )
+    challenger = TransitionCandidate(
+        candidate=_candidate(
+            "pecem-a", Source.CLOUD, CLOUD_A,
+            sequence=1, marker="cloud-transition-winner",
+        )
+    )
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        a=pool.submit(repo.accept_current_grant_snapshot,current)
+        b=pool.submit(repo.accept_transition_candidate,challenger)
+        results=[a.result(timeout=10),b.result(timeout=10)]
+    assert sum(x.status is AuthorityStatus.ACCEPTED for x in results) == 1
+    winner=next(x for x in results if x.status is AuthorityStatus.ACCEPTED)
+    loser=next(x for x in results if x.status is not AuthorityStatus.ACCEPTED)
+    assert loser.status in (AuthorityStatus.FENCED,AuthorityStatus.INELIGIBLE)
+    authority=repo.get_source_authority("pecem-a")
+    stored=repo.get_snapshot("pecem-a")
+    assert authority is not None and stored is not None
+    assert authority.active_source is winner.source
+    assert stored.snapshot["marker"] == (
+        "desktop-recovery-winner"
+        if winner.source is Source.DESKTOP else "cloud-transition-winner"
+    )
+
+
+def test_r12_heartbeat_rpc_privileges_are_backend_only():
+    assert DSN is not None
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        signature = (
+            "public.record_source_heartbeat(text,text,uuid,boolean,boolean,"
+            "timestamp with time zone,timestamp with time zone,boolean,uuid)"
+        )
+        for role in ("anon", "authenticated"):
+            assert conn.execute(
+                "select has_function_privilege(%s,%s,'EXECUTE')",
+                (role,signature),
+            ).fetchone()[0] is False
+        assert conn.execute(
+            "select has_function_privilege('service_role',%s,'EXECUTE')",
+            (signature,),
+        ).fetchone()[0] is True
+
+
+def test_r12_first_cloud_heartbeat_returns_current_server_computed_eligibility():
+    """The policy must observe its own just-inserted heartbeat, not a stale SQL snapshot."""
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    _bootstrap(repo)
+    _seed_cloud_auth(repo)
+    _age_authoritative_snapshot("pecem-a", 181)
+
+    first = _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A, candidate_at=_now(), ready=True
+    )
+    assert first[0] == "accepted"
+    assert first[1] == "failover_granted"
+    assert first[3] is None
+    assert _source_decision_rpc("pecem-a", Source.CLOUD, CLOUD_A) == "failover_granted"
+
+
+def test_r12_restart_new_repository_preserves_persisted_hysteresis_continuity():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    _bootstrap(repo)
+    _seed_cloud_auth(repo)
+    _age_authoritative_snapshot("pecem-a", 181)
+    _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_A)
+    _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_A, candidate_at=_now(), ready=True
+    )
+
+    before = repo.get_source_authority("pecem-a")
+    assert before is not None
+    assert before.authoritative_snapshot_stale_since is not None
+    assert _source_decision_rpc("pecem-a", Source.CLOUD, CLOUD_A) == "failover_granted"
+
+    # New API process/repository instance: only DB state is consulted.
+    restarted_repo = _repo()
+    after = restarted_repo.get_source_authority("pecem-a")
+    assert after is not None
+    assert after.authoritative_snapshot_stale_since == before.authoritative_snapshot_stale_since
+    assert after.authority_epoch == before.authority_epoch
+    assert after.authority_lease_id == before.authority_lease_id
+    assert _source_decision_rpc("pecem-a", Source.CLOUD, CLOUD_A) == "failover_granted"
+
+
+# R12-F1 explicit PostgreSQL REDs: holder/candidate must coexist per instance.
+CLOUD_B = UUID("dddddddd-dddd-4ddd-8ddd-dddddddddddd")
+
+
+def _r12f1_heartbeat_rows(device: str, source: Source):
+    assert DSN is not None
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        return conn.execute(
+            """select instance_id, last_heartbeat_at, healthy_since, consecutive_healthy
+               from public.device_source_heartbeats
+               where device_id=%s and source=%s order by instance_id""",
+            (device, source.value),
+        ).fetchall()
+
+
+def _r12f1_set_snapshot_age(device: str, seconds: float):
+    _age_authoritative_snapshot(device, seconds)
+
+
+def test_r12f1_red_a_desktop_candidate_does_not_mask_holder_failover_liveness():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    grant = _bootstrap(repo).grant
+    assert grant is not None
+    _seed_cloud_auth(repo)
+    _age_heartbeat("pecem-a", Source.DESKTOP, seconds=181)
+    # Snapshot still fresh: must select heartbeat STALE path, not snapshot path.
+    assert repo.get_source_authority("pecem-a").last_authoritative_snapshot_at > _now()-timedelta(seconds=120)
+    _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_B)
+    desktop_rows = _r12f1_heartbeat_rows("pecem-a", Source.DESKTOP)
+    assert {r[0] for r in desktop_rows} == {BOOT_A, BOOT_B}
+    assert next(r for r in desktop_rows if r[0]==BOOT_A)[1] <= _now()-timedelta(seconds=180)
+    assert repo.get_source_authority("pecem-a").holder_instance_id == BOOT_A
+    result = _source_heartbeat_rpc("pecem-a", Source.CLOUD, CLOUD_A, candidate_at=_now(), ready=True)
+    assert result[1] == "failover_granted"
+    assert result[3] is None
+
+
+def test_r12f1_red_b_desktop_gate_invalidates_then_reacquires_after_new_activity_window():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    original = _bootstrap(repo).grant
+    assert original is not None
+    _age_heartbeat("pecem-a", Source.DESKTOP, seconds=101)
+    _r12f1_set_snapshot_age("pecem-a", 101)
+    assert _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_B)[1] == "desktop_reacquire_granted"
+    recovered = repo.accept_current_grant_snapshot(
+        PublishUnderCurrentGrant(
+            candidate=_candidate("pecem-a", Source.DESKTOP, BOOT_A, sequence=2, marker="holder-return"),
+            authority_epoch=original.authority_epoch, authority_lease_id=original.authority_lease_id,
+            holder_instance_id=BOOT_A,
+        )
+    )
+    assert recovered.status is AuthorityStatus.ACCEPTED
+    assert _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_B)[1] == "authority_fenced"
+    assert {r[0] for r in _r12f1_heartbeat_rows("pecem-a", Source.DESKTOP)} == {BOOT_A, BOOT_B}
+    # Server-side deterministic time travel, no sleeps: recent snapshot activity blocks.
+    _r12f1_set_snapshot_age("pecem-a", 89)
+    assert _source_decision_rpc("pecem-a", Source.DESKTOP, BOOT_B) == "authority_fenced"
+    _r12f1_set_snapshot_age("pecem-a", 91)
+    assert _source_heartbeat_rpc("pecem-a", Source.DESKTOP, BOOT_B)[1] == "desktop_reacquire_granted"
+    won = repo.accept_transition_candidate(
+        TransitionCandidate(candidate=_candidate("pecem-a", Source.DESKTOP, BOOT_B, sequence=3, marker="desktop-reacquire"))
+    )
+    assert won.status is AuthorityStatus.ACCEPTED and won.grant is not None
+    assert won.grant.authority_epoch == original.authority_epoch + 1
+    assert won.grant.authority_lease_id != original.authority_lease_id
+    assert repo.get_source_authority("pecem-a").holder_instance_id == BOOT_B
+    old = repo.accept_current_grant_snapshot(
+        PublishUnderCurrentGrant(
+            candidate=_candidate("pecem-a", Source.DESKTOP, BOOT_A, sequence=4, marker="fenced-old"),
+            authority_epoch=original.authority_epoch, authority_lease_id=original.authority_lease_id,
+            holder_instance_id=BOOT_A,
+        )
+    )
+    assert old.status is AuthorityStatus.FENCED
+
+
+def test_r12f1_red_b_cloud_gate_invalidates_then_reacquires_after_new_activity_window():
+    repo = _repo()
+    _create_device(repo, "pecem-a")
+    _legacy_snapshot(repo, "pecem-a")
+    _bootstrap(repo)
+    _seed_cloud_auth(repo)
+    original = _transition_cloud(repo).grant
+    assert original is not None
+    _age_heartbeat("pecem-a", Source.CLOUD, seconds=71)
+    _r12f1_set_snapshot_age("pecem-a", 71)
+    assert _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_B, candidate_at=_now(), ready=True
+    )[1] == "cloud_reacquire_granted"
+    recovered = repo.accept_current_grant_snapshot(
+        PublishUnderCurrentGrant(
+            candidate=_candidate("pecem-a", Source.CLOUD, CLOUD_A, sequence=2, marker="cloud-old-return"),
+            authority_epoch=original.authority_epoch, authority_lease_id=original.authority_lease_id,
+            holder_instance_id=CLOUD_A,
+        )
+    )
+    assert recovered.status is AuthorityStatus.ACCEPTED
+    assert _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_B, candidate_at=_now(), ready=True
+    )[1] == "authority_fenced"
+    assert {r[0] for r in _r12f1_heartbeat_rows("pecem-a", Source.CLOUD)} == {CLOUD_A, CLOUD_B}
+    _r12f1_set_snapshot_age("pecem-a", 59)
+    assert _source_decision_rpc("pecem-a", Source.CLOUD, CLOUD_B) == "authority_fenced"
+    _r12f1_set_snapshot_age("pecem-a", 61)
+    assert _source_heartbeat_rpc(
+        "pecem-a", Source.CLOUD, CLOUD_B, candidate_at=_now(), ready=True
+    )[1] == "cloud_reacquire_granted"
+    won = repo.accept_transition_candidate(
+        TransitionCandidate(candidate=_candidate("pecem-a", Source.CLOUD, CLOUD_B, sequence=3, marker="cloud-new"))
+    )
+    assert won.status is AuthorityStatus.ACCEPTED and won.grant is not None
+    assert won.grant.authority_epoch == original.authority_epoch + 1
+    assert won.grant.authority_lease_id != original.authority_lease_id
+    old = repo.accept_current_grant_snapshot(
+        PublishUnderCurrentGrant(
+            candidate=_candidate("pecem-a", Source.CLOUD, CLOUD_A, sequence=4, marker="cloud-fenced"),
+            authority_epoch=original.authority_epoch, authority_lease_id=original.authority_lease_id,
+            holder_instance_id=CLOUD_A,
+        )
+    )
+    assert old.status is AuthorityStatus.FENCED
+
+
+# R12-F1 §28.4: additional fail-closed, bootstrap, restart and concurrency proof.
+BOOT_C = UUID("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
+
+
+def _r12f1_desktop_stale_holder_and_candidates(repo, *, age=101, candidates=(BOOT_B,)):
+    _age_heartbeat("pecem-a", Source.DESKTOP, seconds=age, instance_id=BOOT_A)
+    _age_authoritative_snapshot("pecem-a", age)
+    for candidate in candidates:
+        hb = _source_heartbeat_rpc("pecem-a", Source.DESKTOP, candidate)
+        assert hb[0] == "accepted"
+        assert hb[3] is None
+        assert hb[1] == "desktop_reacquire_granted"
+
+
+def test_r12f1_cloud_standby_unhealthy_blocks_failover_despite_preserved_holder_age():
+    repo=_repo()
+    _create_device(repo,"pecem-a")
+    _legacy_snapshot(repo,"pecem-a")
+    _bootstrap(repo)
+    _seed_cloud_auth(repo)
+    _age_heartbeat("pecem-a",Source.DESKTOP,seconds=181,instance_id=BOOT_A)
+    _source_heartbeat_rpc("pecem-a",Source.DESKTOP,BOOT_B)
+    blocked=_source_heartbeat_rpc(
+        "pecem-a",Source.CLOUD,CLOUD_A,candidate_at=_now(),ready=False,
+    )
+    assert blocked[3] is None
+    assert blocked[1] == "cloud_persistent_state_unavailable"
+    assert _source_decision_rpc("pecem-a",Source.CLOUD,CLOUD_A) == "cloud_persistent_state_unavailable"
+    assert {x[0] for x in _r12f1_heartbeat_rows("pecem-a",Source.DESKTOP)} == {BOOT_A,BOOT_B}
+    assert repo.get_source_authority("pecem-a").active_source is Source.DESKTOP
+
+
+def test_r12f1_same_source_old_holder_heartbeat_invalidates_candidate_gate():
+    repo=_repo()
+    _create_device(repo,"pecem-a")
+    _legacy_snapshot(repo,"pecem-a")
+    original=_bootstrap(repo).grant
+    assert original is not None
+    _r12f1_desktop_stale_holder_and_candidates(repo)
+    _source_heartbeat_rpc("pecem-a",Source.DESKTOP,BOOT_A)
+    assert _source_decision_rpc("pecem-a",Source.DESKTOP,BOOT_B) == "authority_fenced"
+    attempted=repo.accept_transition_candidate(
+        TransitionCandidate(candidate=_candidate(
+            "pecem-a",Source.DESKTOP,BOOT_B,sequence=2,marker="fenced-after-holder-hb"
+        ))
+    )
+    assert attempted.status is AuthorityStatus.INELIGIBLE
+    auth=repo.get_source_authority("pecem-a")
+    assert auth is not None
+    assert auth.authority_epoch == original.authority_epoch
+    assert auth.holder_instance_id == BOOT_A
+    assert {x[0] for x in _r12f1_heartbeat_rows("pecem-a",Source.DESKTOP)} == {BOOT_A,BOOT_B}
+
+
+def test_r12f1_missing_holder_record_is_fail_closed_for_reacquisition():
+    repo=_repo()
+    _create_device(repo,"pecem-a")
+    _legacy_snapshot(repo,"pecem-a")
+    grant=_bootstrap(repo).grant
+    assert grant is not None and DSN is not None
+    with psycopg.connect(DSN,autocommit=True) as conn:
+        conn.execute("""
+            delete from public.device_source_heartbeats
+            where device_id='pecem-a' and source='desktop' and instance_id=%s
+        """,(BOOT_A,))
+    hb=_source_heartbeat_rpc("pecem-a",Source.DESKTOP,BOOT_B)
+    assert hb[1] == "authority_fenced"
+    candidate=repo.accept_transition_candidate(
+        TransitionCandidate(candidate=_candidate(
+            "pecem-a",Source.DESKTOP,BOOT_B,sequence=2,marker="missing-holder"
+        ))
+    )
+    assert candidate.status is AuthorityStatus.INELIGIBLE
+    assert candidate.grant is None
+    assert repo.get_source_authority("pecem-a").authority_epoch == grant.authority_epoch
+
+
+def test_r12f1_legacy_bootstrap_uses_exact_boot_id_not_newer_candidate():
+    repo=_repo()
+    _create_device(repo,"pecem-a")
+    _legacy_snapshot(repo,"pecem-a",boot_id=BOOT_A)
+    _heartbeat("pecem-a",Source.DESKTOP,BOOT_A,reason=AuthorityReasonCode.DESKTOP_HEALTHY)
+    _heartbeat("pecem-a",Source.DESKTOP,BOOT_B,reason=AuthorityReasonCode.DESKTOP_HEALTHY)
+    assert {x[0] for x in _r12f1_heartbeat_rows("pecem-a",Source.DESKTOP)} == {BOOT_A,BOOT_B}
+    boot=repo.bootstrap_managed_source_authority("pecem-a")
+    assert boot.status is AuthorityStatus.ACCEPTED
+    assert boot.grant is not None and boot.grant.holder_instance_id == BOOT_A
+    assert repo.get_source_authority("pecem-a").authority_epoch == 1
+
+
+def test_r12f1_legacy_bootstrap_missing_original_boot_cannot_use_newer_heartbeat():
+    repo=_repo()
+    _create_device(repo,"pecem-a")
+    _legacy_snapshot(repo,"pecem-a",boot_id=BOOT_A)
+    _heartbeat("pecem-a",Source.DESKTOP,BOOT_B,reason=AuthorityReasonCode.DESKTOP_HEALTHY)
+    boot=repo.bootstrap_managed_source_authority("pecem-a")
+    assert boot.status is AuthorityStatus.INELIGIBLE
+    assert boot.reason_code is AuthorityReasonCode.BOOTSTRAP_NOT_ELIGIBLE
+    assert repo.get_source_authority("pecem-a").authority_epoch == 0
+
+
+def test_r12f1_two_candidates_concurrent_one_winner_and_rows_persist():
+    repo=_repo()
+    _create_device(repo,"pecem-a")
+    _legacy_snapshot(repo,"pecem-a")
+    original=_bootstrap(repo).grant
+    assert original is not None
+    _r12f1_desktop_stale_holder_and_candidates(repo,candidates=(BOOT_B,BOOT_C))
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        one=pool.submit(repo.accept_transition_candidate,TransitionCandidate(
+            candidate=_candidate("pecem-a",Source.DESKTOP,BOOT_B,sequence=2,marker="winner-b")
+        ))
+        two=pool.submit(repo.accept_transition_candidate,TransitionCandidate(
+            candidate=_candidate("pecem-a",Source.DESKTOP,BOOT_C,sequence=2,marker="winner-c")
+        ))
+        results=[one.result(timeout=10),two.result(timeout=10)]
+    assert sum(x.status is AuthorityStatus.ACCEPTED for x in results) == 1
+    assert sum(x.status is AuthorityStatus.INELIGIBLE for x in results) == 1
+    authority=repo.get_source_authority("pecem-a")
+    assert authority is not None and authority.authority_epoch == original.authority_epoch+1
+    assert authority.holder_instance_id in {BOOT_B,BOOT_C}
+    assert {x[0] for x in _r12f1_heartbeat_rows("pecem-a",Source.DESKTOP)} == {BOOT_A,BOOT_B,BOOT_C}
+    assert repo.get_snapshot("pecem-a").snapshot["marker"] in {"winner-b","winner-c"}
+
+
+def test_r12f1_old_holder_recovery_races_same_source_transition_without_split_brain():
+    repo=_repo()
+    _create_device(repo,"pecem-a")
+    _legacy_snapshot(repo,"pecem-a")
+    original=_bootstrap(repo).grant
+    assert original is not None
+    _r12f1_desktop_stale_holder_and_candidates(repo)
+    recovering=PublishUnderCurrentGrant(
+        candidate=_candidate("pecem-a",Source.DESKTOP,BOOT_A,sequence=2,marker="A-recovery"),
+        authority_epoch=original.authority_epoch,
+        authority_lease_id=original.authority_lease_id,
+        holder_instance_id=BOOT_A,
+    )
+    takeover=TransitionCandidate(candidate=_candidate(
+        "pecem-a",Source.DESKTOP,BOOT_B,sequence=2,marker="B-takeover"
+    ))
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        one=pool.submit(repo.accept_current_grant_snapshot,recovering)
+        two=pool.submit(repo.accept_transition_candidate,takeover)
+        results=[one.result(timeout=10),two.result(timeout=10)]
+    assert sum(x.status is AuthorityStatus.ACCEPTED for x in results) == 1
+    authority=repo.get_source_authority("pecem-a")
+    assert authority is not None
+    snapshot=repo.get_snapshot("pecem-a")
+    assert snapshot is not None
+    if authority.holder_instance_id == BOOT_A:
+        assert authority.authority_epoch == original.authority_epoch
+        assert snapshot.snapshot["marker"]=="A-recovery"
+    else:
+        assert authority.holder_instance_id == BOOT_B
+        assert authority.authority_epoch == original.authority_epoch+1
+        assert snapshot.snapshot["marker"]=="B-takeover"
+
+
+def test_r12f1_api_restart_preserves_same_source_holder_and_candidate_liveness():
+    repo=_repo()
+    _create_device(repo,"pecem-a")
+    _legacy_snapshot(repo,"pecem-a")
+    original=_bootstrap(repo).grant
+    assert original is not None
+    _r12f1_desktop_stale_holder_and_candidates(repo)
+    before=_r12f1_heartbeat_rows("pecem-a",Source.DESKTOP)
+    # A new process obtains a repository with no shared Python state.
+    new_repo=_repo()
+    assert _r12f1_heartbeat_rows("pecem-a",Source.DESKTOP)==before
+    assert _source_decision_rpc("pecem-a",Source.DESKTOP,BOOT_B)=="desktop_reacquire_granted"
+    assert new_repo.get_source_authority("pecem-a").holder_instance_id==BOOT_A
+    assert new_repo.get_source_heartbeat("pecem-a",Source.DESKTOP,BOOT_A).instance_id==BOOT_A
+    assert new_repo.get_source_heartbeat("pecem-a",Source.DESKTOP,BOOT_B).instance_id==BOOT_B
+
+
+def test_r12f1_schema_has_instance_composite_pk_and_no_global_source_lookup():
+    assert DSN is not None
+    with psycopg.connect(DSN,autocommit=True) as conn:
+        columns=conn.execute("""
+            select att.attname from pg_constraint c
+            join pg_attribute att on att.attrelid=c.conrelid and att.attnum=any(c.conkey)
+            where c.conrelid='public.device_source_heartbeats'::regclass and c.contype='p'
+            order by array_position(c.conkey,att.attnum)
+        """).fetchall()
+    assert [c[0] for c in columns] == ["device_id","source","instance_id"]
+
+
+def test_r12f1_candidate_reason_update_never_mutates_holder_row():
+    repo=_repo()
+    _create_device(repo,"pecem-a")
+    _legacy_snapshot(repo,"pecem-a")
+    _bootstrap(repo)
+    assert DSN is not None
+    with psycopg.connect(DSN,autocommit=True) as conn:
+        holder_before=conn.execute("""
+            select last_heartbeat_at, healthy_since, consecutive_healthy,
+                   last_reason_code, updated_at
+            from public.device_source_heartbeats
+            where device_id='pecem-a' and source='desktop' and instance_id=%s
+        """,(BOOT_A,)).fetchone()
+    candidate=_source_heartbeat_rpc("pecem-a",Source.DESKTOP,BOOT_B)
+    assert candidate[1] == "authority_fenced"
+    with psycopg.connect(DSN,autocommit=True) as conn:
+        holder_after=conn.execute("""
+            select last_heartbeat_at, healthy_since, consecutive_healthy,
+                   last_reason_code, updated_at
+            from public.device_source_heartbeats
+            where device_id='pecem-a' and source='desktop' and instance_id=%s
+        """,(BOOT_A,)).fetchone()
+    assert holder_after == holder_before

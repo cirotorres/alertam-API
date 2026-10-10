@@ -1777,3 +1777,22 @@ Cloud standby/auth ───────────────┤
 O Mobile continua enxergando um único AlertaM lógico.
 
 **STOP C3-P:** R9-F1..F4 corrigidos documentalmente. Não implementar C3-A antes de R9.1 independente APROVADO e autorização explícita.
+
+
+---
+
+## Adendo proposto R12-F1 — identidade persistente de heartbeat por instância (2026-10-09)
+
+**Somente documentação; sujeito a R12.1 independente.** O checkpoint funcional C3-C segue **NÃO APROVADO**. Este adendo atualiza especificamente a intenção de C3-P §5.2 (`device_source_heartbeats`) e §17 (restart semantics), caso seja aprovado; **não altera** as decisões R9..R11.2 sobre authority/fencing, write≠renew ou PWA.
+
+R12 detectou que a chave `(device_id, source)` mistura duas verdades que precisam coexistir: heartbeat do holder e heartbeat do candidate de mesma source. Depois do candidate substituir o registro do holder, o failover pode deixar de enxergar a liveness stale real; um current-grant write posterior pode invalidar o gate do candidate sem permitir a reaquisição após novo período stale. Desktop e Cloud foram reproduzidos independentemente.
+
+**Proposta para aprovação arquitetural:** utilizar a tabela já prevista por C3-P com **uma linha por `(device_id, source, instance_id)`**, conservando health, last heartbeat e continuity de cada instance. `device_source_authority` permanece única referência de qual dessas linhas é o holder corrente; candidate same-source tem row distinta, nunca sobrescreve a do holder. `last_authoritative_snapshot_at` permanece exclusivamente timestamp de snapshot aceito, não heartbeat. Cross-source failover usa a linha do holder atual por `active_source + holder_instance_id` e avalia independentemente authoritative snapshot stale.
+
+**Restart/reacquisition:** a elegibilidade de novo holder dentro da mesma source exige a instance distinta, candidate válido e silêncio do holder pelo limite aprovado de 90 s Desktop / 60 s Cloud; a proposição conservadora mede o silêncio desde **a atividade server-side mais recente do holder (heartbeat da instance atual ou snapshot current-grant autoritativo aceito)**, somente para impedir takeover same-source após atividade de escrita. Depois de um write/heartbeat do holder, um gate anterior é invalidado, mas o holder continua identificável, de modo que o candidate pode tornar-se elegível de novo após o limiar completo. Isso não substitui nem prolonga heartbeat liveness para failover cross-source: snapshot fresh não mascara um holder com heartbeat >=180 s stale.
+
+**Locking:** manter `devices → [CloudBinding/realm/membership] → heartbeat rows por (source, instance_id) em ordem estável → source authority`; usar pre-read de authority apenas para localizar a linha de holder após device lock, revalidando authority e clock após os locks. O winner da transition recalcula todos os gates server-side. `get_source_heartbeat(device, source)` deixa de ser uma consulta singular para arbitragem; adaptadores/contratos devem exigir instance explícita ou seleção do holder segundo authority. Bootstrap legacy consulta a row de `devices.boot_id`.
+
+**Testes RED mandatórios antes de implementar:** (a) A Desktop holder heartbeat 181 s stale + snapshot fresh + B heartbeat + Cloud elegível → Cloud não deve perder failover eligibility; (b) Desktop holder A 91 s sem atividade + B eligible → A recovery/write → B reavaliado antes e depois do novo limiar de 90 s, sem perder evidência A; (c) equivalente Cloud→Cloud a 60 s; (d) concorrência PostgreSQL B transition vs A current write/heartbeat, candidate duplo, restart da API, bootstrap legacy, privilege/RLS e idempotência 001→021, sem 022. Ver **C3-C plano dedicado §28**, que define matriz completa, invariantes e critérios de R12.1.
+
+**STOP mantido:** não tocar na migration 021, nos repositories ou testes antes de R12.1 aprovar o desenho. Se a estratégia exigir 022, migração de DB já aplicado ou revisão de thresholds, retornar a decisão arquitetural explícita; nenhum avanço tácito a C3-D.

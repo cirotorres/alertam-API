@@ -5,7 +5,9 @@ All acceptance operations must be atomic in future API/PostgreSQL code.
 from __future__ import annotations
 
 from typing import Protocol
+from uuid import UUID
 
+from app.models.source_heartbeat import SourceHeartbeatRequest, SourceHeartbeatResponse
 from app.models.source_authority import (
     AuthorityGrantView,
     ManagedSnapshotAcceptanceResult,
@@ -42,8 +44,17 @@ class SourceAuthorityRepository(Protocol):
 
 
 class SourceHeartbeatRepository(Protocol):
-    """Future C3-C persistence contract; not wired into existing repositories."""
+    """C3-C source heartbeat contract; PostgreSQL remains the authority arbiter."""
 
     def get_source_heartbeat(
-        self, device_id: str, source: Source,
+        self, device_id: str, source: Source, instance_id: UUID,
     ) -> SourceHeartbeatRecord | None: ...
+
+    def record_source_heartbeat(
+        self,
+        device_id: str,
+        source: Source,
+        request: SourceHeartbeatRequest,
+        *,
+        cloud_binding_id: UUID | None = None,
+    ) -> SourceHeartbeatResponse: ...

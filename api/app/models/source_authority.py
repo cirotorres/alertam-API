@@ -47,6 +47,8 @@ class AuthorityReasonCode(StrEnum):
     FAILOVER_GRANTED = "failover_granted"
     FAILBACK_WAIT_STABLE = "failback_wait_stable"
     FAILBACK_GRANTED = "failback_granted"
+    DESKTOP_REACQUIRE_GRANTED = "desktop_reacquire_granted"
+    CLOUD_REACQUIRE_GRANTED = "cloud_reacquire_granted"
     DEVICE_DISABLED = "device_disabled"
     AUTHORITY_FENCED = "authority_fenced"
     AUTHORITY_EXPIRED = "authority_lease_expired"
